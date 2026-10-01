@@ -2,7 +2,7 @@
 
 A local demonstration of orchestrated Sagas: a Transfer Service coordinates transfers of fictional credits between two independently owned banks.
 
-Milestone 1 is in progress. One prepared visitor holds an account at each bank, starting with 100 credits at Bank A and 0 at Bank B, and a minimal page shows both balances. Transfers arrive in later increments.
+Milestone 1 is in progress. One prepared visitor holds an account at each bank, starting with 100 credits at Bank A and 0 at Bank B. The visitor transfers a whole number of credits from Bank A to Bank B and follows the transfer's status, balances, and recorded history on a minimal page. Insufficient-funds rejection, the one-pending-transfer restriction, the development reset, and tracing arrive in later increments.
 
 ## Requirements
 
@@ -15,7 +15,7 @@ Milestone 1 is in progress. One prepared visitor holds an account at each bank, 
 make up
 ```
 
-This builds the services, starts them with PostgreSQL, and waits until every container reports ready. Open <http://localhost:8080>.
+This builds the services, starts them with PostgreSQL and RabbitMQ, and waits until every container reports ready. Open <http://localhost:8080>.
 
 | Service          | Host URL                | Database           |
 | ---------------- | ----------------------- | ------------------ |
@@ -23,18 +23,40 @@ This builds the services, starts them with PostgreSQL, and waits until every con
 | Bank A           | <http://localhost:8081> | `bank_a`           |
 | Bank B           | <http://localhost:8082> | `bank_b`           |
 | PostgreSQL       | `localhost:5432`        |                    |
+| RabbitMQ         | `localhost:5672`        |                    |
+
+The RabbitMQ management UI is at <http://localhost:15672> (user and password `saga_lab`).
 
 HTTP interfaces:
 
-- Transfer Service: `GET /` (page) and `GET /api/balances` (JSON).
+- Transfer Service pages: `GET /` shows balances, a transfer form, and earlier transfers; `POST /transfers` submits the form and redirects to `GET /transfers/{transferID}`, which shows the transfer and refreshes itself while it is pending.
+- Transfer Service JSON: `GET /api/balances`; `POST /api/transfers` with `{"amount": 25}` answers `202 Accepted` with the transfer and its `Location`; `GET /api/transfers` lists the prepared visitor's transfers; `GET /api/transfers/{transferID}` returns status and history.
 - Bank A and Bank B: `GET /accounts/{visitorID}`, for example `/accounts/prepared-visitor`.
 - Every service: `GET /readyz`.
 
 Each service connects with its own PostgreSQL role, which can open only that service's database. The Transfer Service obtains balances from the banks' HTTP interfaces.
 
-On startup, each bank creates the prepared visitor's account if it does not exist yet; it never overwrites an existing account. Data lives in the `postgres-data` volume, so `make down` followed by `make up` keeps balances. `docker compose down --volumes` deletes all data.
+On startup, each bank creates the prepared visitor's account if it does not exist yet; it never overwrites an existing account. Data lives in the `postgres-data` and `rabbitmq-data` volumes, so `make down` followed by `make up` keeps balances, transfers, and queued messages. `docker compose down --volumes` deletes all data.
 
-Override host ports with `POSTGRES_PORT`, `TRANSFER_SERVICE_PORT`, `BANK_A_PORT`, and `BANK_B_PORT`. Follow logs with `make logs` and stop with `make down`.
+Override host ports with `POSTGRES_PORT`, `RABBITMQ_PORT`, `RABBITMQ_MANAGEMENT_PORT`, `TRANSFER_SERVICE_PORT`, `BANK_A_PORT`, and `BANK_B_PORT`; an empty value picks a free port. Follow logs with `make logs` and stop with `make down`.
+
+## Transfers
+
+Amounts are whole numbers of credits written with digits only, greater than zero and no larger than 9223372036854775807. Anything else is rejected with `400 Bad Request` before a transfer is recorded.
+
+An accepted transfer runs through RabbitMQ, one durable queue per message type:
+
+1. The Transfer Service records the transfer as `debit_pending` and sends `DebitFunds`.
+2. Bank A commits the debit, then publishes `FundsDebited`.
+3. The Transfer Service records the committed debit, moves to `credit_pending`, and sends `CreditFunds`.
+4. Bank B commits the credit, then publishes `FundsCredited`.
+5. The Transfer Service records the committed credit and completes the transfer.
+
+Every message has its own message ID; each reply carries the ID of the message that caused it. The history lists the steps `requested`, `debit_committed`, `credit_committed`, and `finished`. Each entry has an `observed_at` time, when the reporting service saw the step happen (for a bank, just after its commit returned), and a `recorded_at` time, when the Transfer Service stored it. An entry also keeps the `message_id` of the bank event it records, the `causation_id` of the message that caused it, and the `issued_message_id` of the command it sent, so the chain from `DebitFunds` to `FundsCredited` can be followed in the history.
+
+A transfer whose bank is unavailable stays pending until the bank processes the queued message; nothing times out.
+
+This increment is a happy path only. It has no inbox or outbox, so a redelivered command can be applied twice, and a crash between a local commit and the following publish leaves a transfer pending for good. An insufficient-funds debit is logged by Bank A and leaves the transfer pending until debit rejection is implemented. A handler that fails rejects its message, which RabbitMQ redelivers at once, without backoff.
 
 ## Test
 
@@ -42,6 +64,6 @@ Override host ports with `POSTGRES_PORT`, `TRANSFER_SERVICE_PORT`, `BANK_A_PORT`
 make test
 ```
 
-This starts a separate Compose project, `saga-lab-test`, with fresh databases on ports 15432 and 18080–18082, runs `go test ./...` against it, and removes it afterwards. It leaves the development stack and its data untouched. Arguments to `scripts/test.sh` are passed to `go test`, for example `scripts/test.sh -run TestPage -v`.
+This builds the service images once and runs `go test ./...`. Each run gets a random run ID. Each acceptance test in `acceptance/` starts its own Compose project, `saga-lab-acceptance-<run>-<random>`, with fresh databases and queues on free ports, so every test begins from the prepared 100/0 state regardless of order; the tests run in parallel. Package tests that need only PostgreSQL share a separate project, `saga-lab-test-<run>`, on a free port. A run removes only its own projects afterwards, so concurrent runs and the development stack and its data are untouched. A run killed outright can leave its projects behind; `docker compose ls` lists them. Arguments to `scripts/test.sh` are passed to `go test`, for example `scripts/test.sh -run TestRefreshing -v ./acceptance`.
 
-Tests that need the running stack skip when `SAGA_LAB_URL` or `SAGA_LAB_POSTGRES_URL` is not set.
+Acceptance tests skip unless `SAGA_LAB_ACCEPTANCE_PREFIX` names their project prefix, and package tests skip unless `SAGA_LAB_POSTGRES_URL` is set; `scripts/test.sh` sets both. The acceptance tests use the images `saga-lab-transfer-service`, `saga-lab-bank-a`, and `saga-lab-bank-b` as last built, and fail if a stack is not ready within three minutes.

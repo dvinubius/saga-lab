@@ -1,0 +1,96 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{{end}}
+
+{{define "style"}}<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { max-width: 40rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5; }
+  h1 a { color: inherit; text-decoration: none; }
+  .accounts { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .account { border: 1px solid #8886; border-radius: 0.5rem; padding: 1rem; }
+  .account dt { font-weight: 600; }
+  .account dd { margin: 0; font-size: 1.5rem; }
+  .error { color: #c33; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 0.25rem 0.5rem 0.25rem 0; border-bottom: 1px solid #8884; vertical-align: top; }
+</style>
+</head>
+<body>
+<h1><a href="/">Saga Lab</a></h1>
+{{end}}
+
+{{define "balances"}}<dl class="accounts">
+  <div class="account">
+    <dt>Bank A</dt>
+    <dd><data id="bank-a-balance" value="{{.BankA.Balance}}">{{.BankA.Balance}}</data> credits</dd>
+  </div>
+  <div class="account">
+    <dt>Bank B</dt>
+    <dd><data id="bank-b-balance" value="{{.BankB.Balance}}">{{.BankB.Balance}}</data> credits</dd>
+  </div>
+</dl>
+{{end}}
+
+{{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{.UTC.Format "15:04:05.000"}}</time>{{end}}
+
+{{define "home"}}{{template "head"}}<title>Saga Lab</title>
+{{template "style"}}
+<p>Fictional credits held by the prepared visitor.</p>
+{{template "balances" .Balances}}
+
+<h2>Transfer from Bank A to Bank B</h2>
+<form method="post" action="/transfers">
+  <label>Amount in credits
+    <input name="amount" value="{{.Amount}}" inputmode="numeric" autocomplete="off">
+  </label>
+  <button>Transfer</button>
+  {{with .Error}}<p class="error" id="amount-error">{{.}}</p>{{end}}
+</form>
+
+{{with .Transfers}}
+<h2>Transfers</h2>
+<ul>
+  {{range .}}<li><a href="/transfers/{{.ID}}">{{.Amount}} credits</a>: {{.Status.Label}}</li>
+  {{end}}
+</ul>
+{{end}}
+</body>
+</html>
+{{end}}
+
+{{define "transfer"}}{{template "head"}}<title>Transfer {{.Transfer.ID}} · Saga Lab</title>
+{{if .Transfer.Status.Pending}}<meta http-equiv="refresh" content="1">{{end}}
+{{template "style"}}
+{{template "balances" .Balances}}
+
+{{with .Transfer}}
+<h2>Transfer of {{.Amount}} credits</h2>
+<dl>
+  <dt>Transfer ID</dt>
+  <dd><code><data id="transfer-id" value="{{.ID}}">{{.ID}}</data></code></dd>
+  <dt>Status</dt>
+  <dd><data id="transfer-status" value="{{.Status}}">{{.Status.Label}}</data></dd>
+</dl>
+
+<h3>History</h3>
+<table>
+  <thead><tr><th>Step</th><th>Reported by</th><th>Observed (UTC)</th><th>Recorded (UTC)</th></tr></thead>
+  <tbody>
+  {{range .History}}<tr data-step="{{.Step}}">
+    <td>{{.Step.Label}}</td>
+    <td>{{.Service}}</td>
+    <td>{{template "time" .ObservedAt}}</td>
+    <td>{{template "time" .RecordedAt}}</td>
+  </tr>
+  {{end}}</tbody>
+</table>
+<p>Observed is when the reporting service saw the step happen; recorded is when the Transfer Service stored it.</p>
+{{end}}
+
+<p><a href="/">New transfer</a></p>
+</body>
+</html>
+{{end}}

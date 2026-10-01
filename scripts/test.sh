@@ -2,11 +2,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-export COMPOSE_PROJECT_NAME=saga-lab-test
-export POSTGRES_PORT="${TEST_POSTGRES_PORT:-15432}"
-export TRANSFER_SERVICE_PORT="${TEST_TRANSFER_SERVICE_PORT:-18080}"
-export BANK_A_PORT="${TEST_BANK_A_PORT:-18081}"
-export BANK_B_PORT="${TEST_BANK_B_PORT:-18082}"
+run="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+export COMPOSE_PROJECT_NAME="saga-lab-test-$run"
+export POSTGRES_PORT=
+export SAGA_LAB_ACCEPTANCE_PREFIX="saga-lab-acceptance-$run-"
+
+remove_acceptance_projects() {
+  local project
+  for project in $(docker compose ls --all --quiet); do
+    if [[ "$project" == "$SAGA_LAB_ACCEPTANCE_PREFIX"* ]]; then
+      docker compose --project-name "$project" down --volumes --remove-orphans
+    fi
+  done
+}
 
 teardown() {
   local status=$?
@@ -14,13 +22,16 @@ teardown() {
     docker compose logs --no-color --tail=100
   fi
   docker compose down --volumes --remove-orphans
+  remove_acceptance_projects
   exit "$status"
 }
 
-docker compose down --volumes --remove-orphans
 trap teardown EXIT
-docker compose up --detach --build --wait
+echo "Test run $run"
+docker compose build
+docker compose pull --quiet postgres rabbitmq
+docker compose up --detach --wait postgres
+postgres_address="$(docker compose port postgres 5432)"
 
-SAGA_LAB_URL="http://127.0.0.1:${TRANSFER_SERVICE_PORT}" \
-SAGA_LAB_POSTGRES_URL="postgres://postgres:postgres@127.0.0.1:${POSTGRES_PORT}/postgres?sslmode=disable" \
+SAGA_LAB_POSTGRES_URL="postgres://postgres:postgres@${postgres_address}/postgres?sslmode=disable" \
   go test -count=1 ./... "$@"

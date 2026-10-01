@@ -142,3 +142,7 @@ Do **not** add a sixth public scenario for outbox publication failures, broker o
 V1 is not a real banking product, a generic orchestration engine, a reusable Saga framework, or a workflow DSL. Avoid real payments, authentication complexity, fees, currency exchange, settlement, event sourcing, and complex UI functionality.
 
 The application succeeds when a visitor can **follow an orchestrated transfer, witness duplicate delivery without duplicate effects, observe compensation and duplicate-safe refunding, distinguish queue waiting from processing, and investigate the recorded evidence** without reading the source code.
+
+## 9. Frontend constraints
+
+Do not build for screens below 1280px, no need to support them.

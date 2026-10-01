@@ -15,7 +15,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := bank.Run(ctx, bank.Config{PreparedBalance: 100}); err != nil {
+	if err := bank.Run(ctx, bank.Config{PreparedBalance: 100, Role: bank.Source}); err != nil {
 		slog.Error("stopped", "error", err)
 		os.Exit(1)
 	}
