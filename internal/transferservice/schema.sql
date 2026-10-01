@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS transfers (
+    transfer_id TEXT PRIMARY KEY,
+    visitor_id TEXT NOT NULL,
+    amount BIGINT NOT NULL CHECK (amount > 0),
+    status TEXT NOT NULL,
+    requested_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS transfers_by_visitor ON transfers (visitor_id, requested_at);
+
+CREATE TABLE IF NOT EXISTS transfer_history (
+    entry_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    transfer_id TEXT NOT NULL REFERENCES transfers (transfer_id),
+    step TEXT NOT NULL,
+    service TEXT NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    message_id TEXT,
+    causation_id TEXT,
+    issued_message_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS transfer_history_by_transfer ON transfer_history (transfer_id, entry_id);

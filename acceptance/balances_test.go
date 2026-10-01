@@ -2,18 +2,27 @@ package acceptance_test
 
 import (
 	"encoding/json"
-	"io"
-	"net/http"
-	"os"
 	"regexp"
 	"strconv"
 	"testing"
-	"time"
 )
 
-const appURLVariable = "SAGA_LAB_URL"
-
 func TestPreparedVisitorSeesInitialBalances(t *testing.T) {
+	t.Parallel()
+	demo := startDemonstration(t)
+
+	t.Run("API", func(t *testing.T) {
+		demo.assertBalances(t, 100, 0)
+	})
+	t.Run("page", func(t *testing.T) {
+		page := demo.get(t, "/")
+		assertBalance(t, "Bank A", pageBalance(t, page, "bank-a-balance"), 100)
+		assertBalance(t, "Bank B", pageBalance(t, page, "bank-b-balance"), 0)
+	})
+}
+
+func (d *demonstration) assertBalances(t *testing.T, bankA, bankB int64) {
+	t.Helper()
 	var balances struct {
 		BankA struct {
 			Balance *int64 `json:"balance"`
@@ -22,21 +31,12 @@ func TestPreparedVisitorSeesInitialBalances(t *testing.T) {
 			Balance *int64 `json:"balance"`
 		} `json:"bank_b"`
 	}
-
-	body := get(t, "/api/balances")
+	body := d.get(t, "/api/balances")
 	if err := json.Unmarshal(body, &balances); err != nil {
 		t.Fatalf("decode balances %q: %v", body, err)
 	}
-
-	assertBalance(t, "Bank A", balances.BankA.Balance, 100)
-	assertBalance(t, "Bank B", balances.BankB.Balance, 0)
-}
-
-func TestPageShowsPreparedBalances(t *testing.T) {
-	page := get(t, "/")
-
-	assertBalance(t, "Bank A", pageBalance(t, page, "bank-a-balance"), 100)
-	assertBalance(t, "Bank B", pageBalance(t, page, "bank-b-balance"), 0)
+	assertBalance(t, "Bank A", balances.BankA.Balance, bankA)
+	assertBalance(t, "Bank B", balances.BankB.Balance, bankB)
 }
 
 func pageBalance(t *testing.T, page []byte, id string) *int64 {
@@ -61,26 +61,4 @@ func assertBalance(t *testing.T, bank string, got *int64, want int64) {
 	if *got != want {
 		t.Errorf("%s balance = %d, want %d", bank, *got, want)
 	}
-}
-
-func get(t *testing.T, path string) []byte {
-	t.Helper()
-	baseURL := os.Getenv(appURLVariable)
-	if baseURL == "" {
-		t.Skipf("%s is not set; run scripts/test.sh", appURLVariable)
-	}
-	client := http.Client{Timeout: 5 * time.Second}
-	response, err := client.Get(baseURL + path)
-	if err != nil {
-		t.Fatalf("GET %s: %v", path, err)
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("GET %s: status %d, body %q", path, response.StatusCode, body)
-	}
-	return body
 }

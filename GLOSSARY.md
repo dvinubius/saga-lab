@@ -44,7 +44,14 @@ One of the five predefined demonstrations, specifying the intended execution con
 The wait for exclusive use of the scenario-4 demonstration slot, before the transfer begins.
 
 **Execution history**:
-The recorded business milestones and processing observations associated with a transfer.
+The recorded steps and processing observations associated with a transfer.
+
+**Step**:
+One business milestone in a transfer's execution history, reported by the service that observed it: requested, debit committed, credit committed, or finished.
+_Avoid_: Milestone, event
+
+**Issued message**:
+The command a step sends to a bank, such as the debit instruction sent when a transfer is requested. The bank's reply names the issued message as its cause, which links consecutive steps.
 
 **Visualisation readiness**:
 The condition in which a transfer has reached a terminal business outcome and its history contains the evidence required to explain the selected scenario.

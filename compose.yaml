@@ -11,7 +11,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -21,49 +21,79 @@ services:
       timeout: 2s
       retries: 30
 
+  rabbitmq:
+    image: rabbitmq:4.3.5-management-alpine@sha256:b3b8b7f95f5382a19f9ea33540e604f30aad081d37ad9aba72255135765373a1
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: saga_lab
+      RABBITMQ_DEFAULT_PASS: saga_lab
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      # rabbitmq-diagnostics runs as root and can create a root-owned .erlang.cookie before the broker does, which then cannot start.
+      test: ["CMD", "nc", "-z", "127.0.0.1", "5672"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
   bank-a:
+    image: saga-lab-bank-a
     build:
       context: .
       args:
         SERVICE: bank-a
     environment:
       DATABASE_URL: postgres://bank_a:bank_a@postgres:5432/bank_a?sslmode=disable
+      AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
     ports:
-      - "127.0.0.1:${BANK_A_PORT:-8081}:8080"
+      - "127.0.0.1:${BANK_A_PORT-8081}:8080"
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck: *app-healthcheck
     restart: unless-stopped
 
   bank-b:
+    image: saga-lab-bank-b
     build:
       context: .
       args:
         SERVICE: bank-b
     environment:
       DATABASE_URL: postgres://bank_b:bank_b@postgres:5432/bank_b?sslmode=disable
+      AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
     ports:
-      - "127.0.0.1:${BANK_B_PORT:-8082}:8080"
+      - "127.0.0.1:${BANK_B_PORT-8082}:8080"
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck: *app-healthcheck
     restart: unless-stopped
 
   transfer-service:
+    image: saga-lab-transfer-service
     build:
       context: .
       args:
         SERVICE: transfer-service
     environment:
       DATABASE_URL: postgres://transfer_service:transfer_service@postgres:5432/transfer_service?sslmode=disable
+      AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
       BANK_A_URL: http://bank-a:8080
       BANK_B_URL: http://bank-b:8080
     ports:
-      - "127.0.0.1:${TRANSFER_SERVICE_PORT:-8080}:8080"
+      - "127.0.0.1:${TRANSFER_SERVICE_PORT-8080}:8080"
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
       bank-a:
         condition: service_healthy
@@ -74,3 +104,4 @@ services:
 
 volumes:
   postgres-data:
+  rabbitmq-data:
