@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saga Lab</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { max-width: 36rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5; }
+  .accounts { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .account { border: 1px solid #8886; border-radius: 0.5rem; padding: 1rem; }
+  .account dt { font-weight: 600; }
+  .account dd { margin: 0; font-size: 1.5rem; }
+</style>
+</head>
+<body>
+<h1>Saga Lab</h1>
+<p>Fictional credits held by the prepared visitor.</p>
+<dl class="accounts">
+  <div class="account">
+    <dt>Bank A</dt>
+    <dd><data id="bank-a-balance" value="{{.BankA.Balance}}">{{.BankA.Balance}}</data> credits</dd>
+  </div>
+  <div class="account">
+    <dt>Bank B</dt>
+    <dd><data id="bank-b-balance" value="{{.BankB.Balance}}">{{.BankB.Balance}}</data> credits</dd>
+  </div>
+</dl>
+</body>
+</html>
