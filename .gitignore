@@ -1,0 +1,10 @@
+.vscode/
+.devnotes
+.codegraph/
+
+
+
+
+
+.env*
+!.env.example
