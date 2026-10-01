@@ -1,7 +1,9 @@
 .vscode/
 .devnotes
 .codegraph/
-
+.agents/
+.claude/
+skills-lock.json
 
 
 

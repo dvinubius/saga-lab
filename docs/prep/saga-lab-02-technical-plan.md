@@ -34,7 +34,7 @@ Do not turn this one implementation into a generic Saga engine. Preserve logical
 
 ## 3. Application identity and message identity
 
-Use a lightweight **cookie-based visitor identity**. On a new visitor session, generate display names for the two banks; provide one account in each. Bank A supports fictional top-ups; transfers go from A to B. The display names belong to the demo presentation, not to additional bank-service instances.
+Use a lightweight **cookie-based visitor identity**. On a new visitor session, generate display names for the two banks; provide one account in each. Bank A supports fictional top-ups; transfers go from A to B. One Bank A process owns all visitors’ virtual Bank A banks/accounts in its database; one Bank B process does the equivalent for Bank B. Scope accounts and access by the authenticated cookie-associated visitor identity, without carrying raw cookies into messages or telemetry. Generated bank names do not imply additional processes or databases. The precise table model remains to be settled.
 
 Carry the following identifiers where applicable:
 
@@ -64,19 +64,40 @@ Publication and consumer acknowledgement remain distinct. Outbox forwarding may 
 
 ## 5. Deterministic fault injection
 
-The public UI offers **five predefined scenarios only**, selected before starting a transfer. Persist the scenario configuration against the `transfer_id` so the relevant service can act at a particular workflow step. Record when a fault is injected. No generic fault-scripting facility, embedded ad hoc message flags, or separate operational-message protocol is required.
+The public UI offers **five predefined scenarios only**, selected before starting a transfer. Persist the scenario configuration against the `transfer_id` so the relevant service can act at a particular workflow step. Record when a fault is injected. Keep scenario selection and routing explicit. No generic fault-scripting facility or general operational-control framework is required. Scenario 4 needs a small, explicit coordination handshake for its dedicated consumer lifecycle.
 
 - **Happy path:** no fault.
 - **Debit redelivery:** Bank A first commits the inbox/debit/outbox transaction. On that *first* handling attempt, inject a post-commit handler error so Watermill **Nacks and requeues** the delivery. On redelivery the durable inbox suppresses the second debit, and the duplicate is acknowledged. Ensure retry middleware does not swallow the intended handler error before it reaches the acknowledgement path.
 - **Permanent credit rejection:** Bank B records a definitive `CreditRejected` outcome; the coordinator requests an idempotent refund from Bank A.
-- **Temporary consumer unavailability:** stop Bank B's consumption for approximately **five seconds**, then resume it. The credit message waits **ready in RabbitMQ**; do **not** fabricate failed delivery attempts during a period with no consumer.
+- **Temporary consumer unavailability:** stop only the dedicated scenario-4 Bank B consumer before publishing its credit command, then resume after approximately **five seconds** of broker waiting. Normal Bank B consumption continues. The credit message waits **ready in RabbitMQ**; do **not** fabricate failed delivery attempts during a period with no consumer. See the admission and consumer lifecycle below.
 - **Refund redelivery:** after a permanently rejected credit, Bank A commits the first refund/inbox/outbox transaction. Inject a first-attempt post-commit Nack/requeue of `RefundFunds`. The second delivery is recognized as a duplicate and must not refund again.
 
 **Why Nack in V1?** It provides a deterministic redelivery immediately after a successful commit, without introducing consumer-channel closure, reconnection, or process lifecycle management. A missing acknowledgement on an otherwise healthy connection does not itself cause immediate RabbitMQ redelivery, so do not model it as a ten-second acknowledgement timeout.
 
-Do not inject RabbitMQ outages or outbox publication failures as public scenarios. Treat temporary technical unavailability as pending/recoverable, not as a timer-based reason to compensate. In a shared public deployment, keep any consumer-wide pause controlled so its impact on concurrent visitors is understood.
+Do not inject RabbitMQ outages or outbox publication failures as public scenarios. Treat temporary technical unavailability as pending/recoverable, not as a timer-based reason to compensate. The dedicated scenario-4 queue and serialized admission isolate the deliberate delivery interruption from other scenarios.
 
 Actual process termination and restart recovery are **deferred to V2**, as is a possible channel-closure variant of the redelivery experiment. V1 uses controlled handler failures to demonstrate the same idempotency boundary.
+
+### Scenario 4: dedicated queue and serialized admission
+
+Use **two Bank B command queues**: one for normal scenarios and one dedicated to scenario 4. Route each credit command to exactly one queue, never fan it out to both. Both consumers use the same Bank B business handler, database, and idempotency rules. The dedicated queue remains present while its consumer is stopped; do not use auto-delete behavior that removes it on cancellation. Keep consumer lifecycle control independent so stopping it cannot stop the normal router/consumer or evidence publication.
+
+The Transfer Service owns a small durable FIFO admission list and a single active scenario-4 slot. Claim the slot atomically so concurrent requests cannot both start. Persist admission status separately from Saga status. Waiting requests have no debit or outgoing Saga command yet; an HTTP retry for the same request must not add another admission. This is application admission data, not a third Bank B command queue and not a general job scheduler.
+
+For each admitted execution:
+
+1. Reserve the slot and ensure the dedicated queue has no outstanding work from the previous execution. Ask Bank B to stop its dedicated consumer and wait for confirmed cancellation/no active consumer before allowing the credit command to be published. Do not kill the Bank B process. Cancellation does not recall deliveries already in flight, so the previous execution must be drained first.
+2. Start the admitted Saga. Route its `CreditFunds` command exclusively to the dedicated queue. Keep the dedicated consumer absent while the command is published.
+3. Once broker acceptance of that publication is observed, hold consumption off for approximately five seconds, then re-register the dedicated consumer. Measure and record the actual interval; publisher confirmation is the timing reference, not a claimed exact queue-insertion timestamp. The wait to prepare the consumer or produce the credit command is not part of this five-second interval.
+4. Let Bank B process the command normally. Release the slot only when the execution has reached a terminal business outcome and its dedicated-queue work has drained, including in-flight deliveries. The next visitor can then be admitted. Playback and delayed history ingestion do not occupy the slot.
+
+Use a narrow, idempotent request/ready/resume coordination exchange over RabbitMQ, correlated to the active transfer. Bank B owns its consumer; the Transfer Service owns admission and Saga progression. Stale or repeated control messages must not pause or resume a later visitor’s execution. Final message names and Watermill lifecycle hooks are implementation decisions to verify when detailing this milestone. Do not interpret a handler sleep or a prefetched unacknowledged message as the required broker-ready wait.
+
+Define cleanup for debit rejection (no credit command), setup failure, and failed resume so the slot cannot silently remain occupied. Expose an operational problem if recovery cannot proceed; elapsed time alone must neither compensate a transfer nor release the slot while old work is unresolved. Public admission must be bounded. Deliberate process-crash recovery exercises remain outside V1.
+
+With no contention, start automatically without special admission UI. With contention, show a friendly waiting explanation and start automatically on admission. Track admission waiting separately from Saga duration and broker waiting; do not promise a fixed “couple of seconds.”
+
+Consumer lifecycle reference: [RabbitMQ consumers and cancellation](https://www.rabbitmq.com/docs/consumers#canceling).
 
 ## 6. Application-owned timeline and frontend playback
 
@@ -84,24 +105,53 @@ Persist **explicit application events** for the domain and selected operational 
 
 For a message, capture the evidence available for: outbox record committed, publication attempted, broker acceptance confirmed, consumer delivery, local business commit, and consumer acknowledgement/Nack. Publication attempt, publisher confirmation, and consumer acknowledgement are different facts. **A publisher confirmation is not an independent timestamp for exact queue insertion.** Record business milestones only when the underlying transaction has actually committed.
 
-Each timeline record should carry the transfer ID, event type, actual timestamp, responsible service, relevant message/causation identity, delivery-attempt identity, outcome, and available trace correlation. Preserve observed timestamps and causality even when broker acceptance is observed after a consumer has already started processing.
+Each timeline record should carry a stable observation/event ID, the transfer ID, event type, actual timestamp, responsible service, relevant message/causation identity, delivery-attempt identity, outcome, and available trace correlation. Preserve observed timestamps and causality even when broker acceptance is observed after a consumer has already started processing.
 
-The Transfer Service exposes a per-transfer history endpoint to the UI. A simple status/progress indication is optional while execution runs. **Default experience: wait for the real Saga execution, then animate its persisted history.** This avoids using real backend delays to make the animation legible.
+### Evidence transport and ownership
+
+Bank-owned evidence reaches the Transfer Service through **bank events → RabbitMQ → Transfer Service → durable history**, with two distinct categories:
+
+- **Business execution evidence:** Bank A atomically commits the inbox entry, debit, and `FundsDebited` outbox event. The Transfer Service consumes that event and atomically records its idempotent Saga progression, corresponding timeline entry, and any outgoing command. The same principle applies to credit, rejection, and refund events.
+- **Message-processing evidence:** observations such as `DebitCommandReceived`, `DuplicateSuppressed`, and `NackRequested` describe individual handling attempts. Banks durably record these observations and forward them through their outbox over RabbitMQ. The Transfer Service persists them idempotently by observation ID; they do not advance the Saga. Preserve the observed command's message ID and attempt ID separately from the evidence message's own transport identity.
+
+Redelivery of an evidence event retains its observation ID; a genuinely new observation gets a new ID. A duplicate command can create new attempt evidence without creating a second business outcome event. Post-commit observations require their own local recording transaction; do not imply that a later Nack action was atomic with the earlier debit. `NackRequested` describes application intent, not proof of broker receipt. Record only what the instrumentation actually observes. Keep this evidence vocabulary bounded; do not recursively generate durable evidence about the delivery of evidence messages.
+
+Keep occurrence time separate from history-ingestion time. No service reads another service's database, and history does not depend on telemetry scraping.
+
+### Visualisation readiness
+
+The Transfer Service exposes business status, evidence readiness, and persisted history through its per-transfer API. **A terminal business outcome is necessary but not sufficient for playback readiness.** For example, `FundsDebited` can advance the Saga and `FundsCredited` can complete it before Bank A's `DuplicateSuppressed` observation is consumed and persisted in the Transfer Service. The redelivery itself may also occur after the business outcome. This is asynchronous application evidence, not delayed Prometheus scraping.
+
+Define a bounded readiness predicate per scenario:
+
+- Happy path: terminal outcome and the committed debit/credit history needed for its explanation.
+- Debit redelivery: successful outcome plus first-attempt commit/Nack-request evidence and a distinct subsequent attempt with duplicate suppression for the same debit command.
+- Permanent credit rejection: terminal outcome plus rejection and committed refund evidence.
+- Temporary consumer unavailability: terminal outcome plus dedicated-consumer suspension/resumption and publication/delivery observations supporting the broker-wait explanation.
+- Refund redelivery: compensated outcome plus first-refund commit/Nack-request evidence and a subsequent refund attempt with duplicate suppression.
+
+Account for early business rejection as a terminal alternative: do not wait for downstream evidence from operations that never occurred. Final required event sets are defined with each milestone. Readiness means sufficient evidence for the selected narrative, not proof that no further observations can ever arrive.
+
+Show the business outcome immediately and “preparing the replay” while required evidence is pending. If evidence collection fails, expose that separately and allow an honestly incomplete history; do not fabricate observations, declare readiness after an arbitrary delay, or change the business outcome. Late evidence remains ingestible idempotently. A simple status/history polling endpoint is sufficient; live streaming is optional.
+
+**Default experience: wait for execution and required persisted evidence, then animate the history.** This avoids using real backend delays to make the animation legible.
 
 Playback is strictly **read-only**. Allow automatic playback, pause, backward/forward stepping, and replay; optional speed control is acceptable. Use approximately **500–800 ms of minimum screen time for short stages** and stretch longer actual delays proportionally enough to show their significance, while displaying the real timestamps and durations. A five-second queue wait must stand out from millisecond-scale delivery. A simple logical service/broker diagram is sufficient; do not build a Grafana clone or pretend animated movement measures network latency.
 
-Prefer server-rendered pages with small client-side playback behavior. Fetch the durable history after execution; a live feed via Server-Sent Events or polling is optional later, not required for the default replay experience. Link directly to the appropriate Grafana trace/log/dashboard investigation.
+Prefer server-rendered pages with small client-side playback behavior. Fetch the durable history when ready; status polling can report admission, execution, and evidence readiness, while a live event feed via Server-Sent Events is optional. Link directly to the appropriate Grafana trace/log/dashboard investigation.
 
 ## 7. Automated verification: application invariants
 
-Exercise the **application's** correctness rather than Watermill's internals. Integration tests should cover:
+Add tests with each milestone. Exercise the **application's** correctness rather than Watermill's internals. Integration tests should cover:
 
 - The happy path and exactly one debit/credit effect per successful transfer.
 - Duplicate `DebitFunds` with one committed debit and eventual completion.
 - Duplicate `CreditFunds` without a second credit.
 - Permanent credit rejection followed by correct compensation and final balances.
 - Duplicate `RefundFunds` after a committed refund without another refund.
-- Temporarily unavailable Bank B and eventual progress when consumption resumes.
+- Scenario-4 credit waiting ready with no dedicated consumer, then eventual progress on resumption; normal Bank B traffic continues.
+- Concurrent scenario-4 requests admitted sequentially before debit, correct queue routing, and cleanup on early rejection or lifecycle failure.
+- Evidence-event deduplication, distinct attempts, and readiness with delayed/out-of-order evidence even after business completion.
 - Atomicity of local inbox, business-state, and outbox changes.
 - Stable logical message IDs across repeated delivery and distinguishable processing attempts.
 - Correct idempotent progression of the Transfer Service on duplicate events.
@@ -111,17 +161,17 @@ Exercise the **application's** correctness rather than Watermill's internals. In
 
 ## 8. Milestones
 
-1. **Basic messaging:** set up Go, RabbitMQ, Watermill Publisher/Subscriber/Router, and basic commands/events. No failure handling yet.
-2. **Transfer workflow:** introduce the coordinator and two independently owned bank databases, transfer records, local debit/credit, and a basic happy path.
-3. **Early trace instrumentation:** add HTTP, database, and message producer/consumer spans and propagate context through messages before failure behavior grows complicated.
-4. **Reliability in one combined milestone (formerly milestones 4–6):** explore acknowledgements/redelivery; add deterministic post-commit Nack injection; implement durable inbox, local atomicity, and transactional outbox; demonstrate duplicate suppression. It is useful to observe the unsafe behavior before protecting it.
-5. **Compensation:** implement permanent credit rejection, refund, and the duplicate-safe refund scenario.
-6. **Demo UI:** visitor setup, top-up/transfer controls, scenario selection, durable timeline, visual replay, outcome counts, and telemetry deep links.
-7. **Full observability:** complete metrics, structured logs, Grafana/Prometheus/Loki/Tempo dashboards, and investigation paths.
-8. **V1 integration tests and polish:** verify invariants and scenario behavior without process-crash or broker-outage exercises.
-9. **Publish:** deploy the application and observability stack, provision dashboards from version-controlled configuration, and document architecture, delivery semantics, invariants, scenarios, and representative traces/screenshots.
+Each milestone ends in demonstrable behavior with its own tests and recorded evidence. Basic logs, tracing, and durable history grow with the behavior; final verification is not postponed until release.
 
-Instrumentation starts early (milestone 3); the full dashboard experience can be finalized later. The combined reliability milestone can still be built incrementally within that milestone.
+1. **One observable transfer end to end:** connect Go, RabbitMQ, Watermill, the coordinator, and independently owned bank databases. Start a happy-path transfer through a minimal page; show balances, basic persisted history, and correlated HTTP/database/message spans. An integration test proves the happy path. Reliability guarantees are explicitly incomplete at this stage.
+2. **Reliable transfer processing: atomicity, inbox/outbox, and redelivery:** retain reliability as one combined milestone, implemented through small tickets. Explore acknowledgements/redelivery, demonstrate unsafe behavior in a bounded experiment or failing test, then add durable inboxes, local atomicity, transactional outboxes, and post-commit Nack injection. Prove duplicate debit suppression and eventual completion, duplicate credit safety, and idempotent coordinator progression. Persist attempt evidence and establish debit-scenario playback readiness.
+3. **Compensation, including duplicate-safe refunds:** implement permanent credit rejection, refund, and refund redelivery. Demonstrate both compensation scenarios with correct balances, tests, and sufficient history for playback.
+4. **Isolated consumer unavailability and recovery:** implement the dedicated Bank B queue, serialized admission, consumer cancellation/resumption, and friendly contention UI. Demonstrate approximately five seconds of real broker waiting while normal traffic continues. Test sequential visitors, routing, cleanup, and evidence readiness.
+5. **Complete visitor experience:** complete cookie-associated visitor setup and virtual accounts, top-ups, all five scenario choices, outcome counts, and automatic/pause/step/replay controls. Clearly distinguish admission waiting, Saga execution, and preparation of the replay. Playback never repeats business operations.
+6. **Complete engineering investigation:** finish structured logs, reliability metrics, broker views, provisioned Grafana dashboards, and transfer-specific trace/log links. Verify that evidence supports every scenario's explanation.
+7. **Public release:** deploy application and observability, run full scenario acceptance checks and polish, bound public resource use and retention, keep public observability read-only, and document architecture, semantics, invariants, and representative demonstrations. Process-crash and broker-outage exercises remain excluded.
+
+Detail the first milestone into a spec and small tracer-bullet tickets, then refine later milestones using what the working system teaches us. Each implementation ticket carries its tests; the combined reliability milestone is not one oversized implementation ticket.
 
 ## 9. Public deployment and explicit exclusions
 
