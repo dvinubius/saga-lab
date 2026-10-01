@@ -6,7 +6,7 @@ Do not treat documentation as normative, unless it's `docs/adr/` or `GLOSSARY.md
 
 Read `docs/prep` when refining the project plan or milestone specs; those documents describe intended behavior and are normative.
 
-Ignore `.devnotes` and `docs/personal`
+Ignore `.devnotes` and `docs/learning`
 
 ## Implementation 
 
