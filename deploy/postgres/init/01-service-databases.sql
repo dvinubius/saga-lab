@@ -1,0 +1,11 @@
+CREATE ROLE transfer_service LOGIN PASSWORD 'transfer_service';
+CREATE DATABASE transfer_service OWNER transfer_service;
+REVOKE ALL ON DATABASE transfer_service FROM PUBLIC;
+
+CREATE ROLE bank_a LOGIN PASSWORD 'bank_a';
+CREATE DATABASE bank_a OWNER bank_a;
+REVOKE ALL ON DATABASE bank_a FROM PUBLIC;
+
+CREATE ROLE bank_b LOGIN PASSWORD 'bank_b';
+CREATE DATABASE bank_b OWNER bank_b;
+REVOKE ALL ON DATABASE bank_b FROM PUBLIC;

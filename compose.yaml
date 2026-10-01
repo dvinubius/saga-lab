@@ -1,0 +1,76 @@
+x-app-healthcheck: &app-healthcheck
+  test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
+  interval: 2s
+  timeout: 2s
+  retries: 30
+
+services:
+  postgres:
+    image: postgres:17.10-alpine3.24@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  bank-a:
+    build:
+      context: .
+      args:
+        SERVICE: bank-a
+    environment:
+      DATABASE_URL: postgres://bank_a:bank_a@postgres:5432/bank_a?sslmode=disable
+    ports:
+      - "127.0.0.1:${BANK_A_PORT:-8081}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+    restart: unless-stopped
+
+  bank-b:
+    build:
+      context: .
+      args:
+        SERVICE: bank-b
+    environment:
+      DATABASE_URL: postgres://bank_b:bank_b@postgres:5432/bank_b?sslmode=disable
+    ports:
+      - "127.0.0.1:${BANK_B_PORT:-8082}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+    restart: unless-stopped
+
+  transfer-service:
+    build:
+      context: .
+      args:
+        SERVICE: transfer-service
+    environment:
+      DATABASE_URL: postgres://transfer_service:transfer_service@postgres:5432/transfer_service?sslmode=disable
+      BANK_A_URL: http://bank-a:8080
+      BANK_B_URL: http://bank-b:8080
+    ports:
+      - "127.0.0.1:${TRANSFER_SERVICE_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      bank-a:
+        condition: service_healthy
+      bank-b:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
