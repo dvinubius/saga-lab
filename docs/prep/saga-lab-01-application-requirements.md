@@ -17,7 +17,7 @@ The public experience should be small, visually clear, pleasant to watch, and un
 
 ## 2. Visitor setup and normal interaction
 
-On first visit, the application provides a lightweight visitor identity and automatically generated names for the two fictional banks. The visitor has **one account in each bank**.
+On first visit, the application provides a lightweight visitor identity and automatically generated names for the two fictional banks. The visitor has **one account in each bank**. Their cookie-based identity associates them with their own two virtual banks and accounts; other visitors have separate balances and generated bank names.
 
 The visitor can:
 
@@ -91,7 +91,11 @@ Bank A commits the debit. Bank B permanently rejects the credit. The coordinator
 
 ### Scenario 4 — Temporary Bank B consumer unavailability
 
-Bank B does not consume for approximately **five seconds** while a credit command waits in the message broker. Consumption resumes and the transfer completes.
+Delivery to the dedicated scenario-4 Bank B consumer is genuinely interrupted: the credit command waits in the message broker with no consumer for approximately **five seconds**. Consumption resumes and the transfer completes. Bank B continues serving other scenarios. This demonstrates consumer unavailability for this transfer, not termination of the whole Bank B process.
+
+Only one scenario-4 execution runs at a time across visitors. Additional requests wait for admission **before any debit or Saga execution begins**. An uncontended request starts without a special waiting message. A queued visitor sees a brief explanation such as: “Another visitor is trying this demo. Yours will start automatically when it’s your turn.” Do not promise a fixed short wait when several requests are ahead.
+
+The admission wait and the subsequent five-second message wait are separate: the first is waiting for a shared demonstration slot; the second is the actual Saga scenario. Neither changes another visitor’s balances or interrupts their other scenarios.
 
 **Takeaway:** a message **waiting to be delivered** is different from one already delivered but awaiting acknowledgement. During the pause there need not be any failed delivery attempts; the message can simply remain queued.
 
@@ -105,7 +109,7 @@ As in scenario 3, Bank B permanently rejects the credit and the coordinator requ
 
 The primary interface should offer an understandable execution narrative, not a replica of Grafana or a raw log viewer.
 
-The actual workflow runs first, at its natural speed. A brief progress indication may be shown while it runs. **After execution,** the visitor explores the recorded history through:
+The actual workflow runs first, at its natural speed. Show progress while it runs. Business completion and **visualisation readiness** are distinct: playback starts only after the business outcome and the evidence required for the selected scenario have been recorded in the application history. For example, a completed transfer may still be waiting for its duplicate-suppression observation to reach that history. Show “Transfer complete — preparing the replay” while collecting that evidence; missing evidence must not turn a successful transfer into a business failure. **Once ready,** the visitor explores the recorded history through:
 
 - Automatic playback at a comfortable viewing speed.
 - Step-by-step navigation, including backward/forward steps, pause, and replay.
@@ -115,7 +119,7 @@ The actual workflow runs first, at its natural speed. A brief progress indicatio
 
 Playback must never re-run the transfer. A fast underlying execution must not be presented as if messages literally spend hundreds of milliseconds crossing the network.
 
-The application should show, where observed, meaningful distinctions between: an outgoing command being recorded, publication attempted, acceptance confirmed by the broker, delivery to a consumer, a committed business effect, and the consumer's acknowledgement or negative acknowledgement. These stages may be simplified in the main view and expanded in detail. **Broker acceptance is not a separately measured instant of queue insertion.** A publisher confirmation and a consumer acknowledgement are different events.
+The application should show, where observed, meaningful distinctions between: an outgoing command being recorded, publication attempted, acceptance confirmed by the broker, delivery to a consumer, a committed business effect, and observed acknowledgement/Nack actions. An application request to acknowledge or Nack must not be presented as proof that the broker received it. These stages may be simplified in the main view and expanded in detail. **Broker acceptance is not a separately measured instant of queue insertion.** A publisher confirmation and a consumer acknowledgement are different events.
 
 A timeline must reflect actual observations and causal relationships, not invent missing events or force asynchronous observations into a misleading order. Redelivery should visibly be another attempt for **the same logical message**, not a new debit/refund command.
 
