@@ -17,7 +17,7 @@ The public experience should be small, visually clear, pleasant to watch, and un
 
 ## 2. Visitor setup and normal interaction
 
-On first visit, the application provides a lightweight visitor identity and automatically generated names for the two fictional banks. The visitor has **one account in each bank**. Their cookie-based identity associates them with their own two virtual banks and accounts; other visitors have separate balances and generated bank names.
+On first visit, the application provides a lightweight visitor identity and automatically generated names for the two fictional banks. The visitor has **one account in each bank**. There are two shared banks, Bank A and Bank B. Each visitor owns a separate account at each bank. Visitor-specific bank display names are presentation data; they do not identify separate banks.
 
 The visitor can:
 
@@ -32,6 +32,8 @@ No real money, payment providers, banking APIs, or elaborate account-management 
 
 ## 3. Transfer behavior
 
+Transfer amounts are positive whole numbers of fictional credits. Malformed, fractional, zero, and negative amounts are rejected before starting a Saga.
+
 One coordinator manages the business workflow. The two banks own their respective account balances and commit changes independently; there is no cross-bank atomic transaction.
 
 A successful transfer follows this logical sequence:
@@ -44,6 +46,8 @@ A successful transfer follows this logical sequence:
 6. The coordinator marks the transfer complete.
 
 The application must represent intermediate states, including a requested transfer, pending debit, successful debit, pending credit, pending refund, completion, and failure/refund, without developing an unnecessarily elaborate state machine.
+
+If Bank A rejects a debit because funds are insufficient, neither balance changes. The coordinator records the rejection and ends the transfer without issuing a credit or refund command. This ordinary business outcome is not an additional predefined scenario.
 
 If Bank B **permanently rejects** the credit after Bank A has already debited the source, the coordinator requests a **refund at Bank A**. This is a new business operation, not a rollback of Bank A's committed debit. Once the refund succeeds, the transfer ends in a coherent failed/refunded state.
 

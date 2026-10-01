@@ -1,6 +1,8 @@
 # Saga Lab — Technical Plan
 
-**Scope of this document:** the suggested architecture, implementation mechanisms, milestones, tests, and deployment. The externally observable behavior is specified in [Application Requirements](saga-lab-01-application-requirements.md); telemetry design is specified in [Observability](saga-lab-03-observability.md).
+**Scope of this document:** the suggested architecture, implementation mechanisms, tests, and deployment. The delivery sequence is maintained in [Milestones](saga-lab-04-milestones.md). The externally observable behavior is specified in [Application Requirements](saga-lab-01-application-requirements.md); telemetry design is specified in [Observability](saga-lab-03-observability.md).
+
+This document describes the V1 target architecture. Milestone 1 is a happy-path learning increment: it does not yet implement the inbox/outbox and duplicate-safety guarantees introduced in milestone 2.
 
 ## 1. Stack and deployment shape
 
@@ -19,7 +21,7 @@ No Kubernetes or Redis. Services must never access or modify another service's d
 
 **Transfer Service** owns the orchestrated Saga: accepts a request, stores a transfer, issues commands, reacts to bank events, tracks state, initiates compensation, and serves the transfer timeline and UI-facing history. Keep the state machine explicit but small; useful states include `requested`, `debit_pending`, `debit_succeeded`, `credit_pending`, `completed`, `refund_pending`, `refunded`, and `failed`.
 
-**Bank A** owns its account, balance, local transaction history, and debit/refund operations. **Bank B** owns its account, balance, local transaction history, and credit operation. Each also owns its incoming-message deduplication and outgoing-message records.
+**Bank A** owns its account, balance, local transaction history, and debit/refund operations. **Bank B** owns its account, balance, local transaction history, and credit operation. Each also owns its incoming-message deduplication and outgoing-message records. Here Bank A and Bank B name the services; each service owns its bank’s accounts for all visitors.
 
 Keep the command/event vocabulary small:
 
@@ -30,11 +32,11 @@ Happy path: record transfer and `DebitFunds` → Bank A commits debit and record
 
 Compensation path: `CreditRejected` after a successful debit → Transfer Service records `RefundFunds` → Bank A commits refund and records `FundsRefunded` → Transfer Service records failed/refunded outcome.
 
-Do not turn this one implementation into a generic Saga engine. Preserve logical separation so another business scenario could be added later without requiring V1 to implement it.
+Do not turn this one implementation into a generic Saga engine. Preserve logical separation so another business scenario could be added later without requiring V1 to implement it. A debit rejection ends the transfer without credit or refund; a credit rejection after debit remains pending compensation until the refund is confirmed. State names above are candidates, not a finalized state machine.
 
 ## 3. Application identity and message identity
 
-Use a lightweight **cookie-based visitor identity**. On a new visitor session, generate display names for the two banks; provide one account in each. Bank A supports fictional top-ups; transfers go from A to B. One Bank A process owns all visitors’ virtual Bank A banks/accounts in its database; one Bank B process does the equivalent for Bank B. Scope accounts and access by the authenticated cookie-associated visitor identity, without carrying raw cookies into messages or telemetry. Generated bank names do not imply additional processes or databases. The precise table model remains to be settled.
+Use a lightweight **cookie-based visitor identity**. On a new visitor session, generate display names for the two banks; provide one account in each. Bank A supports fictional top-ups; transfers go from A to B. There are two shared banks. One Bank A process owns all Bank A accounts in its database; one Bank B process owns all Bank B accounts. Each visitor owns one account at each bank. Scope accounts and access by the server-resolved cookie-associated visitor identity, without carrying raw cookies into messages or telemetry. Visitor-specific bank names are presentation data, not separate bank entities. No per-visitor bank records or tenant hierarchy are required. The precise account table model remains to be settled.
 
 Carry the following identifiers where applicable:
 
@@ -56,6 +58,8 @@ For a bank command, execute one local PostgreSQL transaction that:
 2. Applies the debit, credit, or refund exactly once, if the message is new and valid.
 3. Records the corresponding outgoing event in a **transactional outbox**.
 
+The coordinator must preserve the logical command identity when repeating an operation for the same transfer; generating a fresh message ID for a retry would bypass message-ID deduplication.
+
 A duplicate must not alter the balance or create a second logical outgoing event. Its *delivery attempt* is still observed, and it can be acknowledged safely. The Transfer Service uses equivalent idempotent handling for bank events and its own state transitions/outgoing commands.
 
 The outbox eliminates the application's dual-write gap: state change and outgoing-message record commit together. A separate publisher forwards committed outbox records to RabbitMQ. Consider Watermill's **SQL Pub/Sub** and **Forwarder** for this; begin with Watermill's simple **Router, Publisher, and Subscriber** APIs. Adopt middleware or the CQRS package only when they simplify the application, not to maximize framework usage.
@@ -64,7 +68,7 @@ Publication and consumer acknowledgement remain distinct. Outbox forwarding may 
 
 ## 5. Deterministic fault injection
 
-The public UI offers **five predefined scenarios only**, selected before starting a transfer. Persist the scenario configuration against the `transfer_id` so the relevant service can act at a particular workflow step. Record when a fault is injected. Keep scenario selection and routing explicit. No generic fault-scripting facility or general operational-control framework is required. Scenario 4 needs a small, explicit coordination handshake for its dedicated consumer lifecycle.
+The public UI offers **five predefined scenarios only**, selected before starting a transfer. Persist the scenario configuration against the `transfer_id` and carry the required immutable scenario selection in the relevant messages so each service can act at the intended step without reading the Transfer Service database. Record when a fault is injected. Keep scenario selection and routing explicit. No generic fault-scripting facility or general operational-control framework is required. Scenario 4 needs a small, explicit coordination handshake for its dedicated consumer lifecycle.
 
 - **Happy path:** no fault.
 - **Debit redelivery:** Bank A first commits the inbox/debit/outbox transaction. On that *first* handling attempt, inject a post-commit handler error so Watermill **Nacks and requeues** the delivery. On redelivery the durable inbox suppresses the second debit, and the duplicate is acknowledged. Ensure retry middleware does not swallow the intended handler error before it reaches the acknowledgement path.
@@ -103,7 +107,7 @@ Consumer lifecycle reference: [RabbitMQ consumers and cancellation](https://www.
 
 Persist **explicit application events** for the domain and selected operational milestones. Do not reconstruct the primary timeline from Grafana logs or attempt to use Prometheus as a transfer-history database.
 
-For a message, capture the evidence available for: outbox record committed, publication attempted, broker acceptance confirmed, consumer delivery, local business commit, and consumer acknowledgement/Nack. Publication attempt, publisher confirmation, and consumer acknowledgement are different facts. **A publisher confirmation is not an independent timestamp for exact queue insertion.** Record business milestones only when the underlying transaction has actually committed.
+For a message, capture the evidence available for: outbox record committed, publication attempted, broker acceptance confirmed, consumer delivery, local business commit, and consumer acknowledgement/Nack. Publication attempt, publisher confirmation, and consumer acknowledgement are different facts. **A publisher confirmation is not an independent timestamp for exact queue insertion.** Publish committed-business evidence only after the underlying transaction has committed. An event may be recorded atomically inside that transaction, but it must not describe uncommitted work as a completed business effect. Do not label an event-creation timestamp as an exact commit timestamp.
 
 Each timeline record should carry a stable observation/event ID, the transfer ID, event type, actual timestamp, responsible service, relevant message/causation identity, delivery-attempt identity, outcome, and available trace correlation. Preserve observed timestamps and causality even when broker acceptance is observed after a consumer has already started processing.
 
@@ -161,20 +165,10 @@ Add tests with each milestone. Exercise the **application's** correctness rather
 
 ## 8. Milestones
 
-Each milestone ends in demonstrable behavior with its own tests and recorded evidence. Basic logs, tracing, and durable history grow with the behavior; final verification is not postponed until release.
-
-1. **One observable transfer end to end:** connect Go, RabbitMQ, Watermill, the coordinator, and independently owned bank databases. Start a happy-path transfer through a minimal page; show balances, basic persisted history, and correlated HTTP/database/message spans. An integration test proves the happy path. Reliability guarantees are explicitly incomplete at this stage.
-2. **Reliable transfer processing: atomicity, inbox/outbox, and redelivery:** retain reliability as one combined milestone, implemented through small tickets. Explore acknowledgements/redelivery, demonstrate unsafe behavior in a bounded experiment or failing test, then add durable inboxes, local atomicity, transactional outboxes, and post-commit Nack injection. Prove duplicate debit suppression and eventual completion, duplicate credit safety, and idempotent coordinator progression. Persist attempt evidence and establish debit-scenario playback readiness.
-3. **Compensation, including duplicate-safe refunds:** implement permanent credit rejection, refund, and refund redelivery. Demonstrate both compensation scenarios with correct balances, tests, and sufficient history for playback.
-4. **Isolated consumer unavailability and recovery:** implement the dedicated Bank B queue, serialized admission, consumer cancellation/resumption, and friendly contention UI. Demonstrate approximately five seconds of real broker waiting while normal traffic continues. Test sequential visitors, routing, cleanup, and evidence readiness.
-5. **Complete visitor experience:** complete cookie-associated visitor setup and virtual accounts, top-ups, all five scenario choices, outcome counts, and automatic/pause/step/replay controls. Clearly distinguish admission waiting, Saga execution, and preparation of the replay. Playback never repeats business operations.
-6. **Complete engineering investigation:** finish structured logs, reliability metrics, broker views, provisioned Grafana dashboards, and transfer-specific trace/log links. Verify that evidence supports every scenario's explanation.
-7. **Public release:** deploy application and observability, run full scenario acceptance checks and polish, bound public resource use and retention, keep public observability read-only, and document architecture, semantics, invariants, and representative demonstrations. Process-crash and broker-outage exercises remain excluded.
-
-Detail the first milestone into a spec and small tracer-bullet tickets, then refine later milestones using what the working system teaches us. Each implementation ticket carries its tests; the combined reliability milestone is not one oversized implementation ticket.
+The delivery sequence is maintained in [Milestones](saga-lab-04-milestones.md). Tests and evidence accompany each milestone; the full V1 guarantees apply when their supporting milestones are complete.
 
 ## 9. Public deployment and explicit exclusions
 
 Use Docker Compose for the Go services, three PostgreSQL databases on a shared instance if convenient, RabbitMQ, the minimal app UI, and the observability stack. Make the demo publicly accessible without exposing write-enabled observability tooling; keep Grafana effectively read-only. Use fictional/generated identities and exclude secrets, tokens, cookies, raw client IPs, database connection strings, and arbitrary personal input from telemetry. Maintain dashboard and collector configuration in source control.
 
-Keep the infrastructure modest and protected against obvious public abuse. No real banking features, many banks, generic Saga/workflow framework, custom broker, consensus implementation, custom tracing/log/dashboard backend, production-grade multi-tenant observability isolation, large frontend framework, or general chaos-engineering platform. There is no V1 need for Kubernetes, Redis, or a network fault proxy to manufacture animation latency.
+Keep the infrastructure modest and protected against obvious public abuse. No real banking features, additional bank-service deployments per visitor, generic Saga/workflow framework, custom broker, consensus implementation, custom tracing/log/dashboard backend, production-grade multi-tenant observability isolation, large frontend framework, or general chaos-engineering platform. There is no V1 need for Kubernetes, Redis, or a network fault proxy to manufacture animation latency.

@@ -1,6 +1,6 @@
 # Saga Lab — Observability Requirements and Technical Plan
 
-**Scope of this document:** why the system needs observability, what the visitor and an engineer should be able to investigate, and how to instrument and present that evidence. Business behavior is specified in [Application Requirements](saga-lab-01-application-requirements.md); service architecture and implementation milestones are in [Technical Plan](saga-lab-02-technical-plan.md).
+**Scope of this document:** why the system needs observability, what the visitor and an engineer should be able to investigate, and how to instrument and present that evidence. Business behavior is specified in [Application Requirements](saga-lab-01-application-requirements.md); service architecture is in [Technical Plan](saga-lab-02-technical-plan.md), and the delivery sequence is in [Milestones](saga-lab-04-milestones.md).
 
 ## 1. Purpose: evidence for an orchestrated Saga
 
@@ -43,7 +43,7 @@ Use the following stack:
 - **Tempo** for distributed traces.
 - **Grafana** for dashboards, exploration, and deep links.
 
-Instrument the Go services (Transfer Service, Bank A, and Bank B) and use RabbitMQ's broker metrics to distinguish messaging states. The existing Docker Compose deployment is sufficient; no custom telemetry storage, tracing backend, log search engine, or dashboard framework is needed.
+Instrument the Go services (Transfer Service, Bank A, and Bank B) and use RabbitMQ's broker metrics to distinguish messaging states. The planned Docker Compose deployment is sufficient; no custom telemetry storage, tracing backend, log search engine, or dashboard framework is needed.
 
 Conceptual flow:
 
@@ -59,7 +59,7 @@ Structured service logs --------------------> Loki
 Prometheus + Loki + Tempo ------------------> Grafana
 ```
 
-This is the **preferred stack**, not a requirement to use every available OpenTelemetry or Watermill abstraction. The earlier proposal notes Elastic Observability as a possible future alternative if rich-event search becomes the main learning goal; it is not the V1 plan.
+This is the **preferred stack**, not a requirement to use every available OpenTelemetry or Watermill abstraction. Alternative observability stacks are outside the V1 plan.
 
 ## 4. Distributed tracing and message identity
 
