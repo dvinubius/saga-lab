@@ -95,6 +95,7 @@
 {{if .Transfer.Status.Pending}}<meta http-equiv="refresh" content="1">{{end}}
 {{template "top"}}
 {{template "balances" .Balances}}
+<a class="btn btn-secondary back" href="/">← Back</a>
 
 {{with .Transfer}}
 <section class="section">
@@ -144,5 +145,4 @@
 </section>
 {{end}}
 
-<a class="quiet-link" href="/">New transfer →</a>
 {{template "foot"}}{{end}}

@@ -79,11 +79,10 @@ invent them.
 **Accent dosage** is binding: at most ~2% of any composition, never on running
 text, never the sole carrier of a UI state. Several accent elements may share
 a view as long as none competes for the eye. Here the accent is spent on the
-**Transfer** button, the rule under a quiet link (**New transfer →**,
-**Follow pending transfer →**, the links in a transfer's In depth section,
-**→ dinubarbu.com**) and the brackets of the
-footer wordmark. A state that
-uses it always carries a text label too.
+**Transfer** button, the rule under a quiet link (**Follow pending transfer →**,
+the links in a transfer's In depth section, **→ dinubarbu.com**) and the
+brackets of the footer wordmark. A state that uses it always carries a text
+label too.
 
 **Type.** Space Grotesk (headings, body, the wordmarks; 400/500/700) and Azeret
 Mono (everything technical: IDs, amounts in lists, service names, timestamps,
@@ -99,8 +98,7 @@ neutral fills. Cards are a neutral fill (`--surface-card`) with no border and
 no shadow — the two balance cards, and a transfer's In depth section, which
 holds the links that leave the page for raw evidence (**View as JSON →**,
 **Explore the trace in Grafana →**). A section on a card keeps its own label
-and gap and takes the card's 16px × 18px padding. Links that sit together share
-one row (`.links`), 28px apart.
+and gap and takes the card's 16px × 18px padding.
 
 **Code and terminal surfaces** follow the theme — hooklook's departure from
 the brand, which keeps them dark in both. On dark pages code sits on Panel
@@ -136,9 +134,11 @@ except when it answers a refused submission, whose explanation stays put.
 text on dark (Paper on Ember Light is too faint). Its hover is
 `--accent-on-hover`: Ember Hover `#8A420C` on light, Ember Light Hover
 `#E49F64` on dark. *Departure from hooklook,* which predates the upstream dark
-hover and goes to Paper instead. Secondary: 1px hairline outline that goes to
-body text on hover. Quiet link: body text over a 1px accent bottom border;
-inline it takes a trailing `→` (**New transfer →**), in the footer a leading
+hover and goes to Paper instead. Secondary: body text in a 1px hairline
+outline that goes to body text on hover — **← Back** on the transfer page,
+directly under the balances, whose arrow points the way it goes. Quiet link:
+body text over a 1px accent bottom border; inline it takes a trailing `→`
+(**Follow pending transfer →**), in the footer a leading
 one (**→ dinubarbu.com**), as in hooklook. Never underline a button. A
 disabled control keeps its shape and drops to `--disabled-opacity` with
 `cursor: not-allowed`.
@@ -149,7 +149,7 @@ in body text. A text field shows focus by turning its border and a 1px inset
 outline to the muted grey.
 
 **Glyphs.** The brand has no icon system and no emoji: Unicode does icon duty —
-`↳` `·` `→` `×` `✓` `//` `[ ]`, all of which ship in the vendored font
+`↳` `·` `→` `←` `×` `✓` `//` `[ ]`, all of which ship in the vendored font
 subsets. `×` and `✓` are a valence pair, used together, never as a lone
 decorative tick. The only drawn icons are the theme switch's sun and moon and
 the GitHub mark in the footer, drawn inline in the template in
