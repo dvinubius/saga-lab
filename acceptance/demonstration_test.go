@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -98,23 +99,31 @@ func (d *demonstration) post(t *testing.T, path, contentType, body string) respo
 
 func (d *demonstration) request(t *testing.T, method, path, contentType, body string) response {
 	t.Helper()
+	r, err := d.do(method, path, contentType, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func (d *demonstration) do(method, path, contentType, body string) (response, error) {
 	request, err := http.NewRequest(method, d.baseURL+path, strings.NewReader(body))
 	if err != nil {
-		t.Fatalf("%s %s: %v", method, path, err)
+		return response{}, fmt.Errorf("%s %s: %w", method, path, err)
 	}
 	if contentType != "" {
 		request.Header.Set("Content-Type", contentType)
 	}
 	r, err := d.client.Do(request)
 	if err != nil {
-		t.Fatalf("%s %s: %v", method, path, err)
+		return response{}, fmt.Errorf("%s %s: %w", method, path, err)
 	}
 	defer r.Body.Close()
 	var buffer bytes.Buffer
 	if _, err := io.Copy(&buffer, r.Body); err != nil {
-		t.Fatalf("read %s %s: %v", method, path, err)
+		return response{}, fmt.Errorf("read %s %s: %w", method, path, err)
 	}
-	return response{status: r.StatusCode, location: r.Header.Get("Location"), body: buffer.Bytes()}
+	return response{status: r.StatusCode, location: r.Header.Get("Location"), body: buffer.Bytes()}, nil
 }
 
 func randomHex(t *testing.T) string {

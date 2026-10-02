@@ -21,6 +21,10 @@ The indivisible fictional unit of value used in the demonstration; amounts are w
 **Transfer**:
 An attempt to move a chosen amount of credits from a visitor’s Bank A account to that visitor’s Bank B account, coordinated through independent local operations.
 
+**Pending-transfer restriction**:
+A visitor has at most one transfer pending at a time; a submission made while one is pending starts nothing and names the pending transfer. It is not request deduplication: a repeated submission after the pending transfer has ended starts a new transfer.
+_Avoid_: Idempotency, deduplication
+
 **Debit**:
 A reduction of the source account’s balance for a transfer.
 

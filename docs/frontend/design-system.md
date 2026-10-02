@@ -46,8 +46,9 @@ back/forward cache. Going back from a transfer to the home page shows the
 current balances and Transfers list; the amount field is not restored.
 
 Fonts are served with a year-long immutable cache; CSS and JS are not cached.
-A pending transfer page reloads itself once a second, and fonts fetched again
-on every reload would flash. Changing a font file therefore means renaming it.
+A pending transfer page, and the home page while a transfer is pending, reload
+themselves once a second, and fonts fetched again on every reload would flash.
+Changing a font file therefore means renaming it.
 
 ## The binding rules
 
@@ -68,7 +69,7 @@ light-theme / dark-theme pair, like the accent:
 | Ember | `#A8500F` | `#DE8A42` | brand, the primary action, quiet-link rules |
 | Teal | `#087581` | `#5BC8D0` | primary data and syntax color — nothing spends it yet |
 | Violet | `#6B5D91` | `#AFA3CF` | secondary data and syntax color — nothing spends it yet |
-| Brick | `#A03028` | `#E0756A` | `--danger`: the rejected-amount message under the transfer form |
+| Brick | `#A03028` | `#E0756A` | `--danger`: the message under the transfer form for a rejected amount or an overlapping submission |
 
 Stone, Ink and Paper carry the overwhelming majority of the interface. Teal
 and Violet are for syntax on code surfaces and for data marks (a chart, a
@@ -79,7 +80,8 @@ invent them.
 text, never the sole carrier of a UI state. Several accent elements may share
 a view as long as none competes for the eye. Here the accent is spent on the
 **Transfer** button, the rule under a quiet link (**New transfer →**,
-**→ dinubarbu.com**) and the brackets of the footer wordmark. A state that
+**Follow pending transfer →**, **→ dinubarbu.com**) and the brackets of the
+footer wordmark. A state that
 uses it always carries a text label too.
 
 **Type.** Space Grotesk (headings, body, the wordmarks; 400/500/700) and Azeret
@@ -120,6 +122,10 @@ background, border — ease over 150ms (`--transition-state` from the brand,
 spent through `--hover-transition`). List rows change instantly. A pending
 transfer says what it is waiting for in words ("Waiting for Bank A to
 debit"), and the page reloads itself until it is done; there is no spinner.
+While a transfer is pending the home page disables the transfer form, says why
+in a `.note`, links the pending transfer with a quiet link on its own line
+(**Follow pending transfer →**), and reloads itself the same way —
+except when it answers a refused submission, whose explanation stays put.
 
 **Buttons and links.** Primary: solid accent fill — Paper text on light, Ink
 text on dark (Paper on Ember Light is too faint). Its hover is
@@ -277,8 +283,10 @@ the GitHub mark in the footer, drawn inline in the template in
 13. **Forms are one row.** The control label (`.fact`), the field and the
     primary button sit on one line at `--row-height` (36px). A field is mono
     at `--text-mono-meta` on the page surface with a hairline border. A
-    rejected value is explained under the row in Brick, sans at
-    `--text-small` — the text says what is wrong; the color only marks it.
+    rejected value, or a submission refused because another transfer is
+    pending, is explained under the row in Brick, sans at `--text-small` —
+    the text says what is wrong; the color only marks it. A disabled field,
+    like a disabled button, drops to `--disabled-opacity`.
 
 14. **Statuses are words, not colors.** The brand has one accent and no status
     palette. A transfer's status and its history steps take no hue:

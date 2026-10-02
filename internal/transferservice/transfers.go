@@ -94,30 +94,72 @@ type historyEntry struct {
 
 var errTransferNotFound = errors.New("transfer not found")
 
+type pendingTransferError struct {
+	PendingID string
+}
+
+func (e pendingTransferError) Error() string {
+	return "transfer " + e.PendingID + " is still pending"
+}
+
 func (s *Service) submit(ctx context.Context, amount int64) (transfer, error) {
 	t := transfer{ID: watermill.NewUUID(), Amount: amount, Status: debitPending, RequestedAt: time.Now()}
 	debit, err := messaging.New(messaging.DebitFunds{TransferID: t.ID, VisitorID: visitor.PreparedID, Amount: amount}, "")
 	if err != nil {
 		return transfer{}, err
 	}
-	err = pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO transfers (transfer_id, visitor_id, amount, status, requested_at) VALUES ($1, $2, $3, $4, $5)`,
-			t.ID, visitor.PreparedID, t.Amount, t.Status, t.RequestedAt,
-		); err != nil {
-			return err
+	for {
+		admitted, err := s.admit(ctx, t, debit.UUID)
+		if err != nil {
+			return transfer{}, fmt.Errorf("record transfer: %w", err)
 		}
-		return record(ctx, tx, t.ID, historyEntry{
-			Step: requested, Service: transferServiceName, ObservedAt: t.RequestedAt, IssuedMessageID: debit.UUID,
-		})
-	})
-	if err != nil {
-		return transfer{}, fmt.Errorf("record transfer: %w", err)
+		if admitted {
+			break
+		}
+		// The conflicting transfer may have ended before this lookup; then admission is tried again.
+		pending, err := s.pendingTransferID(ctx)
+		if err != nil {
+			return transfer{}, fmt.Errorf("find pending transfer: %w", err)
+		}
+		if pending != "" {
+			return transfer{}, pendingTransferError{PendingID: pending}
+		}
 	}
 	if err := s.broker.Publisher.Publish(messaging.DebitFundsTopic, debit); err != nil {
 		return transfer{}, fmt.Errorf("send DebitFunds for transfer %s: %w", t.ID, err)
 	}
 	return s.find(ctx, t.ID)
+}
+
+func (s *Service) admit(ctx context.Context, t transfer, debitID string) (bool, error) {
+	admitted := false
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		inserted, err := tx.Exec(ctx,
+			`INSERT INTO transfers (transfer_id, visitor_id, amount, status, requested_at) VALUES ($1, $2, $3, $4, $5)
+			 ON CONFLICT (visitor_id) WHERE status IN ('debit_pending', 'credit_pending') DO NOTHING`,
+			t.ID, visitor.PreparedID, t.Amount, t.Status, t.RequestedAt,
+		)
+		if err != nil || inserted.RowsAffected() == 0 {
+			return err
+		}
+		admitted = true
+		return record(ctx, tx, t.ID, historyEntry{
+			Step: requested, Service: transferServiceName, ObservedAt: t.RequestedAt, IssuedMessageID: debitID,
+		})
+	})
+	return admitted, err
+}
+
+func (s *Service) pendingTransferID(ctx context.Context) (string, error) {
+	var id string
+	err := s.db.QueryRow(ctx,
+		`SELECT transfer_id FROM transfers WHERE visitor_id = $1 AND status IN ($2, $3)`,
+		visitor.PreparedID, debitPending, creditPending,
+	).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
 }
 
 func (s *Service) fundsDebited(msg *message.Message) ([]*message.Message, error) {

@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/dvinubius/saga-lab/internal/messaging"
@@ -181,6 +182,13 @@ func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := s.submit(r.Context(), amount)
+	if pending, ok := errors.AsType[pendingTransferError](err); ok {
+		web.WriteJSON(w, http.StatusConflict, map[string]string{
+			"error":               "another transfer is still pending; submit again once it has finished",
+			"pending_transfer_id": pending.PendingID,
+		})
+		return
+	}
 	if err != nil {
 		slog.Error("submit transfer", "error", err)
 		web.WriteError(w, http.StatusInternalServerError, "transfer could not be started")
@@ -207,8 +215,10 @@ func (s *Service) getTransfer(w http.ResponseWriter, r *http.Request) {
 type homePage struct {
 	Balances  balances
 	Transfers []transfer
+	PendingID string
 	Amount    string
 	Error     string
+	Overlap   bool
 }
 
 type transferPage struct {
@@ -232,6 +242,9 @@ func (s *Service) renderHome(w http.ResponseWriter, r *http.Request, status int,
 		http.Error(w, "Transfers are temporarily unavailable.", http.StatusInternalServerError)
 		return
 	}
+	if i := slices.IndexFunc(page.Transfers, func(t transfer) bool { return t.Status.Pending() }); i >= 0 && page.PendingID == "" {
+		page.PendingID = page.Transfers[i].ID
+	}
 	render(w, status, "home", page)
 }
 
@@ -243,6 +256,10 @@ func (s *Service) postTransferForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := s.submit(r.Context(), amount)
+	if pending, ok := errors.AsType[pendingTransferError](err); ok {
+		s.renderHome(w, r, http.StatusConflict, homePage{PendingID: pending.PendingID, Amount: text, Overlap: true})
+		return
+	}
 	if err != nil {
 		slog.Error("submit transfer", "error", err)
 		http.Error(w, "The transfer could not be started.", http.StatusInternalServerError)

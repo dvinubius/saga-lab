@@ -2,7 +2,7 @@
 
 A local demonstration of orchestrated Sagas: a Transfer Service coordinates transfers of fictional credits between two independently owned banks.
 
-Milestone 1 is in progress. One prepared visitor holds an account at each bank, starting with 100 credits at Bank A and 0 at Bank B. The visitor transfers a whole number of credits from Bank A to Bank B and follows the transfer's status, balances, and recorded history on a minimal page. Insufficient-funds rejection, the one-pending-transfer restriction, the development reset, and tracing arrive in later increments.
+Milestone 1 is in progress. One prepared visitor holds an account at each bank, starting with 100 credits at Bank A and 0 at Bank B. The visitor transfers a whole number of credits from Bank A to Bank B and follows the transfer's status, balances, and recorded history on a minimal page. The development reset and tracing arrive in later increments.
 
 ## Requirements
 
@@ -29,8 +29,8 @@ The RabbitMQ management UI is at <http://localhost:15672> (user and password `sa
 
 HTTP interfaces:
 
-- Transfer Service pages: `GET /` shows balances, a transfer form, and earlier transfers; `POST /transfers` submits the form and redirects to `GET /transfers/{transferID}`, which shows the transfer and refreshes itself while it is pending.
-- Transfer Service JSON: `GET /api/balances`; `POST /api/transfers` with `{"amount": 25}` answers `202 Accepted` with the transfer and its `Location`; `GET /api/transfers` lists the prepared visitor's transfers; `GET /api/transfers/{transferID}` returns status and history.
+- Transfer Service pages: `GET /` shows balances, a transfer form, and earlier transfers; `POST /transfers` submits the form and redirects to `GET /transfers/{transferID}`, which shows the transfer and refreshes itself while it is pending. While a transfer is pending, `GET /` disables the form and links the pending transfer, and `POST /transfers` answers `409 Conflict` with the same page.
+- Transfer Service JSON: `GET /api/balances`; `POST /api/transfers` with `{"amount": 25}` answers `202 Accepted` with the transfer and its `Location`, or `409 Conflict` with `pending_transfer_id` while another transfer is pending; `GET /api/transfers` lists the prepared visitor's transfers; `GET /api/transfers/{transferID}` returns status and history.
 - Bank A and Bank B: `GET /accounts/{visitorID}`, for example `/accounts/prepared-visitor`.
 - Every service: `GET /readyz`.
 
@@ -56,7 +56,11 @@ Every message has its own message ID; each reply carries the ID of the message t
 
 A transfer whose bank is unavailable stays pending until the bank processes the queued message; nothing times out.
 
-This increment is a happy path only. It has no inbox or outbox, so a redelivered command can be applied twice, and a crash between a local commit and the following publish leaves a transfer pending for good. An insufficient-funds debit is logged by Bank A and leaves the transfer pending until debit rejection is implemented. A handler that fails rejects its message, which RabbitMQ redelivers at once, without backoff.
+Bank A rejects a debit it cannot afford with `DebitRejected`; the transfer ends `rejected` with a reason, both balances unchanged, and no credit.
+
+The prepared visitor has at most one pending transfer. Admission is atomic in the Transfer Service database, so concurrent submissions, from any tab or client, start one transfer; the others start nothing and name the pending one. Completion and rejection both release the restriction; a delay never does. This is not request deduplication: a submission repeated after the pending transfer has ended starts a new transfer. Durable request identity arrives in milestone 2. Earlier increments could leave transfers pending for good; the Transfer Service refuses to start on such data, and `docker compose down --volumes` clears it.
+
+This increment has no inbox or outbox, so a redelivered command can be applied twice, and a crash between a local commit and the following publish leaves a transfer pending for good, which also holds the visitor's next submission. A handler that fails rejects its message, which RabbitMQ redelivers at once, without backoff.
 
 ## Test
 
