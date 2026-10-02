@@ -55,10 +55,11 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 }
 
 type transfer struct {
-	TransferID string         `json:"transfer_id"`
-	Amount     int64          `json:"amount"`
-	Status     string         `json:"status"`
-	History    []historyEntry `json:"history"`
+	TransferID      string         `json:"transfer_id"`
+	Amount          int64          `json:"amount"`
+	Status          string         `json:"status"`
+	RejectionReason string         `json:"rejection_reason"`
+	History         []historyEntry `json:"history"`
 }
 
 type historyEntry struct {

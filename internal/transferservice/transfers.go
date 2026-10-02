@@ -26,10 +26,11 @@ const (
 	debitPending  status = "debit_pending"
 	creditPending status = "credit_pending"
 	completed     status = "completed"
+	rejected      status = "rejected"
 )
 
 func (s status) Pending() bool {
-	return s != completed
+	return s == debitPending || s == creditPending
 }
 
 func (s status) Label() string {
@@ -40,6 +41,8 @@ func (s status) Label() string {
 		return "Waiting for Bank B to credit"
 	case completed:
 		return "Completed"
+	case rejected:
+		return "Rejected by Bank A"
 	}
 	return string(s)
 }
@@ -49,6 +52,7 @@ type step string
 const (
 	requested       step = "requested"
 	debitCommitted  step = "debit_committed"
+	debitRejection  step = "debit_rejected"
 	creditCommitted step = "credit_committed"
 	finished        step = "finished"
 )
@@ -59,6 +63,8 @@ func (s step) Label() string {
 		return "Transfer requested"
 	case debitCommitted:
 		return "Bank A committed the debit"
+	case debitRejection:
+		return "Bank A rejected the debit"
 	case creditCommitted:
 		return "Bank B committed the credit"
 	case finished:
@@ -68,11 +74,12 @@ func (s step) Label() string {
 }
 
 type transfer struct {
-	ID          string         `json:"transfer_id"`
-	Amount      int64          `json:"amount"`
-	Status      status         `json:"status"`
-	RequestedAt time.Time      `json:"requested_at"`
-	History     []historyEntry `json:"history,omitempty"`
+	ID              string         `json:"transfer_id"`
+	Amount          int64          `json:"amount"`
+	Status          status         `json:"status"`
+	RejectionReason string         `json:"rejection_reason,omitempty"`
+	RequestedAt     time.Time      `json:"requested_at"`
+	History         []historyEntry `json:"history,omitempty"`
 }
 
 type historyEntry struct {
@@ -151,6 +158,37 @@ func (s *Service) fundsDebited(msg *message.Message) ([]*message.Message, error)
 	return []*message.Message{command}, nil
 }
 
+func (s *Service) debitRejected(msg *message.Message) error {
+	var event messaging.DebitRejected
+	if err := messaging.Decode(msg, &event); err != nil {
+		slog.Error("discard event", "error", err)
+		return nil
+	}
+	ctx := msg.Context()
+	advanced := false
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		updated, err := tx.Exec(ctx,
+			`UPDATE transfers SET status = $2, rejection_reason = $4 WHERE transfer_id = $1 AND status = $3`,
+			event.TransferID, rejected, debitPending, event.Reason,
+		)
+		if err != nil || updated.RowsAffected() == 0 {
+			return err
+		}
+		advanced = true
+		return record(ctx, tx, event.TransferID, historyEntry{
+			Step: debitRejection, Service: bankAName, ObservedAt: event.ObservedAt,
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("record debit rejection for transfer %s: %w", event.TransferID, err)
+	}
+	if !advanced {
+		slog.Warn("ignore DebitRejected for transfer not awaiting a debit", "transfer_id", event.TransferID, "message_id", msg.UUID)
+	}
+	return nil
+}
+
 func (s *Service) fundsCredited(msg *message.Message) error {
 	var event messaging.FundsCredited
 	if err := messaging.Decode(msg, &event); err != nil {
@@ -199,9 +237,9 @@ func record(ctx context.Context, tx pgx.Tx, transferID string, entry historyEntr
 func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	t := transfer{ID: id}
 	err := s.db.QueryRow(ctx,
-		`SELECT amount, status, requested_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
+		`SELECT amount, status, COALESCE(rejection_reason, ''), requested_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
 		id, visitor.PreparedID,
-	).Scan(&t.Amount, &t.Status, &t.RequestedAt)
+	).Scan(&t.Amount, &t.Status, &t.RejectionReason, &t.RequestedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return transfer{}, errTransferNotFound
 	}

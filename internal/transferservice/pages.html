@@ -103,6 +103,10 @@
       <dt>Status</dt>
       <dd><data id="transfer-status" value="{{.Status}}">{{.Status.Label}}</data></dd>
     </div>
+    {{with .RejectionReason}}<div>
+      <dt>Reason</dt>
+      <dd><data id="rejection-reason" value="{{.}}">{{.}}</data></dd>
+    </div>{{end}}
   </dl>
 </section>
 

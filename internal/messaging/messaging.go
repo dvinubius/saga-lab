@@ -16,6 +16,7 @@ import (
 const (
 	DebitFundsTopic    = "DebitFunds"
 	FundsDebitedTopic  = "FundsDebited"
+	DebitRejectedTopic = "DebitRejected"
 	CreditFundsTopic   = "CreditFunds"
 	FundsCreditedTopic = "FundsCredited"
 )
@@ -30,6 +31,12 @@ type DebitFunds struct {
 
 type FundsDebited struct {
 	TransferID string    `json:"transfer_id"`
+	ObservedAt time.Time `json:"observed_at"`
+}
+
+type DebitRejected struct {
+	TransferID string    `json:"transfer_id"`
+	Reason     string    `json:"reason"`
 	ObservedAt time.Time `json:"observed_at"`
 }
 

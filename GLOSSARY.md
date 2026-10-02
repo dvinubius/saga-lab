@@ -47,7 +47,7 @@ The wait for exclusive use of the scenario-4 demonstration slot, before the tran
 The recorded steps and processing observations associated with a transfer.
 
 **Step**:
-One business milestone in a transfer's execution history, reported by the service that observed it: requested, debit committed, credit committed, or finished.
+One business milestone in a transfer's execution history, reported by the service that observed it: requested, debit committed, debit rejected, credit committed, or finished.
 _Avoid_: Milestone, event
 
 **Issued message**:

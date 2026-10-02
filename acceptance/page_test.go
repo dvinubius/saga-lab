@@ -56,7 +56,7 @@ func (d *demonstration) awaitPage(t *testing.T, path, status string) []byte {
 		page := d.get(t, path)
 		current := pageData(page, "transfer-status")
 		polling := regexp.MustCompile(`<meta http-equiv="refresh"`).Match(page)
-		if pending := current != "completed"; polling != pending {
+		if pending := current == "debit_pending" || current == "credit_pending"; polling != pending {
 			t.Fatalf("status %q shown with polling = %t", current, polling)
 		}
 		if current == status {

@@ -85,6 +85,9 @@ func Open(ctx context.Context, db *pgxpool.Pool, broker *messaging.Broker, confi
 		messaging.FundsDebitedTopic, broker.Subscriber,
 		messaging.CreditFundsTopic, broker.Publisher,
 		s.fundsDebited)
+	broker.Router.AddConsumerHandler("debit-rejected",
+		messaging.DebitRejectedTopic, broker.Subscriber,
+		s.debitRejected)
 	broker.Router.AddConsumerHandler("funds-credited",
 		messaging.FundsCreditedTopic, broker.Subscriber,
 		s.fundsCredited)
