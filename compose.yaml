@@ -72,11 +72,9 @@ services:
       - tempo
 
   bank-a:
-    image: saga-lab-bank-a
-    build:
-      context: .
-      args:
-        SERVICE: bank-a
+    image: saga-lab-services
+    build: .
+    entrypoint: ["/usr/local/bin/bank-a"]
     environment:
       DATABASE_URL: postgres://bank_a:bank_a@postgres:5432/bank_a?sslmode=disable
       AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
@@ -92,11 +90,9 @@ services:
     restart: unless-stopped
 
   bank-b:
-    image: saga-lab-bank-b
-    build:
-      context: .
-      args:
-        SERVICE: bank-b
+    image: saga-lab-services
+    build: .
+    entrypoint: ["/usr/local/bin/bank-b"]
     environment:
       DATABASE_URL: postgres://bank_b:bank_b@postgres:5432/bank_b?sslmode=disable
       AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
@@ -112,11 +108,9 @@ services:
     restart: unless-stopped
 
   transfer-service:
-    image: saga-lab-transfer-service
-    build:
-      context: .
-      args:
-        SERVICE: transfer-service
+    image: saga-lab-services
+    build: .
+    entrypoint: ["/usr/local/bin/transfer-service"]
     environment:
       DATABASE_URL: postgres://transfer_service:transfer_service@postgres:5432/transfer_service?sslmode=disable
       AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
