@@ -42,7 +42,7 @@ _Avoid_: Rollback
 The transfer’s result, distinct from whether all evidence needed to explain that result has been collected.
 
 **Scenario**:
-One of the five predefined demonstrations, specifying the intended execution conditions and the behavior to explain.
+One of the five predefined demonstrations, specifying the intended execution conditions and the behavior to explain. It is selected before a transfer starts and stays fixed for that transfer.
 
 **Admission wait**:
 The wait for exclusive use of the scenario-4 demonstration slot, before the transfer begins.
