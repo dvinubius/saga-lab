@@ -61,6 +61,10 @@ The command a step sends to a bank, such as the debit instruction sent when a tr
 A delivery of a message the receiving service has already processed, whatever the cause: redelivery after a failed acknowledgement, or a repeated publication of the same outgoing message. It is acknowledged without repeating any business effect.
 _Avoid_: Retry
 
+**Handling attempt**:
+One processing of one delivery of a message by the receiving service. A message can have several handling attempts; at most one of them commits its business effect.
+_Avoid_: Retry, delivery
+
 **Visualisation readiness**:
 The condition in which a transfer has reached a terminal business outcome and its history contains the evidence required to explain the selected scenario.
 
