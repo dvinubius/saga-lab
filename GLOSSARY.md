@@ -57,6 +57,10 @@ _Avoid_: Milestone, event
 **Issued message**:
 The command a step sends to a bank, such as the debit instruction sent when a transfer is requested. The bank's reply names the issued message as its cause, which links consecutive steps.
 
+**Duplicate delivery**:
+A delivery of a message the receiving service has already processed, whatever the cause: redelivery after a failed acknowledgement, or a repeated publication of the same outgoing message. It is acknowledged without repeating any business effect.
+_Avoid_: Retry
+
 **Visualisation readiness**:
 The condition in which a transfer has reached a terminal business outcome and its history contains the evidence required to explain the selected scenario.
 
