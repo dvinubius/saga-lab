@@ -23,3 +23,6 @@ CREATE TABLE IF NOT EXISTS transfer_history (
 );
 
 CREATE INDEX IF NOT EXISTS transfer_history_by_transfer ON transfer_history (transfer_id, entry_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_pending_transfer_per_visitor ON transfers (visitor_id)
+    WHERE status IN ('debit_pending', 'credit_pending');

@@ -59,6 +59,7 @@
 {{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{.UTC.Format "15:04:05.000"}}</time>{{end}}
 
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
+{{if and .PendingID (not .Overlap)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
 {{template "top"}}
 <section class="section">
   <p class="note">Fictional credits held by the prepared visitor.</p>
@@ -69,11 +70,14 @@
   <h2 class="caps section-label">Transfer from Bank A to Bank B</h2>
   <form class="transfer-form" method="post" action="/transfers">
     <label class="fact">Amount in credits
-      <input class="field" name="amount" value="{{.Amount}}" inputmode="numeric" autocomplete="off">
+      <input class="field" name="amount" value="{{.Amount}}" inputmode="numeric" autocomplete="off"{{if .PendingID}} disabled{{end}}>
     </label>
-    <button class="btn btn-primary">Transfer</button>
+    <button class="btn btn-primary"{{if .PendingID}} disabled{{end}}>Transfer</button>
   </form>
   {{with .Error}}<p class="error" id="amount-error">{{.}}</p>{{end}}
+  {{if .Overlap}}<p class="error" id="overlap-error">This transfer was not started: another transfer is still pending.</p>{{end}}
+  {{with .PendingID}}<p class="note">A new transfer can start once the pending one has finished.</p>
+  <p><a class="quiet-link" id="pending-transfer" href="/transfers/{{.}}">Follow pending transfer →</a></p>{{end}}
 </section>
 
 {{with .Transfers}}
