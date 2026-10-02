@@ -60,7 +60,7 @@ func Run(ctx context.Context, config Config) error {
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return broker.Run(ctx) })
-	g.Go(func() error { return web.Serve(ctx, ":8080", b.Handler()) })
+	g.Go(func() error { return web.Serve(ctx, ":8080", b.Handler(), web.Internal) })
 	return g.Wait()
 }
 
@@ -147,11 +147,11 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 		return fmt.Errorf("debit for transfer %s: %w", command.TransferID, err)
 	}
 	if insufficient {
-		return b.publish(messaging.DebitRejectedTopic, messaging.DebitRejected{
+		return b.publish(command.TransferID, messaging.DebitRejectedTopic, messaging.DebitRejected{
 			TransferID: command.TransferID, Reason: "Insufficient funds", ObservedAt: time.Now(),
 		}, msg)
 	}
-	return b.publish(messaging.FundsDebitedTopic, messaging.FundsDebited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
+	return b.publish(command.TransferID, messaging.FundsDebitedTopic, messaging.FundsDebited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 }
 
 func (b *Bank) creditFunds(msg *message.Message) error {
@@ -175,11 +175,11 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 		slog.Warn("credit not applied: account missing", "transfer_id", command.TransferID)
 		return nil
 	}
-	return b.publish(messaging.FundsCreditedTopic, messaging.FundsCredited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
+	return b.publish(command.TransferID, messaging.FundsCreditedTopic, messaging.FundsCredited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 }
 
-func (b *Bank) publish(topic string, event any, command *message.Message) error {
-	msg, err := messaging.New(event, command.UUID)
+func (b *Bank) publish(transferID, topic string, event any, command *message.Message) error {
+	msg, err := messaging.New(command.Context(), transferID, event, command.UUID)
 	if err != nil {
 		return err
 	}

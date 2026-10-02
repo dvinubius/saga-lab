@@ -29,7 +29,7 @@ teardown() {
 trap teardown EXIT
 echo "Test run $run"
 docker compose build
-docker compose pull --quiet postgres rabbitmq
+docker compose pull --quiet postgres rabbitmq otel-collector tempo grafana
 docker compose up --detach --wait postgres
 postgres_address="$(docker compose port postgres 5432)"
 

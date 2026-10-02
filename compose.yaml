@@ -39,6 +39,38 @@ services:
       timeout: 2s
       retries: 60
 
+  otel-collector:
+    image: otel/opentelemetry-collector:0.160.0@sha256:e495787f07dbe432ce763ebaf5bc3d113850e9eee2250ade7a3da6a882d0d69a
+    command: ["--config=/etc/otel-collector/config.yaml"]
+    ports:
+      - "127.0.0.1:${OTEL_COLLECTOR_HTTP_PORT-4318}:4318"
+    volumes:
+      - ./deploy/otel-collector/config.yaml:/etc/otel-collector/config.yaml:ro
+    depends_on:
+      - tempo
+
+  tempo:
+    image: grafana/tempo:3.0.3@sha256:0296560ac66f8a3600d7fb3014a52c189d4d9c3549ad6ff441bf2409855d68d5
+    command: ["-target=all", "-config.file=/etc/tempo/tempo.yaml"]
+    ports:
+      - "127.0.0.1:${TEMPO_PORT-3200}:3200"
+    volumes:
+      - ./deploy/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+
+  grafana:
+    image: grafana/grafana:13.2.1@sha256:f772d434e8fab0049deb2b1b30abd43342bcfca1537614aa8d36080232cf4283
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Editor
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT-3000}:3000"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - tempo
+
   bank-a:
     image: saga-lab-bank-a
     build:
@@ -48,6 +80,7 @@ services:
     environment:
       DATABASE_URL: postgres://bank_a:bank_a@postgres:5432/bank_a?sslmode=disable
       AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGA_LAB_OTLP_ENDPOINT-http://otel-collector:4318}
     ports:
       - "127.0.0.1:${BANK_A_PORT-8081}:8080"
     depends_on:
@@ -67,6 +100,7 @@ services:
     environment:
       DATABASE_URL: postgres://bank_b:bank_b@postgres:5432/bank_b?sslmode=disable
       AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGA_LAB_OTLP_ENDPOINT-http://otel-collector:4318}
     ports:
       - "127.0.0.1:${BANK_B_PORT-8082}:8080"
     depends_on:
@@ -86,6 +120,7 @@ services:
     environment:
       DATABASE_URL: postgres://transfer_service:transfer_service@postgres:5432/transfer_service?sslmode=disable
       AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGA_LAB_OTLP_ENDPOINT-http://otel-collector:4318}
       BANK_A_URL: http://bank-a:8080
       BANK_B_URL: http://bank-b:8080
     ports:
@@ -105,3 +140,4 @@ services:
 volumes:
   postgres-data:
   rabbitmq-data:
+  tempo-data:

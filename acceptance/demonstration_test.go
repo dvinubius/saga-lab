@@ -28,6 +28,16 @@ type demonstration struct {
 
 func startDemonstration(t *testing.T) *demonstration {
 	t.Helper()
+	return startProject(t, []string{"SAGA_LAB_OTLP_ENDPOINT="}, "transfer-service")
+}
+
+func startObservedDemonstration(t *testing.T) *demonstration {
+	t.Helper()
+	return startProject(t, []string{"SAGA_LAB_OTLP_ENDPOINT=http://otel-collector:4318"})
+}
+
+func startProject(t *testing.T, env []string, services ...string) *demonstration {
+	t.Helper()
 	prefix := os.Getenv(projectPrefixVariable)
 	if prefix == "" {
 		t.Skipf("%s is not set; run scripts/test.sh", projectPrefixVariable)
@@ -37,23 +47,19 @@ func startDemonstration(t *testing.T) *demonstration {
 
 	t.Cleanup(func() {
 		if t.Failed() {
-			logs, _ := compose(project, "logs", "--no-color", "--tail=100")
+			logs, _ := compose(project, nil, "logs", "--no-color", "--tail=100")
 			t.Logf("%s logs:\n%s", project, logs)
 		}
-		if out, err := compose(project, "down", "--volumes", "--remove-orphans"); err != nil {
+		if out, err := compose(project, nil, "down", "--volumes", "--remove-orphans"); err != nil {
 			t.Errorf("stop %s: %v\n%s", project, err, out)
 		}
 	})
-	if out, err := compose(project, "up", "--detach", "--no-build", "--wait"); err != nil {
+	if out, err := compose(project, env, append([]string{"up", "--detach", "--no-build", "--wait"}, services...)...); err != nil {
 		t.Fatalf("start %s: %v\n%s", project, err, out)
-	}
-	address, err := compose(project, "port", "transfer-service", "8080")
-	if err != nil {
-		t.Fatalf("find Transfer Service port: %v\n%s", err, address)
 	}
 	return &demonstration{
 		project: project,
-		baseURL: "http://" + strings.TrimSpace(string(address)),
+		baseURL: "http://" + serviceAddress(t, project, "transfer-service", "8080"),
 		client: &http.Client{
 			Timeout:       5 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -61,7 +67,7 @@ func startDemonstration(t *testing.T) *demonstration {
 	}
 }
 
-func compose(project string, args ...string) ([]byte, error) {
+func compose(project string, env []string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), composeDeadline)
 	defer cancel()
 	command := exec.CommandContext(ctx, "docker", append([]string{"compose", "--file", "../compose.yaml", "--project-name", project}, args...)...)
@@ -73,8 +79,21 @@ func compose(project string, args ...string) ([]byte, error) {
 		"TRANSFER_SERVICE_PORT=",
 		"BANK_A_PORT=",
 		"BANK_B_PORT=",
+		"OTEL_COLLECTOR_HTTP_PORT=",
+		"TEMPO_PORT=",
+		"GRAFANA_PORT=",
 	)
+	command.Env = append(command.Env, env...)
 	return command.CombinedOutput()
+}
+
+func serviceAddress(t *testing.T, project, service, port string) string {
+	t.Helper()
+	address, err := compose(project, nil, "port", service, port)
+	if err != nil {
+		t.Fatalf("find %s port: %v\n%s", service, err, address)
+	}
+	return strings.TrimSpace(string(address))
 }
 
 type response struct {

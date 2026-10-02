@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type bankClient struct {
@@ -16,7 +18,7 @@ type bankClient struct {
 }
 
 func newBankClient(name, baseURL string) bankClient {
-	return bankClient{name: name, baseURL: baseURL, http: &http.Client{Timeout: 3 * time.Second}}
+	return bankClient{name: name, baseURL: baseURL, http: &http.Client{Timeout: 3 * time.Second, Transport: otelhttp.NewTransport(http.DefaultTransport)}}
 }
 
 func (c bankClient) balance(ctx context.Context, visitorID string) (int64, error) {

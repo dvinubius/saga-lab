@@ -112,7 +112,12 @@
       <dt>Reason</dt>
       <dd><data id="rejection-reason" value="{{.}}">{{.}}</data></dd>
     </div>{{end}}
+    {{with .TraceID}}<div>
+      <dt>Trace ID</dt>
+      <dd><code><data id="trace-id" value="{{.}}">{{.}}</data></code></dd>
+    </div>{{end}}
   </dl>
+  {{if .TraceID}}<p class="note">Inspect the trace in Grafana: open Explore, choose Tempo, and run this trace ID as a TraceQL query.</p>{{end}}
 </section>
 
 <section class="section">
