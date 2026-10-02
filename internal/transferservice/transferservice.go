@@ -103,8 +103,8 @@ func Open(ctx context.Context, db *pgxpool.Pool, broker *messaging.Broker, confi
 	s := &Service{
 		db:         db,
 		broker:     broker,
-		bankA:      newBankClient("Bank A", config.BankAURL),
-		bankB:      newBankClient("Bank B", config.BankBURL),
+		bankA:      newBankClient(bankAName, config.BankAURL),
+		bankB:      newBankClient(bankBName, config.BankBURL),
 		grafanaURL: strings.TrimSuffix(config.GrafanaURL, "/"),
 	}
 	broker.Router.AddHandler("funds-debited",

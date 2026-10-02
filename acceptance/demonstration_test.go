@@ -70,7 +70,6 @@ func startProject(t *testing.T, env []string, services ...string) *demonstration
 	return d
 }
 
-// A restarted container gets a new free host port.
 func (d *demonstration) reconnect(t *testing.T) {
 	t.Helper()
 	d.baseURL = "http://" + serviceAddress(t, d.project, "transfer-service", "8080")

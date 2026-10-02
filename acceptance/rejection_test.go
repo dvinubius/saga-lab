@@ -18,7 +18,7 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 		t.Errorf("rejected transfer has no reason")
 	}
 	assertSteps(t, rejected.History, "requested", "debit_rejected")
-	assertServices(t, rejected.History, "transfer-service", "bank-a")
+	assertServices(t, rejected.History, "Transfer Service", "Bank A")
 	requested, rejection := rejected.History[0], rejected.History[1]
 	if rejection.MessageID == "" {
 		t.Errorf("DebitRejected message ID missing from history")

@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	transferServiceName = "transfer-service"
-	bankAName           = "bank-a"
-	bankBName           = "bank-b"
+	transferServiceName = "Transfer Service"
+	bankAName           = "Bank A"
+	bankBName           = "Bank B"
 )
 
 type status string
@@ -53,7 +53,7 @@ type step string
 const (
 	requested       step = "requested"
 	debitCommitted  step = "debit_committed"
-	debitRejection  step = "debit_rejected"
+	debitRejected   step = "debit_rejected"
 	creditCommitted step = "credit_committed"
 	finished        step = "finished"
 )
@@ -64,7 +64,7 @@ func (s step) Label() string {
 		return "Transfer requested"
 	case debitCommitted:
 		return "Bank A committed the debit"
-	case debitRejection:
+	case debitRejected:
 		return "Bank A rejected the debit"
 	case creditCommitted:
 		return "Bank B committed the credit"
@@ -223,7 +223,7 @@ func (s *Service) debitRejected(msg *message.Message) error {
 		}
 		advanced = true
 		return record(ctx, tx, event.TransferID, historyEntry{
-			Step: debitRejection, Service: bankAName, ObservedAt: event.ObservedAt,
+			Step: debitRejected, Service: bankAName, ObservedAt: event.ObservedAt,
 			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
 		})
 	})
