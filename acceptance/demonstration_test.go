@@ -22,6 +22,7 @@ const (
 
 type demonstration struct {
 	project string
+	env     []string
 	baseURL string
 	client  *http.Client
 }
@@ -57,13 +58,28 @@ func startProject(t *testing.T, env []string, services ...string) *demonstration
 	if out, err := compose(project, env, append([]string{"up", "--detach", "--no-build", "--wait"}, services...)...); err != nil {
 		t.Fatalf("start %s: %v\n%s", project, err, out)
 	}
-	return &demonstration{
+	d := &demonstration{
 		project: project,
-		baseURL: "http://" + serviceAddress(t, project, "transfer-service", "8080"),
+		env:     env,
 		client: &http.Client{
 			Timeout:       5 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
+	}
+	d.reconnect(t)
+	return d
+}
+
+// A restarted container gets a new free host port.
+func (d *demonstration) reconnect(t *testing.T) {
+	t.Helper()
+	d.baseURL = "http://" + serviceAddress(t, d.project, "transfer-service", "8080")
+}
+
+func (d *demonstration) compose(t *testing.T, args ...string) {
+	t.Helper()
+	if out, err := compose(d.project, d.env, args...); err != nil {
+		t.Fatalf("docker compose %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 }
 
@@ -72,7 +88,12 @@ func compose(project string, env []string, args ...string) ([]byte, error) {
 	defer cancel()
 	command := exec.CommandContext(ctx, "docker", append([]string{"compose", "--file", "../compose.yaml", "--project-name", project}, args...)...)
 	command.WaitDelay = 10 * time.Second
-	command.Env = append(os.Environ(),
+	command.Env = composeEnv(env)
+	return command.CombinedOutput()
+}
+
+func composeEnv(env []string) []string {
+	return append(append(os.Environ(),
 		"POSTGRES_PORT=",
 		"RABBITMQ_PORT=",
 		"RABBITMQ_MANAGEMENT_PORT=",
@@ -82,9 +103,7 @@ func compose(project string, env []string, args ...string) ([]byte, error) {
 		"OTEL_COLLECTOR_HTTP_PORT=",
 		"TEMPO_PORT=",
 		"GRAFANA_PORT=",
-	)
-	command.Env = append(command.Env, env...)
-	return command.CombinedOutput()
+	), env...)
 }
 
 func serviceAddress(t *testing.T, project, service, port string) string {

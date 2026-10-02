@@ -11,6 +11,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-amqp/v3/pkg/amqp"
 	"github.com/ThreeDotsLabs/watermill/message"
+	amqp091 "github.com/rabbitmq/amqp091-go"
 )
 
 const (
@@ -87,11 +88,10 @@ type Broker struct {
 }
 
 func Connect(url string, publishedTopics ...string) (*Broker, error) {
-	if url == "" {
-		return nil, errors.New("AMQP URL is not configured")
+	config, err := queueConfig(url)
+	if err != nil {
+		return nil, err
 	}
-	config := amqp.NewDurableQueueConfig(url)
-	config.Publish.ConfirmDelivery = true
 	logger := watermill.NewSlogLogger(slog.Default())
 
 	publisher, err := amqp.NewPublisher(config, logger)
@@ -117,6 +117,45 @@ func Connect(url string, publishedTopics ...string) (*Broker, error) {
 	}
 	b.Router.AddMiddleware(traceHandling)
 	return b, nil
+}
+
+func queueConfig(url string) (amqp.Config, error) {
+	if url == "" {
+		return amqp.Config{}, errors.New("AMQP URL is not configured")
+	}
+	config := amqp.NewDurableQueueConfig(url)
+	config.Publish.ConfirmDelivery = true
+	return config, nil
+}
+
+func Purge(url string, consumedTopics ...string) error {
+	config, err := queueConfig(url)
+	if err != nil {
+		return err
+	}
+	conn, err := amqp091.Dial(url)
+	if err != nil {
+		return fmt.Errorf("connect to broker: %w", err)
+	}
+	defer conn.Close()
+	channel, err := conn.Channel()
+	if err != nil {
+		return fmt.Errorf("open channel: %w", err)
+	}
+	for _, topic := range consumedTopics {
+		name := config.Queue.GenerateName(topic)
+		queue, err := channel.QueueDeclare(name, config.Queue.Durable, config.Queue.AutoDelete, config.Queue.Exclusive, config.Queue.NoWait, config.Queue.Arguments)
+		if err != nil {
+			return fmt.Errorf("declare %s queue: %w", name, err)
+		}
+		if queue.Consumers > 0 {
+			return fmt.Errorf("%s queue still has %d consumers; stop the service first", name, queue.Consumers)
+		}
+		if _, err := channel.QueuePurge(name, false); err != nil {
+			return fmt.Errorf("purge %s queue: %w", name, err)
+		}
+	}
+	return nil
 }
 
 func (b *Broker) Run(ctx context.Context) error {

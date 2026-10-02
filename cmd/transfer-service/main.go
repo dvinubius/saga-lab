@@ -19,6 +19,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	if len(os.Args) > 1 && os.Args[1] == "reset" {
+		if err := transferservice.Reset(ctx); err != nil {
+			slog.Error("reset failed", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("reset")
+		return
+	}
+
 	stopTelemetry, err := telemetry.Start(ctx, service)
 	if err == nil {
 		err = errors.Join(transferservice.Run(ctx), stopTelemetry())

@@ -34,4 +34,4 @@ docker compose up --detach --wait postgres
 postgres_address="$(docker compose port postgres 5432)"
 
 SAGA_LAB_POSTGRES_URL="postgres://postgres:postgres@${postgres_address}/postgres?sslmode=disable" \
-  go test -count=1 ./... "$@"
+  go test -count=1 -parallel 4 ./... "$@"

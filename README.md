@@ -2,7 +2,7 @@
 
 A local demonstration of orchestrated Sagas: a Transfer Service coordinates transfers of fictional credits between two independently owned banks.
 
-Milestone 1 is in progress. One prepared visitor holds an account at each bank, starting with 100 credits at Bank A and 0 at Bank B. The visitor transfers a whole number of credits from Bank A to Bank B and follows the transfer's status, balances, and recorded history on a minimal page. Each transfer can be followed as one distributed trace in Grafana. The development reset arrives in a later increment.
+Milestone 1 is in progress. One prepared visitor holds an account at each bank, starting with 100 credits at Bank A and 0 at Bank B. The visitor transfers a whole number of credits from Bank A to Bank B and follows the transfer's status, balances, and recorded history on a minimal page. Each transfer can be followed as one distributed trace in Grafana. A development reset restores the prepared state for another run.
 
 ## Requirements
 
@@ -41,6 +41,21 @@ Each service connects with its own PostgreSQL role, which can open only that ser
 
 On startup, each bank creates the prepared visitor's account if it does not exist yet; it never overwrites an existing account. Data lives in the `postgres-data` and `rabbitmq-data` volumes, so `make down` followed by `make up` keeps balances, transfers, and queued messages. `docker compose down --volumes` deletes all data.
 
+## Reset
+
+```bash
+make reset
+```
+
+This restores the prepared state, 100 credits at Bank A and 0 at Bank B, and discards every transfer, its history, and the work still queued for the services, so the demonstration can run again. It builds the service images, starts PostgreSQL and RabbitMQ if needed, stops the Transfer Service and both banks, and runs each service's own reset in a one-off container (`docker compose run --rm --no-deps <service> reset`):
+
+- Bank A and Bank B purge their command queue (`DebitFunds`, `CreditFunds`) and recreate their accounts table with the prepared account.
+- The Transfer Service purges its event queues (`FundsDebited`, `DebitRejected`, `FundsCredited`) and recreates its transfer and history tables.
+
+A service's reset refuses to run while its queues still have consumers, so it never races a running service. With all three services stopped, nothing is in flight: a message is either in a database or waiting in a queue, and the reset clears both. The services then start again and the command waits until they are ready. Any failure ends the command with an error and without the completion message; the state is then unreliable until `make reset` succeeds. Traces stay in Tempo.
+
+Only `make reset` discards demonstration state; startup and page reloads never do.
+
 Override host ports with `POSTGRES_PORT`, `RABBITMQ_PORT`, `RABBITMQ_MANAGEMENT_PORT`, `TRANSFER_SERVICE_PORT`, `BANK_A_PORT`, `BANK_B_PORT`, `GRAFANA_PORT`, `TEMPO_PORT`, and `OTEL_COLLECTOR_HTTP_PORT`; an empty value picks a free port. Follow logs with `make logs` and stop with `make down`.
 
 ## Transfers
@@ -61,9 +76,9 @@ A transfer whose bank is unavailable stays pending until the bank processes the 
 
 Bank A rejects a debit it cannot afford with `DebitRejected`; the transfer ends `rejected` with a reason, both balances unchanged, and no credit.
 
-The prepared visitor has at most one pending transfer. Admission is atomic in the Transfer Service database, so concurrent submissions, from any tab or client, start one transfer; the others start nothing and name the pending one. Completion and rejection both release the restriction; a delay never does. This is not request deduplication: a submission repeated after the pending transfer has ended starts a new transfer. Durable request identity arrives in milestone 2. Earlier increments could leave transfers pending for good; the Transfer Service refuses to start on such data, and `docker compose down --volumes` clears it.
+The prepared visitor has at most one pending transfer. Admission is atomic in the Transfer Service database, so concurrent submissions, from any tab or client, start one transfer; the others start nothing and name the pending one. Completion and rejection both release the restriction; a delay never does. This is not request deduplication: a submission repeated after the pending transfer has ended starts a new transfer. Durable request identity arrives in milestone 2. Earlier increments could leave transfers pending for good; the Transfer Service refuses to start on such data, and `make reset` clears it.
 
-This increment has no inbox or outbox, so a redelivered command can be applied twice, and a crash between a local commit and the following publish leaves a transfer pending for good, which also holds the visitor's next submission. A handler that fails rejects its message, which RabbitMQ redelivers at once, without backoff.
+This increment has no inbox or outbox, so a redelivered command can be applied twice, and a crash between a local commit and the following publish leaves a transfer pending for good, which also holds the visitor's next submission until `make reset`. A handler that fails rejects its message, which RabbitMQ redelivers at once, without backoff.
 
 ## Traces
 
@@ -81,8 +96,8 @@ Set `SAGA_LAB_OTLP_ENDPOINT` to an empty value to start the services without tra
 make test
 ```
 
-This builds the service images once and runs `go test ./...`. Each run gets a random run ID. Each acceptance test in `acceptance/` starts its own Compose project, `saga-lab-acceptance-<run>-<random>`, with fresh databases and queues on free ports, so every test begins from the prepared 100/0 state regardless of order; the tests run in parallel. Package tests that need only PostgreSQL share a separate project, `saga-lab-test-<run>`, on a free port. A run removes only its own projects afterwards, so concurrent runs and the development stack and its data are untouched. A run killed outright can leave its projects behind; `docker compose ls` lists them. Arguments to `scripts/test.sh` are passed to `go test`, for example `scripts/test.sh -run TestRefreshing -v ./acceptance`.
+This builds the service images once and runs `go test ./...`. Each run gets a random run ID. Each acceptance test in `acceptance/` starts its own Compose project, `saga-lab-acceptance-<run>-<random>`, with fresh databases and queues on free ports, so every test begins from the prepared 100/0 state regardless of order. At most four tests run at a time: with more, Docker Desktop on macOS sometimes leaves a healthy container's published port unforwarded, and requests to it are refused. Package tests that need only PostgreSQL share a separate project, `saga-lab-test-<run>`, on a free port. A run removes only its own projects afterwards, so concurrent runs and the development stack and its data are untouched. A run killed outright can leave its projects behind; `docker compose ls` lists them. Arguments to `scripts/test.sh` are passed to `go test`, for example `scripts/test.sh -run TestRefreshing -v ./acceptance`.
 
-The acceptance tests start only the services and their PostgreSQL and RabbitMQ, with tracing turned off, except `TestTransferTraceCoversAllServices`. That test starts the whole stack, completes a transfer, and polls Tempo's API until the transfer's trace holds the HTTP, database, send, and process spans it expects from each service. It then checks that the trace contains no connection strings, cookies, or database roles.
+The acceptance tests start only the services and their PostgreSQL and RabbitMQ, with tracing turned off, except `TestTransferTraceCoversAllServices`. `TestResetRestoresThePreparedDemonstration` completes a transfer, restarts the services and finds it kept, stops Bank A and submits another transfer so its `DebitFunds` waits in the queue, runs `scripts/reset.sh` against its project, and then expects 100/0, no transfers, and a fresh 25-credit transfer ending at 75/25. That test starts the whole stack, completes a transfer, and polls Tempo's API until the transfer's trace holds the HTTP, database, send, and process spans it expects from each service. It then checks that the trace contains no connection strings, cookies, or database roles.
 
 Acceptance tests skip unless `SAGA_LAB_ACCEPTANCE_PREFIX` names their project prefix, and package tests skip unless `SAGA_LAB_POSTGRES_URL` is set; `scripts/test.sh` sets both. The acceptance tests use the images `saga-lab-transfer-service`, `saga-lab-bank-a`, and `saga-lab-bank-b` as last built, and fail if a stack is not ready within three minutes.
