@@ -161,6 +161,9 @@ button,.btn,a{transition:var(--hover-transition);}
 .btn-primary{background:var(--accent);color:var(--paper);}
 [data-theme="dark"] .btn-primary{color:var(--ink);}
 .btn-primary:not(:disabled):hover{background:var(--accent-on-hover);}
+.btn-secondary{border-color:var(--hairline);color:var(--text-body);}
+.btn-secondary:hover{border-color:var(--text-body);}
+.back{align-self:flex-start;}
 
 .field{
   height:var(--row-height);
@@ -191,7 +194,7 @@ button,.btn,a{transition:var(--hover-transition);}
   background:var(--surface-card);
   border-radius:var(--radius-surface);
 }
-.links{display:flex;gap:28px;}
+.links{display:flex;justify-content:space-between}
 .account dd{display:flex;align-items:baseline;gap:10px;}
 .figure{
   font-size:var(--text-heading);
