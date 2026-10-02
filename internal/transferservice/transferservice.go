@@ -61,7 +61,7 @@ func Run(ctx context.Context) error {
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return broker.Run(ctx) })
-	g.Go(func() error { return web.Serve(ctx, ":8080", s.Handler()) })
+	g.Go(func() error { return web.Serve(ctx, ":8080", s.Handler(), web.Public) })
 	return g.Wait()
 }
 

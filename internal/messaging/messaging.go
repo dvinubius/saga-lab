@@ -21,7 +21,10 @@ const (
 	FundsCreditedTopic = "FundsCredited"
 )
 
-const causationIDKey = "causation_id"
+const (
+	causationIDKey = "causation_id"
+	transferIDKey  = "transfer_id"
+)
 
 type DebitFunds struct {
 	TransferID string `json:"transfer_id"`
@@ -51,12 +54,14 @@ type FundsCredited struct {
 	ObservedAt time.Time `json:"observed_at"`
 }
 
-func New(payload any, causationID string) (*message.Message, error) {
+func New(ctx context.Context, transferID string, payload any, causationID string) (*message.Message, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("encode %T: %w", payload, err)
 	}
 	msg := message.NewMessage(watermill.NewUUID(), body)
+	msg.SetContext(ctx)
+	msg.Metadata.Set(transferIDKey, transferID)
 	if causationID != "" {
 		msg.Metadata.Set(causationIDKey, causationID)
 	}
@@ -75,9 +80,10 @@ func Decode(msg *message.Message, payload any) error {
 }
 
 type Broker struct {
-	Publisher  *amqp.Publisher
-	Subscriber *amqp.Subscriber
-	Router     *message.Router
+	Publisher     message.Publisher
+	Subscriber    *amqp.Subscriber
+	Router        *message.Router
+	amqpPublisher *amqp.Publisher
 }
 
 func Connect(url string, publishedTopics ...string) (*Broker, error) {
@@ -97,7 +103,7 @@ func Connect(url string, publishedTopics ...string) (*Broker, error) {
 		publisher.Close()
 		return nil, fmt.Errorf("connect subscriber: %w", err)
 	}
-	b := &Broker{Publisher: publisher, Subscriber: subscriber}
+	b := &Broker{Publisher: tracingPublisher{publisher}, Subscriber: subscriber, amqpPublisher: publisher}
 	for _, topic := range publishedTopics {
 		if err := subscriber.SubscribeInitialize(topic); err != nil {
 			b.Close()
@@ -109,6 +115,7 @@ func Connect(url string, publishedTopics ...string) (*Broker, error) {
 		b.Close()
 		return nil, fmt.Errorf("create router: %w", err)
 	}
+	b.Router.AddMiddleware(traceHandling)
 	return b, nil
 }
 
@@ -126,12 +133,12 @@ func (b *Broker) Ready() error {
 	if !b.Router.IsRunning() || b.Router.IsClosed() {
 		return errors.New("message router is not running")
 	}
-	if !b.Publisher.IsConnected() {
+	if !b.amqpPublisher.IsConnected() {
 		return errors.New("publisher is not connected")
 	}
 	return nil
 }
 
 func (b *Broker) Close() error {
-	return errors.Join(b.Subscriber.Close(), b.Publisher.Close())
+	return errors.Join(b.Subscriber.Close(), b.amqpPublisher.Close())
 }

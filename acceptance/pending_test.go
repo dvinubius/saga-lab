@@ -131,12 +131,8 @@ func pendingTransferLink(page []byte) string {
 
 func (d *demonstration) holdBankADebits(t *testing.T) (release func()) {
 	t.Helper()
-	address, err := compose(d.project, "port", "postgres", "5432")
-	if err != nil {
-		t.Fatalf("find PostgreSQL port: %v\n%s", err, address)
-	}
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, "postgres://bank_a:bank_a@"+strings.TrimSpace(string(address))+"/bank_a?sslmode=disable")
+	conn, err := pgx.Connect(ctx, "postgres://bank_a:bank_a@"+serviceAddress(t, d.project, "postgres", "5432")+"/bank_a?sslmode=disable")
 	if err != nil {
 		t.Fatalf("connect to Bank A database: %v", err)
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/dvinubius/saga-lab/internal/messaging"
 	"github.com/dvinubius/saga-lab/internal/visitor"
 	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -78,6 +79,7 @@ type transfer struct {
 	Amount          int64          `json:"amount"`
 	Status          status         `json:"status"`
 	RejectionReason string         `json:"rejection_reason,omitempty"`
+	TraceID         string         `json:"trace_id,omitempty"`
 	RequestedAt     time.Time      `json:"requested_at"`
 	History         []historyEntry `json:"history,omitempty"`
 }
@@ -104,7 +106,10 @@ func (e pendingTransferError) Error() string {
 
 func (s *Service) submit(ctx context.Context, amount int64) (transfer, error) {
 	t := transfer{ID: watermill.NewUUID(), Amount: amount, Status: debitPending, RequestedAt: time.Now()}
-	debit, err := messaging.New(messaging.DebitFunds{TransferID: t.ID, VisitorID: visitor.PreparedID, Amount: amount}, "")
+	if span := trace.SpanContextFromContext(ctx); span.IsValid() {
+		t.TraceID = span.TraceID().String()
+	}
+	debit, err := messaging.New(ctx, t.ID, messaging.DebitFunds{TransferID: t.ID, VisitorID: visitor.PreparedID, Amount: amount}, "")
 	if err != nil {
 		return transfer{}, err
 	}
@@ -135,9 +140,9 @@ func (s *Service) admit(ctx context.Context, t transfer, debitID string) (bool, 
 	admitted := false
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		inserted, err := tx.Exec(ctx,
-			`INSERT INTO transfers (transfer_id, visitor_id, amount, status, requested_at) VALUES ($1, $2, $3, $4, $5)
+			`INSERT INTO transfers (transfer_id, visitor_id, amount, status, requested_at, trace_id) VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))
 			 ON CONFLICT (visitor_id) WHERE status IN ('debit_pending', 'credit_pending') DO NOTHING`,
-			t.ID, visitor.PreparedID, t.Amount, t.Status, t.RequestedAt,
+			t.ID, visitor.PreparedID, t.Amount, t.Status, t.RequestedAt, t.TraceID,
 		)
 		if err != nil || inserted.RowsAffected() == 0 {
 			return err
@@ -182,7 +187,7 @@ func (s *Service) fundsDebited(msg *message.Message) ([]*message.Message, error)
 		if err != nil {
 			return err
 		}
-		if command, err = messaging.New(credit, msg.UUID); err != nil {
+		if command, err = messaging.New(ctx, event.TransferID, credit, msg.UUID); err != nil {
 			return err
 		}
 		return record(ctx, tx, event.TransferID, historyEntry{
@@ -279,9 +284,9 @@ func record(ctx context.Context, tx pgx.Tx, transferID string, entry historyEntr
 func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	t := transfer{ID: id}
 	err := s.db.QueryRow(ctx,
-		`SELECT amount, status, COALESCE(rejection_reason, ''), requested_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
+		`SELECT amount, status, COALESCE(rejection_reason, ''), COALESCE(trace_id, ''), requested_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
 		id, visitor.PreparedID,
-	).Scan(&t.Amount, &t.Status, &t.RejectionReason, &t.RequestedAt)
+	).Scan(&t.Amount, &t.Status, &t.RejectionReason, &t.TraceID, &t.RequestedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return transfer{}, errTransferNotFound
 	}

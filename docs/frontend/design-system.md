@@ -114,7 +114,7 @@ ones, and they use the `--code-*` tokens in `app.css`:
 
 Highlighted content is rendered as text through the template — captured bytes
 never reach the page as markup. An inline `<code>` inside a mono row (the
-transfer ID) takes no fill of its own.
+transfer ID, the trace ID) takes no fill of its own.
 
 **Motion.** None is defined in the brand. Default to no animation; nothing
 bounces, pulses or spins. Hover changes on buttons and links — color,
@@ -261,7 +261,7 @@ the GitHub mark in the footer, drawn inline in the template in
     | --- | --- | --- |
     | `.caps` | mono, 500, 0.12em, uppercase, body | section labels, card labels, table column headings; no size |
     | `.fact` | mono, `--text-mono-meta`, dim | a control label, a unit beside a figure |
-    | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's intro, the History explanation |
+    | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's intro, the History explanation, the trace hint |
     | `.dim` | dim, nothing else | a value inside a row that is already mono |
     | `.sr-only` | visually hidden | text for screen readers only |
 
