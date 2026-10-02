@@ -65,6 +65,14 @@ _Avoid_: Retry
 One processing of one delivery of a message by the receiving service. A message can have several handling attempts; at most one of them commits its business effect.
 _Avoid_: Retry, delivery
 
+**Redelivery**:
+The broker delivering a message again because the receiving service declined to acknowledge it. It is one cause of a duplicate delivery.
+_Avoid_: Retry, republish
+
+**Processing observation**:
+A recorded fact about one handling attempt, such as a requested redelivery or a suppressed duplicate. It belongs to a transfer's execution history but never advances the transfer.
+_Avoid_: Event, step
+
 **Visualisation readiness**:
 The condition in which a transfer has reached a terminal business outcome and its history contains the evidence required to explain the selected scenario.
 
