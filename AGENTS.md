@@ -8,6 +8,14 @@ Read `docs/prep` when refining the project plan or milestone specs; those docume
 
 Ignore `.devnotes` and `docs/learning`
 
+## Planning
+
+When creating tickets (`to-tikets` skill), include implementation decisions:
+- Use the ones in the parrent issue.
+- Included decisions per-ticket should:
+  - not be already implemented by previous tickets, as per dependency graph
+  - be relevant for technical decisions in the ticket implementation
+
 ## Implementation 
 
 Write the minimum code needed for the currently targeted system behaviour.
