@@ -97,8 +97,8 @@ inner or outer. No gradients, textures or background imagery. Separation is
 neutral fills. Cards are a neutral fill (`--surface-card`) with no border and
 no shadow — the two balance cards, and a transfer's In depth section, which
 holds the links that leave the page for raw evidence (**View as JSON →**,
-**Explore the trace in Grafana →**). A section on a card keeps its own label
-and gap and takes the card's 16px × 18px padding.
+**Explore the trace in Grafana →**, which opens in a new tab). A section on a
+card keeps its own label and gap and takes the card's 16px × 18px padding.
 
 **Code and terminal surfaces** follow the theme — hooklook's departure from
 the brand, which keeps them dark in both. On dark pages code sits on Panel
