@@ -1,35 +1,56 @@
 {{define "head"}}<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/brand.css">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/theme.js"></script>
 {{end}}
 
-{{define "style"}}<style>
-  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-  body { max-width: 40rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5; }
-  h1 a { color: inherit; text-decoration: none; }
-  .accounts { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  .account { border: 1px solid #8886; border-radius: 0.5rem; padding: 1rem; }
-  .account dt { font-weight: 600; }
-  .account dd { margin: 0; font-size: 1.5rem; }
-  .error { color: #c33; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 0.25rem 0.5rem 0.25rem 0; border-bottom: 1px solid #8884; vertical-align: top; }
-</style>
-</head>
+{{define "top"}}</head>
 <body>
-<h1><a href="/">Saga Lab</a></h1>
+<div class="page">
+<header class="top">
+  <h1 class="wordmark"><a href="/">Saga Lab</a></h1>
+  <button class="theme-toggle" type="button" aria-label="Switch to light theme" title="Switch to light theme">
+    <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M19.8 4.2l-2.1 2.1M6.3 17.7l-2.1 2.1"/>
+    </svg>
+    <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  </button>
+</header>
+<main class="main">
+{{end}}
+
+{{define "foot"}}</main>
+<footer class="foot">
+  <p class="signature"><span class="bracket">[ </span>Dinu Barbu<span class="bracket"> ]</span></p>
+  <a class="credit" href="https://github.com/dvinubius/saga-lab" title="Saga Lab on GitHub">
+    ↳ dvinubius
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+    </svg>
+    <span class="sr-only">— Saga Lab on GitHub</span>
+  </a>
+  <a class="quiet-link" href="https://dinubarbu.com">→ dinubarbu.com</a>
+</footer>
+</div>
+</body>
+</html>
 {{end}}
 
 {{define "balances"}}<dl class="accounts">
   <div class="account">
-    <dt>Bank A</dt>
-    <dd><data id="bank-a-balance" value="{{.BankA.Balance}}">{{.BankA.Balance}}</data> credits</dd>
+    <dt class="caps">Bank A</dt>
+    <dd><data class="figure" id="bank-a-balance" value="{{.BankA.Balance}}">{{.BankA.Balance}}</data> <span class="fact">credits</span></dd>
   </div>
   <div class="account">
-    <dt>Bank B</dt>
-    <dd><data id="bank-b-balance" value="{{.BankB.Balance}}">{{.BankB.Balance}}</data> credits</dd>
+    <dt class="caps">Bank B</dt>
+    <dd><data class="figure" id="bank-b-balance" value="{{.BankB.Balance}}">{{.BankB.Balance}}</data> <span class="fact">credits</span></dd>
   </div>
 </dl>
 {{end}}
@@ -37,60 +58,70 @@
 {{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{.UTC.Format "15:04:05.000"}}</time>{{end}}
 
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
-{{template "style"}}
-<p>Fictional credits held by the prepared visitor.</p>
-{{template "balances" .Balances}}
+{{template "top"}}
+<section class="section">
+  <p class="note">Fictional credits held by the prepared visitor.</p>
+  {{template "balances" .Balances}}
+</section>
 
-<h2>Transfer from Bank A to Bank B</h2>
-<form method="post" action="/transfers">
-  <label>Amount in credits
-    <input name="amount" value="{{.Amount}}" inputmode="numeric" autocomplete="off">
-  </label>
-  <button>Transfer</button>
+<section class="section">
+  <h2 class="caps section-label">Transfer from Bank A to Bank B</h2>
+  <form class="transfer-form" method="post" action="/transfers">
+    <label class="fact">Amount in credits
+      <input class="field" name="amount" value="{{.Amount}}" inputmode="numeric" autocomplete="off">
+    </label>
+    <button class="btn btn-primary">Transfer</button>
+  </form>
   {{with .Error}}<p class="error" id="amount-error">{{.}}</p>{{end}}
-</form>
+</section>
 
 {{with .Transfers}}
-<h2>Transfers</h2>
-<ul>
-  {{range .}}<li><a href="/transfers/{{.ID}}">{{.Amount}} credits</a>: {{.Status.Label}}</li>
-  {{end}}
-</ul>
+<section class="section">
+  <h2 class="caps section-label">Transfers</h2>
+  <ul class="rows">
+    {{range .}}<li><a href="/transfers/{{.ID}}"><span>{{.Amount}} credits</span><span class="dim">{{.Status.Label}}</span></a></li>
+    {{end}}
+  </ul>
+</section>
 {{end}}
-</body>
-</html>
-{{end}}
+{{template "foot"}}{{end}}
 
 {{define "transfer"}}{{template "head"}}<title>Transfer {{.Transfer.ID}} · Saga Lab</title>
 {{if .Transfer.Status.Pending}}<meta http-equiv="refresh" content="1">{{end}}
-{{template "style"}}
+{{template "top"}}
 {{template "balances" .Balances}}
 
 {{with .Transfer}}
-<h2>Transfer of {{.Amount}} credits</h2>
-<dl>
-  <dt>Transfer ID</dt>
-  <dd><code><data id="transfer-id" value="{{.ID}}">{{.ID}}</data></code></dd>
-  <dt>Status</dt>
-  <dd><data id="transfer-status" value="{{.Status}}">{{.Status.Label}}</data></dd>
-</dl>
+<section class="section">
+  <h2 class="title">Transfer of {{.Amount}} credits</h2>
+  <dl class="facts">
+    <div>
+      <dt>Transfer ID</dt>
+      <dd><code><data id="transfer-id" value="{{.ID}}">{{.ID}}</data></code></dd>
+    </div>
+    <div>
+      <dt>Status</dt>
+      <dd><data id="transfer-status" value="{{.Status}}">{{.Status.Label}}</data></dd>
+    </div>
+  </dl>
+</section>
 
-<h3>History</h3>
-<table>
-  <thead><tr><th>Step</th><th>Reported by</th><th>Observed (UTC)</th><th>Recorded (UTC)</th></tr></thead>
-  <tbody>
-  {{range .History}}<tr data-step="{{.Step}}">
-    <td>{{.Step.Label}}</td>
-    <td>{{.Service}}</td>
-    <td>{{template "time" .ObservedAt}}</td>
-    <td>{{template "time" .RecordedAt}}</td>
-  </tr>
-  {{end}}</tbody>
-</table>
-<p>Observed is when the reporting service saw the step happen; recorded is when the Transfer Service stored it.</p>
+<section class="section">
+  <h3 class="caps section-label">History</h3>
+  <table class="table">
+    <thead><tr><th class="caps">Step</th><th class="caps">Reported by</th><th class="caps">Observed (UTC)</th><th class="caps">Recorded (UTC)</th></tr></thead>
+    <tbody>
+    {{range .History}}<tr data-step="{{.Step}}">
+      <td>{{.Step.Label}}</td>
+      <td>{{.Service}}</td>
+      <td>{{template "time" .ObservedAt}}</td>
+      <td>{{template "time" .RecordedAt}}</td>
+    </tr>
+    {{end}}</tbody>
+  </table>
+  <p class="note">Observed is when the reporting service saw the step happen; recorded is when the Transfer Service stored it.</p>
+</section>
 {{end}}
 
-<p><a href="/">New transfer</a></p>
-</body>
-</html>
-{{end}}
+<a class="quiet-link" href="/">New transfer →</a>
+{{template "foot"}}{{end}}

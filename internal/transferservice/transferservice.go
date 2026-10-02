@@ -3,7 +3,7 @@ package transferservice
 import (
 	"bytes"
 	"context"
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +27,9 @@ var schema string
 
 //go:embed pages.html
 var pagesTemplate string
+
+//go:embed static
+var static embed.FS
 
 var pages = template.Must(template.New("pages").Parse(pagesTemplate))
 
@@ -98,7 +101,18 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /api/transfers", s.postTransfer)
 	mux.HandleFunc("GET /api/transfers/{transferID}", s.getTransfer)
 	mux.Handle("GET /readyz", web.Readiness(s.ready))
+	mux.Handle("GET /static/", staticFiles())
 	return mux
+}
+
+func staticFiles() http.Handler {
+	files := http.FileServerFS(static)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/static/fonts/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		files.ServeHTTP(w, r)
+	})
 }
 
 func (s *Service) ready(ctx context.Context) error {
