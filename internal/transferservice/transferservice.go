@@ -20,6 +20,7 @@ import (
 	"github.com/dvinubius/saga-lab/internal/postgres"
 	"github.com/dvinubius/saga-lab/internal/visitor"
 	"github.com/dvinubius/saga-lab/internal/web"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 )
@@ -65,6 +66,26 @@ func Run(ctx context.Context) error {
 	g.Go(func() error { return broker.Run(ctx) })
 	g.Go(func() error { return web.Serve(ctx, ":8080", s.Handler(), web.Public) })
 	return g.Wait()
+}
+
+func Reset(ctx context.Context) error {
+	if err := messaging.Purge(os.Getenv("AMQP_URL"), messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.FundsCreditedTopic); err != nil {
+		return err
+	}
+	db, err := postgres.Connect(ctx, os.Getenv("DATABASE_URL"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	return pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS transfer_history, transfers`); err != nil {
+			return fmt.Errorf("drop transfers: %w", err)
+		}
+		if _, err := tx.Exec(ctx, schema); err != nil {
+			return fmt.Errorf("apply schema: %w", err)
+		}
+		return nil
+	})
 }
 
 type Service struct {

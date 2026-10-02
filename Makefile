@@ -1,4 +1,4 @@
-.PHONY: up down logs test
+.PHONY: up down logs reset test
 
 up:
 	docker compose up --detach --build --wait
@@ -8,6 +8,10 @@ down:
 
 logs:
 	docker compose logs --follow
+
+reset:
+	docker compose build transfer-service bank-a bank-b
+	scripts/reset.sh
 
 test:
 	scripts/test.sh

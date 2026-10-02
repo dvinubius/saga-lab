@@ -16,6 +16,7 @@ import (
 	"github.com/dvinubius/saga-lab/internal/visitor"
 	"github.com/dvinubius/saga-lab/internal/web"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 )
@@ -65,16 +66,48 @@ func Run(ctx context.Context, config Config) error {
 }
 
 func Open(ctx context.Context, db *pgxpool.Pool, config Config) (*Bank, error) {
+	if err := provision(ctx, db, config); err != nil {
+		return nil, err
+	}
+	return &Bank{db: db, role: config.Role}, nil
+}
+
+func Reset(ctx context.Context, config Config) error {
+	commandTopic := messaging.DebitFundsTopic
+	if config.Role == Destination {
+		commandTopic = messaging.CreditFundsTopic
+	}
+	if err := messaging.Purge(os.Getenv("AMQP_URL"), commandTopic); err != nil {
+		return err
+	}
+	db, err := postgres.Connect(ctx, os.Getenv("DATABASE_URL"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	return pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS accounts`); err != nil {
+			return fmt.Errorf("drop accounts: %w", err)
+		}
+		return provision(ctx, tx, config)
+	})
+}
+
+type execer interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+func provision(ctx context.Context, db execer, config Config) error {
 	if _, err := db.Exec(ctx, schema); err != nil {
-		return nil, fmt.Errorf("apply schema: %w", err)
+		return fmt.Errorf("apply schema: %w", err)
 	}
 	if _, err := db.Exec(ctx,
 		`INSERT INTO accounts (visitor_id, balance) VALUES ($1, $2) ON CONFLICT (visitor_id) DO NOTHING`,
 		visitor.PreparedID, config.PreparedBalance,
 	); err != nil {
-		return nil, fmt.Errorf("provision prepared account: %w", err)
+		return fmt.Errorf("provision prepared account: %w", err)
 	}
-	return &Bank{db: db, role: config.Role}, nil
+	return nil
 }
 
 func (b *Bank) Handler() http.Handler {
