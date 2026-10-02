@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -35,14 +36,15 @@ var static embed.FS
 var pages = template.Must(template.New("pages").Parse(pagesTemplate))
 
 type Config struct {
-	BankAURL string
-	BankBURL string
+	BankAURL   string
+	BankBURL   string
+	GrafanaURL string
 }
 
 func Run(ctx context.Context) error {
-	config := Config{BankAURL: os.Getenv("BANK_A_URL"), BankBURL: os.Getenv("BANK_B_URL")}
-	if config.BankAURL == "" || config.BankBURL == "" {
-		return errors.New("BANK_A_URL and BANK_B_URL must be configured")
+	config := Config{BankAURL: os.Getenv("BANK_A_URL"), BankBURL: os.Getenv("BANK_B_URL"), GrafanaURL: os.Getenv("GRAFANA_URL")}
+	if config.BankAURL == "" || config.BankBURL == "" || config.GrafanaURL == "" {
+		return errors.New("BANK_A_URL, BANK_B_URL and GRAFANA_URL must be configured")
 	}
 	db, err := postgres.Connect(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {
@@ -66,10 +68,11 @@ func Run(ctx context.Context) error {
 }
 
 type Service struct {
-	db     *pgxpool.Pool
-	broker *messaging.Broker
-	bankA  bankClient
-	bankB  bankClient
+	db         *pgxpool.Pool
+	broker     *messaging.Broker
+	bankA      bankClient
+	bankB      bankClient
+	grafanaURL string
 }
 
 func Open(ctx context.Context, db *pgxpool.Pool, broker *messaging.Broker, config Config) (*Service, error) {
@@ -77,10 +80,11 @@ func Open(ctx context.Context, db *pgxpool.Pool, broker *messaging.Broker, confi
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
 	s := &Service{
-		db:     db,
-		broker: broker,
-		bankA:  newBankClient("Bank A", config.BankAURL),
-		bankB:  newBankClient("Bank B", config.BankBURL),
+		db:         db,
+		broker:     broker,
+		bankA:      newBankClient("Bank A", config.BankAURL),
+		bankB:      newBankClient("Bank B", config.BankBURL),
+		grafanaURL: strings.TrimSuffix(config.GrafanaURL, "/"),
 	}
 	broker.Router.AddHandler("funds-debited",
 		messaging.FundsDebitedTopic, broker.Subscriber,
@@ -224,6 +228,7 @@ type homePage struct {
 type transferPage struct {
 	Balances balances
 	Transfer transfer
+	TraceURL string
 }
 
 func (s *Service) getHome(w http.ResponseWriter, r *http.Request) {
@@ -285,7 +290,28 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Balances are temporarily unavailable.", http.StatusBadGateway)
 		return
 	}
-	render(w, http.StatusOK, "transfer", transferPage{Balances: b, Transfer: t})
+	page := transferPage{Balances: b, Transfer: t}
+	if t.TraceID != "" {
+		page.TraceURL = s.traceURL(t.TraceID)
+	}
+	render(w, http.StatusOK, "transfer", page)
+}
+
+func (s *Service) traceURL(traceID string) string {
+	panes, _ := json.Marshal(map[string]any{
+		"trace": map[string]any{
+			"datasource": "tempo",
+			"queries": []map[string]any{{
+				"refId":      "A",
+				"datasource": map[string]string{"type": "tempo", "uid": "tempo"},
+				"queryType":  "traceql",
+				"query":      traceID,
+			}},
+			"range": map[string]string{"from": "now-1h", "to": "now"},
+		},
+	})
+	query := url.Values{"schemaVersion": {"1"}, "orgId": {"1"}, "panes": {string(panes)}}
+	return s.grafanaURL + "/explore?" + query.Encode()
 }
 
 func render(w http.ResponseWriter, status int, name string, data any) {

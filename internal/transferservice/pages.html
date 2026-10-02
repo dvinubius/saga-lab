@@ -117,7 +117,14 @@
       <dd><code><data id="trace-id" value="{{.}}">{{.}}</data></code></dd>
     </div>{{end}}
   </dl>
-  {{if .TraceID}}<p class="note">Inspect the trace in Grafana: open Explore, choose Tempo, and run this trace ID as a TraceQL query.</p>{{end}}
+</section>
+
+<section class="section in-depth">
+  <h3 class="caps section-label">In depth</h3>
+  <p class="links">
+    <a class="quiet-link" id="transfer-json" href="/api/transfers/{{.ID}}">View as JSON →</a>
+    {{with $.TraceURL}}<a class="quiet-link" id="trace-link" href="{{.}}">Explore the trace in Grafana →</a>{{end}}
+  </p>
 </section>
 
 <section class="section">

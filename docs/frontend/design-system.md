@@ -80,7 +80,8 @@ invent them.
 text, never the sole carrier of a UI state. Several accent elements may share
 a view as long as none competes for the eye. Here the accent is spent on the
 **Transfer** button, the rule under a quiet link (**New transfer →**,
-**Follow pending transfer →**, **→ dinubarbu.com**) and the brackets of the
+**Follow pending transfer →**, the links in a transfer's In depth section,
+**→ dinubarbu.com**) and the brackets of the
 footer wordmark. A state that
 uses it always carries a text label too.
 
@@ -95,7 +96,11 @@ section labels are set in caps by CSS — see adaptation 10.
 inner or outer. No gradients, textures or background imagery. Separation is
 1px hairlines (`#E6E6E6` light / `#2C2C2C` dark, non-text only) and flat
 neutral fills. Cards are a neutral fill (`--surface-card`) with no border and
-no shadow — the two balance cards are the only ones so far.
+no shadow — the two balance cards, and a transfer's In depth section, which
+holds the links that leave the page for raw evidence (**View as JSON →**,
+**Explore the trace in Grafana →**). A section on a card keeps its own label
+and gap and takes the card's 16px × 18px padding. Links that sit together share
+one row (`.links`), 28px apart.
 
 **Code and terminal surfaces** follow the theme — hooklook's departure from
 the brand, which keeps them dark in both. On dark pages code sits on Panel
@@ -261,7 +266,7 @@ the GitHub mark in the footer, drawn inline in the template in
     | --- | --- | --- |
     | `.caps` | mono, 500, 0.12em, uppercase, body | section labels, card labels, table column headings; no size |
     | `.fact` | mono, `--text-mono-meta`, dim | a control label, a unit beside a figure |
-    | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's intro, the History explanation, the trace hint |
+    | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's intro, the History explanation |
     | `.dim` | dim, nothing else | a value inside a row that is already mono |
     | `.sr-only` | visually hidden | text for screen readers only |
 

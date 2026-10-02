@@ -123,6 +123,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGA_LAB_OTLP_ENDPOINT-http://otel-collector:4318}
       BANK_A_URL: http://bank-a:8080
       BANK_B_URL: http://bank-b:8080
+      GRAFANA_URL: ${SAGA_LAB_GRAFANA_URL-http://localhost:3000}
     ports:
       - "127.0.0.1:${TRANSFER_SERVICE_PORT-8080}:8080"
     depends_on:
