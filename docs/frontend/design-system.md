@@ -31,6 +31,7 @@ embedded into the Transfer Service binary and served under `/static/`:
 | `brand.css` | The brand's color, type, radius and transition tokens, vendored from upstream `tokens/`, apart from the theme-default adaptation (adaptation 1). |
 | `app.css` | Values this app needs and the brand does not have, the shared text roles, and every component style. |
 | `theme.js` | The theme switch. |
+| `fresh.js` | Reloads a page the browser restores from its back/forward cache. |
 | `fonts/` | The four subset `.woff2` files built by the design system's `build-webfonts.py`, with the two OFL licences. |
 
 The raw brand *values* in `brand.css` stay in step with upstream — Ink, Paper,
@@ -38,6 +39,11 @@ Ember and the typefaces are the brand itself. Values this app adds live in
 `app.css`, where they are visibly this app's own: `--text-dim`, the data
 colors, `--danger`, the code ramp, `--surface-float`, `--float-hairline`,
 `--shade-hairline`, `--surface-shade-2`, and the layout sizes.
+
+Pages show live balances and statuses, so they are never stale: they are
+served `no-store`, and `fresh.js` reloads one the browser restores from its
+back/forward cache. Going back from a transfer to the home page shows the
+current balances and Transfers list; the amount field is not restored.
 
 Fonts are served with a year-long immutable cache; CSS and JS are not cached.
 A pending transfer page reloads itself once a second, and fonts fetched again
