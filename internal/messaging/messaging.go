@@ -27,16 +27,20 @@ const (
 	transferIDKey  = "transfer_id"
 )
 
-type DebitFunds struct {
+type AccountOperation struct {
 	TransferID string `json:"transfer_id"`
 	VisitorID  string `json:"visitor_id"`
 	Amount     int64  `json:"amount"`
 }
 
-type FundsDebited struct {
+type OperationCommitted struct {
 	TransferID string    `json:"transfer_id"`
 	ObservedAt time.Time `json:"observed_at"`
 }
+
+type DebitFunds AccountOperation
+
+type FundsDebited OperationCommitted
 
 type DebitRejected struct {
 	TransferID string    `json:"transfer_id"`
@@ -44,16 +48,9 @@ type DebitRejected struct {
 	ObservedAt time.Time `json:"observed_at"`
 }
 
-type CreditFunds struct {
-	TransferID string `json:"transfer_id"`
-	VisitorID  string `json:"visitor_id"`
-	Amount     int64  `json:"amount"`
-}
+type CreditFunds AccountOperation
 
-type FundsCredited struct {
-	TransferID string    `json:"transfer_id"`
-	ObservedAt time.Time `json:"observed_at"`
-}
+type FundsCredited OperationCommitted
 
 func New(ctx context.Context, transferID string, payload any, causationID string) (*message.Message, error) {
 	body, err := json.Marshal(payload)

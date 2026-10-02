@@ -24,11 +24,15 @@ import (
 //go:embed schema.sql
 var schema string
 
-type Role int
+type Role struct {
+	commandTopic  string
+	outcomeTopics []string
+	execute       func(*Bank, *message.Message) error
+}
 
-const (
-	Source Role = iota
-	Destination
+var (
+	Source      = Role{messaging.DebitFundsTopic, []string{messaging.FundsDebitedTopic, messaging.DebitRejectedTopic}, (*Bank).debitFunds}
+	Destination = Role{messaging.CreditFundsTopic, []string{messaging.FundsCreditedTopic}, (*Bank).creditFunds}
 )
 
 type Config struct {
@@ -52,7 +56,7 @@ func Run(ctx context.Context, config Config) error {
 	if err != nil {
 		return err
 	}
-	broker, err := messaging.Connect(os.Getenv("AMQP_URL"), b.outcomeTopics()...)
+	broker, err := messaging.Connect(os.Getenv("AMQP_URL"), config.Role.outcomeTopics...)
 	if err != nil {
 		return err
 	}
@@ -73,11 +77,7 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config) (*Bank, error) {
 }
 
 func Reset(ctx context.Context, config Config) error {
-	commandTopic := messaging.DebitFundsTopic
-	if config.Role == Destination {
-		commandTopic = messaging.CreditFundsTopic
-	}
-	if err := messaging.Purge(os.Getenv("AMQP_URL"), commandTopic); err != nil {
+	if err := messaging.Purge(os.Getenv("AMQP_URL"), config.Role.commandTopic); err != nil {
 		return err
 	}
 	db, err := postgres.Connect(ctx, os.Getenv("DATABASE_URL"))
@@ -126,21 +126,11 @@ func (b *Bank) ready(ctx context.Context) error {
 	return b.db.Ping(ctx)
 }
 
-func (b *Bank) outcomeTopics() []string {
-	if b.role == Source {
-		return []string{messaging.FundsDebitedTopic, messaging.DebitRejectedTopic}
-	}
-	return []string{messaging.FundsCreditedTopic}
-}
-
 func (b *Bank) executeCommands(broker *messaging.Broker) {
 	b.broker = broker
-	switch b.role {
-	case Source:
-		broker.Router.AddConsumerHandler("debit-funds", messaging.DebitFundsTopic, broker.Subscriber, b.debitFunds)
-	case Destination:
-		broker.Router.AddConsumerHandler("credit-funds", messaging.CreditFundsTopic, broker.Subscriber, b.creditFunds)
-	}
+	broker.Router.AddConsumerHandler(b.role.commandTopic, b.role.commandTopic, broker.Subscriber, func(msg *message.Message) error {
+		return b.role.execute(b, msg)
+	})
 }
 
 func (b *Bank) debitFunds(msg *message.Message) error {

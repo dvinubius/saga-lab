@@ -10,7 +10,7 @@
 
 [data-theme="light"]{
   --text-dim:#3D3D3D;
-  --danger:#A03028;--danger-text-on:var(--paper);
+  --danger:#A03028;
   --teal:#087581;--violet:#6B5D91;
   --code-bg:var(--shade-on-light);--code-edge:transparent;
   --code-emphasis:var(--ink);--code-body:var(--text-dim);--code-recede:var(--stone);
@@ -19,7 +19,7 @@
 }
 [data-theme="dark"]{
   --text-dim:var(--muted-strong);
-  --danger:#E0756A;--danger-text-on:var(--ink);
+  --danger:#E0756A;
   --teal:#5BC8D0;--violet:#AFA3CF;
   --code-bg:var(--panel);--code-edge:var(--hairline-on-dark);
   --code-emphasis:var(--paper);--code-body:var(--text-dim);--code-recede:var(--muted-on-dark);

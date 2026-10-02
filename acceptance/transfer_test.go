@@ -20,7 +20,7 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 		t.Errorf("amount = %d, want 25", completed.Amount)
 	}
 	assertSteps(t, completed.History, "requested", "debit_committed", "credit_committed", "finished")
-	assertServices(t, completed.History, "transfer-service", "bank-a", "bank-b", "transfer-service")
+	assertServices(t, completed.History, "Transfer Service", "Bank A", "Bank B", "Transfer Service")
 
 	requested, debit, credit, done := completed.History[0], completed.History[1], completed.History[2], completed.History[3]
 	messageIDs := map[string]string{
