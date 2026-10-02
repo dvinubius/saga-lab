@@ -185,7 +185,7 @@ The application's own outcome summary should remain understandable without openi
 
 ## 9. Public deployment and milestones
 
-The public Grafana experience should be **effectively read-only**. Telemetry must not expose cookies, authorization headers, access tokens, secrets, raw visitor IPs, arbitrary personally identifying input, or database connection strings. Prefer generated/demo identities and fictional data. Keep dashboard provisioning, collector, Prometheus, Tempo, and Loki configuration in source control so deployments are reproducible.
+The public Grafana experience should be **effectively read-only**. Read-only must still allow Explore: anonymous visitors get the Viewer role, which cannot use Explore by default, and the transfer page links each trace into Explore — so the public deployment must explicitly grant Explore to Viewers. Telemetry must not expose cookies, authorization headers, access tokens, secrets, raw visitor IPs, arbitrary personally identifying input, or database connection strings. Prefer generated/demo identities and fictional data. Keep dashboard provisioning, collector, Prometheus, Tempo, and Loki configuration in source control so deployments are reproducible.
 
 Introduce trace IDs, service metadata, HTTP/database spans, producer/consumer spans, and message-context propagation **early**, before adding complex failure handling. Add structured logs, reliability counters, and durable execution evidence with each scenario. After inbox/outbox and the five scenarios work, finish the RabbitMQ views, compact Grafana dashboards, and direct transfer-specific investigation links.
 

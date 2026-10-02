@@ -186,6 +186,12 @@ button,.btn,a{transition:var(--hover-transition);}
   border-radius:var(--radius-surface);
 }
 .account dt{font-size:var(--text-mono-meta);}
+.in-depth{
+  padding:16px 18px;
+  background:var(--surface-card);
+  border-radius:var(--radius-surface);
+}
+.links{display:flex;gap:28px;}
 .account dd{display:flex;align-items:baseline;gap:10px;}
 .figure{
   font-size:var(--text-heading);
