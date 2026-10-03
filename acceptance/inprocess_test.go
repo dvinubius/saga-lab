@@ -28,6 +28,11 @@ const (
 	stopDeadline          = 10 * time.Second
 )
 
+var (
+	bankAConfig = bank.Config{PreparedBalance: 100, Role: bank.Source}
+	bankBConfig = bank.Config{PreparedBalance: 0, Role: bank.Destination}
+)
+
 type inProcessDemonstration struct {
 	demonstration
 	bankA, bankB, transferService *inProcessService
@@ -35,6 +40,7 @@ type inProcessDemonstration struct {
 
 type inProcessService struct {
 	name     string
+	address  string
 	run      func(context.Context, service.Settings) error
 	settings service.Settings
 	cancel   context.CancelFunc
@@ -61,7 +67,7 @@ func startDemonstration(t *testing.T) *inProcessDemonstration {
 		if err != nil {
 			t.Fatalf("listen for %s: %v", name, err)
 		}
-		return &inProcessService{name: name, run: run, settings: service.Settings{
+		return &inProcessService{name: name, address: listener.Addr().String(), run: run, settings: service.Settings{
 			DatabaseURL: databaseURL,
 			AMQPURL:     amqpURL,
 			Listener:    listener,
@@ -70,10 +76,10 @@ func startDemonstration(t *testing.T) *inProcessDemonstration {
 	}
 
 	bankA := newService("bank-a", "bank_a", func(ctx context.Context, settings service.Settings) error {
-		return bank.Run(ctx, settings, bank.Config{PreparedBalance: 100, Role: bank.Source})
+		return bank.Run(ctx, settings, bankAConfig)
 	})
 	bankB := newService("bank-b", "bank_b", func(ctx context.Context, settings service.Settings) error {
-		return bank.Run(ctx, settings, bank.Config{PreparedBalance: 0, Role: bank.Destination})
+		return bank.Run(ctx, settings, bankBConfig)
 	})
 	config := transferservice.Config{BankAURL: bankA.url(), BankBURL: bankB.url(), GrafanaURL: "http://localhost:3000"}
 	transferService := newService("transfer-service", "transfer_service", func(ctx context.Context, settings service.Settings) error {
@@ -87,29 +93,69 @@ func startDemonstration(t *testing.T) *inProcessDemonstration {
 	}
 
 	t.Cleanup(func() {
-		var stopping sync.WaitGroup
-		for _, s := range []*inProcessService{transferService, bankB, bankA} {
-			stopping.Go(func() { s.stop(t) })
-		}
-		stopping.Wait()
+		d.stop(t)
 		if t.Failed() {
 			t.Logf("demonstration %s logs:\n%s", id, logs)
 		}
 	})
-	bankA.start()
-	bankB.start()
-	d.awaitReady(t, bankA)
-	d.awaitReady(t, bankB)
-	transferService.start()
-	d.awaitReady(t, transferService)
+	d.start(t)
 	return d
 }
 
-func (s *inProcessService) url() string {
-	return "http://" + s.settings.Listener.Addr().String()
+func (d *inProcessDemonstration) start(t *testing.T) {
+	t.Helper()
+	d.bankA.start(t)
+	d.bankB.start(t)
+	d.awaitReady(t, d.bankA)
+	d.awaitReady(t, d.bankB)
+	d.transferService.start(t)
+	d.awaitReady(t, d.transferService)
 }
 
-func (s *inProcessService) start() {
+func (d *inProcessDemonstration) stop(t *testing.T) {
+	t.Helper()
+	var stopping sync.WaitGroup
+	for _, s := range []*inProcessService{d.transferService, d.bankB, d.bankA} {
+		stopping.Go(func() { s.stop(t) })
+	}
+	stopping.Wait()
+}
+
+func (d *inProcessDemonstration) restart(t *testing.T) {
+	t.Helper()
+	d.stop(t)
+	d.start(t)
+}
+
+func (d *inProcessDemonstration) reset(t *testing.T) {
+	t.Helper()
+	d.stop(t)
+	ctx := context.Background()
+	if err := transferservice.Reset(ctx, d.transferService.settings); err != nil {
+		t.Fatalf("reset transfer-service: %v", err)
+	}
+	if err := bank.Reset(ctx, d.bankA.settings, bankAConfig); err != nil {
+		t.Fatalf("reset bank-a: %v", err)
+	}
+	if err := bank.Reset(ctx, d.bankB.settings, bankBConfig); err != nil {
+		t.Fatalf("reset bank-b: %v", err)
+	}
+	d.start(t)
+}
+
+func (s *inProcessService) url() string {
+	return "http://" + s.address
+}
+
+func (s *inProcessService) start(t *testing.T) {
+	t.Helper()
+	if s.settings.Listener == nil {
+		listener, err := net.Listen("tcp", s.address)
+		if err != nil {
+			t.Fatalf("listen for %s: %v", s.name, err)
+		}
+		s.settings.Listener = listener
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.done = make(chan struct{})
@@ -137,6 +183,8 @@ func (s *inProcessService) stop(t *testing.T) {
 		t.Errorf("%s did not stop within %v", s.name, stopDeadline)
 		return
 	}
+	s.done = nil
+	s.settings.Listener = nil
 	if s.err != nil {
 		t.Errorf("%s stopped with an error: %v", s.name, s.err)
 	}
