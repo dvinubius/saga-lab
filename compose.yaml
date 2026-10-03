@@ -3,6 +3,8 @@ x-app-healthcheck: &app-healthcheck
   interval: 2s
   timeout: 2s
   retries: 30
+  start_period: 60s
+  start_interval: 250ms
 
 services:
   postgres:
@@ -20,6 +22,8 @@ services:
       interval: 2s
       timeout: 2s
       retries: 30
+      start_period: 60s
+      start_interval: 250ms
 
   rabbitmq:
     image: rabbitmq:4.3.5-management-alpine@sha256:b3b8b7f95f5382a19f9ea33540e604f30aad081d37ad9aba72255135765373a1
@@ -38,6 +42,8 @@ services:
       interval: 2s
       timeout: 2s
       retries: 60
+      start_period: 60s
+      start_interval: 250ms
 
   otel-collector:
     image: otel/opentelemetry-collector:0.160.0@sha256:e495787f07dbe432ce763ebaf5bc3d113850e9eee2250ade7a3da6a882d0d69a
@@ -79,6 +85,7 @@ services:
       DATABASE_URL: postgres://bank_a:bank_a@postgres:5432/bank_a?sslmode=disable
       AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
       OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGA_LAB_OTLP_ENDPOINT-http://otel-collector:4318}
+      OTEL_BSP_SCHEDULE_DELAY: "500"
     ports:
       - "127.0.0.1:${BANK_A_PORT-8081}:8080"
     depends_on:
@@ -97,6 +104,7 @@ services:
       DATABASE_URL: postgres://bank_b:bank_b@postgres:5432/bank_b?sslmode=disable
       AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
       OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGA_LAB_OTLP_ENDPOINT-http://otel-collector:4318}
+      OTEL_BSP_SCHEDULE_DELAY: "500"
     ports:
       - "127.0.0.1:${BANK_B_PORT-8082}:8080"
     depends_on:
@@ -115,6 +123,7 @@ services:
       DATABASE_URL: postgres://transfer_service:transfer_service@postgres:5432/transfer_service?sslmode=disable
       AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
       OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGA_LAB_OTLP_ENDPOINT-http://otel-collector:4318}
+      OTEL_BSP_SCHEDULE_DELAY: "500"
       BANK_A_URL: http://bank-a:8080
       BANK_B_URL: http://bank-b:8080
       GRAFANA_URL: ${SAGA_LAB_GRAFANA_URL-http://localhost:3000}
