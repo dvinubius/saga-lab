@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -67,12 +68,18 @@ func startDemonstration(t *testing.T) *inProcessDemonstration {
 		if err != nil {
 			t.Fatalf("listen for %s: %v", name, err)
 		}
-		return &inProcessService{name: name, address: listener.Addr().String(), run: run, settings: service.Settings{
+		s := &inProcessService{name: name, address: listener.Addr().String(), run: run, settings: service.Settings{
 			DatabaseURL: databaseURL,
 			AMQPURL:     amqpURL,
 			Listener:    listener,
 			Logger:      logger.With("service", name),
 		}}
+		t.Cleanup(func() {
+			if s.settings.Listener != nil {
+				s.settings.Listener.Close()
+			}
+		})
+		return s
 	}
 
 	bankA := newService("bank-a", "bank_a", func(ctx context.Context, settings service.Settings) error {
@@ -112,24 +119,34 @@ func (d *inProcessDemonstration) start(t *testing.T) {
 	d.awaitReady(t, d.transferService)
 }
 
-func (d *inProcessDemonstration) stop(t *testing.T) {
+func (d *inProcessDemonstration) stop(t *testing.T) bool {
 	t.Helper()
 	var stopping sync.WaitGroup
+	var failed atomic.Bool
 	for _, s := range []*inProcessService{d.transferService, d.bankB, d.bankA} {
-		stopping.Go(func() { s.stop(t) })
+		stopping.Go(func() {
+			if !s.stop(t) {
+				failed.Store(true)
+			}
+		})
 	}
 	stopping.Wait()
+	return !failed.Load()
 }
 
 func (d *inProcessDemonstration) restart(t *testing.T) {
 	t.Helper()
-	d.stop(t)
+	if !d.stop(t) {
+		t.FailNow()
+	}
 	d.start(t)
 }
 
 func (d *inProcessDemonstration) reset(t *testing.T) {
 	t.Helper()
-	d.stop(t)
+	if !d.stop(t) {
+		t.FailNow()
+	}
 	ctx := context.Background()
 	if err := transferservice.Reset(ctx, d.transferService.settings); err != nil {
 		t.Fatalf("reset transfer-service: %v", err)
@@ -158,36 +175,40 @@ func (s *inProcessService) start(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
-	s.done = make(chan struct{})
+	done := make(chan struct{})
+	s.done = done
 	go func() {
 		s.err = s.run(ctx, s.settings)
-		close(s.done)
+		close(done)
 	}()
 }
 
-func (s *inProcessService) stop(t *testing.T) {
+func (s *inProcessService) stop(t *testing.T) bool {
 	t.Helper()
 	if s.done == nil {
-		return
+		return true
 	}
+	done := s.done
+	s.done = nil
+	s.settings.Listener = nil
 	select {
-	case <-s.done:
+	case <-done:
 		t.Errorf("%s stopped before the test ended: %v", s.name, s.err)
-		return
+		return false
 	default:
 	}
 	s.cancel()
 	select {
-	case <-s.done:
+	case <-done:
 	case <-time.After(stopDeadline):
 		t.Errorf("%s did not stop within %v", s.name, stopDeadline)
-		return
+		return false
 	}
-	s.done = nil
-	s.settings.Listener = nil
 	if s.err != nil {
 		t.Errorf("%s stopped with an error: %v", s.name, s.err)
+		return false
 	}
+	return true
 }
 
 func (d *inProcessDemonstration) awaitReady(t *testing.T, s *inProcessService) {
