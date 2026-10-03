@@ -12,12 +12,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"slices"
 	"strings"
 
 	"github.com/dvinubius/saga-lab/internal/messaging"
 	"github.com/dvinubius/saga-lab/internal/postgres"
+	"github.com/dvinubius/saga-lab/internal/service"
 	"github.com/dvinubius/saga-lab/internal/visitor"
 	"github.com/dvinubius/saga-lab/internal/web"
 	"github.com/jackc/pgx/v5"
@@ -42,37 +42,36 @@ type Config struct {
 	GrafanaURL string
 }
 
-func Run(ctx context.Context) error {
-	config := Config{BankAURL: os.Getenv("BANK_A_URL"), BankBURL: os.Getenv("BANK_B_URL"), GrafanaURL: os.Getenv("GRAFANA_URL")}
+func Run(ctx context.Context, settings service.Settings, config Config) error {
 	if config.BankAURL == "" || config.BankBURL == "" || config.GrafanaURL == "" {
-		return errors.New("BANK_A_URL, BANK_B_URL and GRAFANA_URL must be configured")
+		return errors.New("Bank A URL, Bank B URL and Grafana URL must be configured")
 	}
-	db, err := postgres.Connect(ctx, os.Getenv("DATABASE_URL"))
+	db, err := postgres.Connect(ctx, settings.DatabaseURL)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	broker, err := messaging.Connect(os.Getenv("AMQP_URL"), messaging.DebitFundsTopic, messaging.CreditFundsTopic)
+	broker, err := messaging.Connect(settings.AMQPURL, settings.Logger, messaging.DebitFundsTopic, messaging.CreditFundsTopic)
 	if err != nil {
 		return err
 	}
 	defer broker.Close()
-	s, err := Open(ctx, db, broker, config)
+	s, err := Open(ctx, db, broker, config, settings.Logger)
 	if err != nil {
 		return err
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return broker.Run(ctx) })
-	g.Go(func() error { return web.Serve(ctx, ":8080", s.Handler(), web.Public) })
+	g.Go(func() error { return web.Serve(ctx, settings.Listener, s.Handler(), web.Public, settings.Logger) })
 	return g.Wait()
 }
 
-func Reset(ctx context.Context) error {
-	if err := messaging.Purge(os.Getenv("AMQP_URL"), messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.FundsCreditedTopic); err != nil {
+func Reset(ctx context.Context, settings service.Settings) error {
+	if err := messaging.Purge(settings.AMQPURL, messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.FundsCreditedTopic); err != nil {
 		return err
 	}
-	db, err := postgres.Connect(ctx, os.Getenv("DATABASE_URL"))
+	db, err := postgres.Connect(ctx, settings.DatabaseURL)
 	if err != nil {
 		return err
 	}
@@ -94,9 +93,10 @@ type Service struct {
 	bankA      bankClient
 	bankB      bankClient
 	grafanaURL string
+	logger     *slog.Logger
 }
 
-func Open(ctx context.Context, db *pgxpool.Pool, broker *messaging.Broker, config Config) (*Service, error) {
+func Open(ctx context.Context, db *pgxpool.Pool, broker *messaging.Broker, config Config, logger *slog.Logger) (*Service, error) {
 	if _, err := db.Exec(ctx, schema); err != nil {
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
@@ -106,6 +106,7 @@ func Open(ctx context.Context, db *pgxpool.Pool, broker *messaging.Broker, confi
 		bankA:      newBankClient(bankAName, config.BankAURL),
 		bankB:      newBankClient(bankBName, config.BankBURL),
 		grafanaURL: strings.TrimSuffix(config.GrafanaURL, "/"),
+		logger:     logger,
 	}
 	broker.Router.AddHandler("funds-debited",
 		messaging.FundsDebitedTopic, broker.Subscriber,
@@ -129,7 +130,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/transfers", s.getTransfers)
 	mux.HandleFunc("POST /api/transfers", s.postTransfer)
 	mux.HandleFunc("GET /api/transfers/{transferID}", s.getTransfer)
-	mux.Handle("GET /readyz", web.Readiness(s.ready))
+	mux.Handle("GET /readyz", web.Readiness(s.logger, s.ready))
 	mux.Handle("GET /static/", staticFiles())
 	return mux
 }
@@ -175,21 +176,21 @@ func (s *Service) balances(ctx context.Context) (balances, error) {
 func (s *Service) getBalances(w http.ResponseWriter, r *http.Request) {
 	b, err := s.balances(r.Context())
 	if err != nil {
-		slog.Error("read balances", "error", err)
-		web.WriteError(w, http.StatusBadGateway, "balances unavailable")
+		s.logger.Error("read balances", "error", err)
+		web.WriteError(s.logger, w, http.StatusBadGateway, "balances unavailable")
 		return
 	}
-	web.WriteJSON(w, http.StatusOK, b)
+	web.WriteJSON(s.logger, w, http.StatusOK, b)
 }
 
 func (s *Service) getTransfers(w http.ResponseWriter, r *http.Request) {
 	transfers, err := s.list(r.Context())
 	if err != nil {
-		slog.Error("list transfers", "error", err)
-		web.WriteError(w, http.StatusInternalServerError, "transfers unavailable")
+		s.logger.Error("list transfers", "error", err)
+		web.WriteError(s.logger, w, http.StatusInternalServerError, "transfers unavailable")
 		return
 	}
-	web.WriteJSON(w, http.StatusOK, map[string][]transfer{"transfers": transfers})
+	web.WriteJSON(s.logger, w, http.StatusOK, map[string][]transfer{"transfers": transfers})
 }
 
 func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
@@ -198,43 +199,43 @@ func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 	if err := decoder.Decode(&request); err != nil || !errors.Is(decoder.Decode(new(json.RawMessage)), io.EOF) {
-		web.WriteError(w, http.StatusBadRequest, "request body must be a JSON object with an amount")
+		web.WriteError(s.logger, w, http.StatusBadRequest, "request body must be a JSON object with an amount")
 		return
 	}
 	amount, err := parseAmount(string(request.Amount))
 	if err != nil {
-		web.WriteError(w, http.StatusBadRequest, err.Error())
+		web.WriteError(s.logger, w, http.StatusBadRequest, err.Error())
 		return
 	}
 	t, err := s.submit(r.Context(), amount)
 	if pending, ok := errors.AsType[pendingTransferError](err); ok {
-		web.WriteJSON(w, http.StatusConflict, map[string]string{
+		web.WriteJSON(s.logger, w, http.StatusConflict, map[string]string{
 			"error":               "another transfer is still pending; submit again once it has finished",
 			"pending_transfer_id": pending.PendingID,
 		})
 		return
 	}
 	if err != nil {
-		slog.Error("submit transfer", "error", err)
-		web.WriteError(w, http.StatusInternalServerError, "transfer could not be started")
+		s.logger.Error("submit transfer", "error", err)
+		web.WriteError(s.logger, w, http.StatusInternalServerError, "transfer could not be started")
 		return
 	}
 	w.Header().Set("Location", "/api/transfers/"+t.ID)
-	web.WriteJSON(w, http.StatusAccepted, t)
+	web.WriteJSON(s.logger, w, http.StatusAccepted, t)
 }
 
 func (s *Service) getTransfer(w http.ResponseWriter, r *http.Request) {
 	t, err := s.find(r.Context(), r.PathValue("transferID"))
 	if errors.Is(err, errTransferNotFound) {
-		web.WriteError(w, http.StatusNotFound, "transfer not found")
+		web.WriteError(s.logger, w, http.StatusNotFound, "transfer not found")
 		return
 	}
 	if err != nil {
-		slog.Error("read transfer", "error", err)
-		web.WriteError(w, http.StatusInternalServerError, "transfer unavailable")
+		s.logger.Error("read transfer", "error", err)
+		web.WriteError(s.logger, w, http.StatusInternalServerError, "transfer unavailable")
 		return
 	}
-	web.WriteJSON(w, http.StatusOK, t)
+	web.WriteJSON(s.logger, w, http.StatusOK, t)
 }
 
 type homePage struct {
@@ -259,19 +260,19 @@ func (s *Service) getHome(w http.ResponseWriter, r *http.Request) {
 func (s *Service) renderHome(w http.ResponseWriter, r *http.Request, status int, page homePage) {
 	var err error
 	if page.Balances, err = s.balances(r.Context()); err != nil {
-		slog.Error("read balances", "error", err)
+		s.logger.Error("read balances", "error", err)
 		http.Error(w, "Balances are temporarily unavailable.", http.StatusBadGateway)
 		return
 	}
 	if page.Transfers, err = s.list(r.Context()); err != nil {
-		slog.Error("list transfers", "error", err)
+		s.logger.Error("list transfers", "error", err)
 		http.Error(w, "Transfers are temporarily unavailable.", http.StatusInternalServerError)
 		return
 	}
 	if i := slices.IndexFunc(page.Transfers, func(t transfer) bool { return t.Status.Pending() }); i >= 0 && page.PendingID == "" {
 		page.PendingID = page.Transfers[i].ID
 	}
-	render(w, status, "home", page)
+	s.render(w, status, "home", page)
 }
 
 func (s *Service) postTransferForm(w http.ResponseWriter, r *http.Request) {
@@ -287,7 +288,7 @@ func (s *Service) postTransferForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		slog.Error("submit transfer", "error", err)
+		s.logger.Error("submit transfer", "error", err)
 		http.Error(w, "The transfer could not be started.", http.StatusInternalServerError)
 		return
 	}
@@ -301,13 +302,13 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		slog.Error("read transfer", "error", err)
+		s.logger.Error("read transfer", "error", err)
 		http.Error(w, "The transfer is temporarily unavailable.", http.StatusInternalServerError)
 		return
 	}
 	b, err := s.balances(r.Context())
 	if err != nil {
-		slog.Error("read balances", "error", err)
+		s.logger.Error("read balances", "error", err)
 		http.Error(w, "Balances are temporarily unavailable.", http.StatusBadGateway)
 		return
 	}
@@ -315,7 +316,7 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 	if t.TraceID != "" {
 		page.TraceURL = s.traceURL(t.TraceID)
 	}
-	render(w, http.StatusOK, "transfer", page)
+	s.render(w, http.StatusOK, "transfer", page)
 }
 
 func (s *Service) traceURL(traceID string) string {
@@ -335,10 +336,10 @@ func (s *Service) traceURL(traceID string) string {
 	return s.grafanaURL + "/explore?" + query.Encode()
 }
 
-func render(w http.ResponseWriter, status int, name string, data any) {
+func (s *Service) render(w http.ResponseWriter, status int, name string, data any) {
 	var body bytes.Buffer
 	if err := pages.ExecuteTemplate(&body, name, data); err != nil {
-		slog.Error("render page", "page", name, "error", err)
+		s.logger.Error("render page", "page", name, "error", err)
 		http.Error(w, "The page could not be rendered.", http.StatusInternalServerError)
 		return
 	}

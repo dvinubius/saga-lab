@@ -3,6 +3,7 @@ package bank_test
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -45,7 +46,7 @@ func TestVisitorWithoutAccountIsNotFound(t *testing.T) {
 
 func open(t *testing.T, db *pgxpool.Pool, config bank.Config) *bank.Bank {
 	t.Helper()
-	b, err := bank.Open(context.Background(), db, config)
+	b, err := bank.Open(context.Background(), db, config, slog.New(slog.NewTextHandler(t.Output(), nil)))
 	if err != nil {
 		t.Fatalf("open bank: %v", err)
 	}

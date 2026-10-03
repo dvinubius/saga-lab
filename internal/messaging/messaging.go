@@ -84,18 +84,18 @@ type Broker struct {
 	amqpPublisher *amqp.Publisher
 }
 
-func Connect(url string, publishedTopics ...string) (*Broker, error) {
+func Connect(url string, logger *slog.Logger, publishedTopics ...string) (*Broker, error) {
 	config, err := queueConfig(url)
 	if err != nil {
 		return nil, err
 	}
-	logger := watermill.NewSlogLogger(slog.Default())
+	watermillLogger := watermill.NewSlogLogger(logger)
 
-	publisher, err := amqp.NewPublisher(config, logger)
+	publisher, err := amqp.NewPublisher(config, watermillLogger)
 	if err != nil {
 		return nil, fmt.Errorf("connect publisher: %w", err)
 	}
-	subscriber, err := amqp.NewSubscriber(config, logger)
+	subscriber, err := amqp.NewSubscriber(config, watermillLogger)
 	if err != nil {
 		publisher.Close()
 		return nil, fmt.Errorf("connect subscriber: %w", err)
@@ -107,7 +107,7 @@ func Connect(url string, publishedTopics ...string) (*Broker, error) {
 			return nil, fmt.Errorf("declare %s queue: %w", topic, err)
 		}
 	}
-	b.Router, err = message.NewRouter(message.RouterConfig{}, logger)
+	b.Router, err = message.NewRouter(message.RouterConfig{}, watermillLogger)
 	if err != nil {
 		b.Close()
 		return nil, fmt.Errorf("create router: %w", err)
