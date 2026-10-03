@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/dvinubius/saga-lab/internal/messaging"
 	"github.com/dvinubius/saga-lab/internal/postgres"
+	"github.com/dvinubius/saga-lab/internal/service"
 	"github.com/dvinubius/saga-lab/internal/visitor"
 	"github.com/dvinubius/saga-lab/internal/web"
 	"github.com/jackc/pgx/v5"
@@ -44,19 +44,20 @@ type Bank struct {
 	db     *pgxpool.Pool
 	role   Role
 	broker *messaging.Broker
+	logger *slog.Logger
 }
 
-func Run(ctx context.Context, config Config) error {
-	db, err := postgres.Connect(ctx, os.Getenv("DATABASE_URL"))
+func Run(ctx context.Context, settings service.Settings, config Config) error {
+	db, err := postgres.Connect(ctx, settings.DatabaseURL)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	b, err := Open(ctx, db, config)
+	b, err := Open(ctx, db, config, settings.Logger)
 	if err != nil {
 		return err
 	}
-	broker, err := messaging.Connect(os.Getenv("AMQP_URL"), config.Role.outcomeTopics...)
+	broker, err := messaging.Connect(settings.AMQPURL, settings.Logger, config.Role.outcomeTopics...)
 	if err != nil {
 		return err
 	}
@@ -65,22 +66,22 @@ func Run(ctx context.Context, config Config) error {
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return broker.Run(ctx) })
-	g.Go(func() error { return web.Serve(ctx, ":8080", b.Handler(), web.Internal) })
+	g.Go(func() error { return web.Serve(ctx, settings.Listener, b.Handler(), web.Internal, settings.Logger) })
 	return g.Wait()
 }
 
-func Open(ctx context.Context, db *pgxpool.Pool, config Config) (*Bank, error) {
+func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Logger) (*Bank, error) {
 	if err := provision(ctx, db, config); err != nil {
 		return nil, err
 	}
-	return &Bank{db: db, role: config.Role}, nil
+	return &Bank{db: db, role: config.Role, logger: logger}, nil
 }
 
-func Reset(ctx context.Context, config Config) error {
-	if err := messaging.Purge(os.Getenv("AMQP_URL"), config.Role.commandTopic); err != nil {
+func Reset(ctx context.Context, settings service.Settings, config Config) error {
+	if err := messaging.Purge(settings.AMQPURL, config.Role.commandTopic); err != nil {
 		return err
 	}
-	db, err := postgres.Connect(ctx, os.Getenv("DATABASE_URL"))
+	db, err := postgres.Connect(ctx, settings.DatabaseURL)
 	if err != nil {
 		return err
 	}
@@ -113,7 +114,7 @@ func provision(ctx context.Context, db execer, config Config) error {
 func (b *Bank) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /accounts/{visitorID}", b.getAccount)
-	mux.Handle("GET /readyz", web.Readiness(b.ready))
+	mux.Handle("GET /readyz", web.Readiness(b.logger, b.ready))
 	return mux
 }
 
@@ -136,11 +137,11 @@ func (b *Bank) executeCommands(broker *messaging.Broker) {
 func (b *Bank) debitFunds(msg *message.Message) error {
 	var command messaging.DebitFunds
 	if err := messaging.Decode(msg, &command); err != nil {
-		slog.Error("discard command", "error", err)
+		b.logger.Error("discard command", "error", err)
 		return nil
 	}
 	if command.Amount <= 0 {
-		slog.Error("discard debit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
+		b.logger.Error("discard debit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
 		return nil
 	}
 	ctx := msg.Context()
@@ -163,7 +164,7 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		slog.Warn("debit not applied: account missing", "transfer_id", command.TransferID)
+		b.logger.Warn("debit not applied: account missing", "transfer_id", command.TransferID)
 		return nil
 	}
 	if err != nil {
@@ -180,11 +181,11 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 func (b *Bank) creditFunds(msg *message.Message) error {
 	var command messaging.CreditFunds
 	if err := messaging.Decode(msg, &command); err != nil {
-		slog.Error("discard command", "error", err)
+		b.logger.Error("discard command", "error", err)
 		return nil
 	}
 	if command.Amount <= 0 {
-		slog.Error("discard credit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
+		b.logger.Error("discard credit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
 		return nil
 	}
 	credited, err := b.db.Exec(msg.Context(),
@@ -195,7 +196,7 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 		return fmt.Errorf("credit for transfer %s: %w", command.TransferID, err)
 	}
 	if credited.RowsAffected() == 0 {
-		slog.Warn("credit not applied: account missing", "transfer_id", command.TransferID)
+		b.logger.Warn("credit not applied: account missing", "transfer_id", command.TransferID)
 		return nil
 	}
 	return b.publish(command.TransferID, messaging.FundsCreditedTopic, messaging.FundsCredited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
@@ -220,13 +221,13 @@ func (b *Bank) getAccount(w http.ResponseWriter, r *http.Request) {
 		`SELECT balance FROM accounts WHERE visitor_id = $1`, a.VisitorID,
 	).Scan(&a.Balance)
 	if errors.Is(err, pgx.ErrNoRows) {
-		web.WriteError(w, http.StatusNotFound, "account not found")
+		web.WriteError(b.logger, w, http.StatusNotFound, "account not found")
 		return
 	}
 	if err != nil {
-		slog.Error("read account", "error", err)
-		web.WriteError(w, http.StatusInternalServerError, "account unavailable")
+		b.logger.Error("read account", "error", err)
+		web.WriteError(b.logger, w, http.StatusInternalServerError, "account unavailable")
 		return
 	}
-	web.WriteJSON(w, http.StatusOK, a)
+	web.WriteJSON(b.logger, w, http.StatusOK, a)
 }

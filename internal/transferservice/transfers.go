@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -170,7 +169,7 @@ func (s *Service) pendingTransferID(ctx context.Context) (string, error) {
 func (s *Service) fundsDebited(msg *message.Message) ([]*message.Message, error) {
 	var event messaging.FundsDebited
 	if err := messaging.Decode(msg, &event); err != nil {
-		slog.Error("discard event", "error", err)
+		s.logger.Error("discard event", "error", err)
 		return nil, nil
 	}
 	ctx := msg.Context()
@@ -199,7 +198,7 @@ func (s *Service) fundsDebited(msg *message.Message) ([]*message.Message, error)
 		return nil, fmt.Errorf("record debit for transfer %s: %w", event.TransferID, err)
 	}
 	if command == nil {
-		slog.Warn("ignore FundsDebited for transfer not awaiting a debit", "transfer_id", event.TransferID, "message_id", msg.UUID)
+		s.logger.Warn("ignore FundsDebited for transfer not awaiting a debit", "transfer_id", event.TransferID, "message_id", msg.UUID)
 		return nil, nil
 	}
 	return []*message.Message{command}, nil
@@ -208,7 +207,7 @@ func (s *Service) fundsDebited(msg *message.Message) ([]*message.Message, error)
 func (s *Service) debitRejected(msg *message.Message) error {
 	var event messaging.DebitRejected
 	if err := messaging.Decode(msg, &event); err != nil {
-		slog.Error("discard event", "error", err)
+		s.logger.Error("discard event", "error", err)
 		return nil
 	}
 	ctx := msg.Context()
@@ -231,7 +230,7 @@ func (s *Service) debitRejected(msg *message.Message) error {
 		return fmt.Errorf("record debit rejection for transfer %s: %w", event.TransferID, err)
 	}
 	if !advanced {
-		slog.Warn("ignore DebitRejected for transfer not awaiting a debit", "transfer_id", event.TransferID, "message_id", msg.UUID)
+		s.logger.Warn("ignore DebitRejected for transfer not awaiting a debit", "transfer_id", event.TransferID, "message_id", msg.UUID)
 	}
 	return nil
 }
@@ -239,7 +238,7 @@ func (s *Service) debitRejected(msg *message.Message) error {
 func (s *Service) fundsCredited(msg *message.Message) error {
 	var event messaging.FundsCredited
 	if err := messaging.Decode(msg, &event); err != nil {
-		slog.Error("discard event", "error", err)
+		s.logger.Error("discard event", "error", err)
 		return nil
 	}
 	ctx := msg.Context()
@@ -267,7 +266,7 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 		return fmt.Errorf("record credit for transfer %s: %w", event.TransferID, err)
 	}
 	if !advanced {
-		slog.Warn("ignore FundsCredited for transfer not awaiting a credit", "transfer_id", event.TransferID, "message_id", msg.UUID)
+		s.logger.Warn("ignore FundsCredited for transfer not awaiting a credit", "transfer_id", event.TransferID, "message_id", msg.UUID)
 	}
 	return nil
 }
