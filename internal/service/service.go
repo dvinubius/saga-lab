@@ -37,13 +37,19 @@ func Main(name string, run, reset func(context.Context, Settings) error) {
 
 	stopTelemetry, err := telemetry.Start(ctx, name)
 	if err == nil {
-		settings.Listener, err = net.Listen("tcp", ":8080")
-	}
-	if err == nil {
-		err = errors.Join(run(ctx, settings), stopTelemetry())
+		err = errors.Join(listenAndRun(ctx, run, settings), stopTelemetry())
 	}
 	if err != nil {
 		logger.Error("stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+func listenAndRun(ctx context.Context, run func(context.Context, Settings) error, settings Settings) error {
+	listener, err := net.Listen("tcp", ":8080")
+	if err != nil {
+		return err
+	}
+	settings.Listener = listener
+	return run(ctx, settings)
 }

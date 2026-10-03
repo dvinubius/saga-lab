@@ -48,6 +48,7 @@ type Bank struct {
 }
 
 func Run(ctx context.Context, settings service.Settings, config Config) error {
+	defer settings.Listener.Close()
 	db, err := postgres.Connect(ctx, settings.DatabaseURL)
 	if err != nil {
 		return err
@@ -114,7 +115,7 @@ func provision(ctx context.Context, db execer, config Config) error {
 func (b *Bank) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /accounts/{visitorID}", b.getAccount)
-	mux.Handle("GET /readyz", web.Readiness(b.logger, b.ready))
+	mux.Handle("GET /readyz", web.Readiness(b.ready, b.logger))
 	return mux
 }
 
@@ -221,13 +222,13 @@ func (b *Bank) getAccount(w http.ResponseWriter, r *http.Request) {
 		`SELECT balance FROM accounts WHERE visitor_id = $1`, a.VisitorID,
 	).Scan(&a.Balance)
 	if errors.Is(err, pgx.ErrNoRows) {
-		web.WriteError(b.logger, w, http.StatusNotFound, "account not found")
+		web.WriteError(w, http.StatusNotFound, "account not found", b.logger)
 		return
 	}
 	if err != nil {
 		b.logger.Error("read account", "error", err)
-		web.WriteError(b.logger, w, http.StatusInternalServerError, "account unavailable")
+		web.WriteError(w, http.StatusInternalServerError, "account unavailable", b.logger)
 		return
 	}
-	web.WriteJSON(b.logger, w, http.StatusOK, a)
+	web.WriteJSON(w, http.StatusOK, a, b.logger)
 }

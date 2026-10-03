@@ -30,7 +30,7 @@ func Serve(ctx context.Context, listener net.Listener, handler http.Handler, exp
 	server := &http.Server{
 		Handler:           traced,
 		ReadHeaderTimeout: 5 * time.Second,
-		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelInfo),
 	}
 	served := make(chan error, 1)
 	go func() { served <- server.Serve(listener) }()
@@ -52,7 +52,7 @@ func Serve(ctx context.Context, listener net.Listener, handler http.Handler, exp
 	}
 }
 
-func Readiness(logger *slog.Logger, check func(context.Context) error) http.HandlerFunc {
+func Readiness(check func(context.Context) error, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := check(r.Context()); err != nil {
 			logger.Warn("not ready", "error", err)
@@ -63,7 +63,7 @@ func Readiness(logger *slog.Logger, check func(context.Context) error) http.Hand
 	}
 }
 
-func WriteJSON(logger *slog.Logger, w http.ResponseWriter, status int, value any) {
+func WriteJSON(w http.ResponseWriter, status int, value any, logger *slog.Logger) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(value); err != nil {
@@ -71,6 +71,6 @@ func WriteJSON(logger *slog.Logger, w http.ResponseWriter, status int, value any
 	}
 }
 
-func WriteError(logger *slog.Logger, w http.ResponseWriter, status int, message string) {
-	WriteJSON(logger, w, status, map[string]string{"error": message})
+func WriteError(w http.ResponseWriter, status int, message string, logger *slog.Logger) {
+	WriteJSON(w, status, map[string]string{"error": message}, logger)
 }

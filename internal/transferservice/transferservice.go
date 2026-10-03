@@ -43,9 +43,7 @@ type Config struct {
 }
 
 func Run(ctx context.Context, settings service.Settings, config Config) error {
-	if config.BankAURL == "" || config.BankBURL == "" || config.GrafanaURL == "" {
-		return errors.New("Bank A URL, Bank B URL and Grafana URL must be configured")
-	}
+	defer settings.Listener.Close()
 	db, err := postgres.Connect(ctx, settings.DatabaseURL)
 	if err != nil {
 		return err
@@ -130,7 +128,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/transfers", s.getTransfers)
 	mux.HandleFunc("POST /api/transfers", s.postTransfer)
 	mux.HandleFunc("GET /api/transfers/{transferID}", s.getTransfer)
-	mux.Handle("GET /readyz", web.Readiness(s.logger, s.ready))
+	mux.Handle("GET /readyz", web.Readiness(s.ready, s.logger))
 	mux.Handle("GET /static/", staticFiles())
 	return mux
 }
@@ -177,20 +175,20 @@ func (s *Service) getBalances(w http.ResponseWriter, r *http.Request) {
 	b, err := s.balances(r.Context())
 	if err != nil {
 		s.logger.Error("read balances", "error", err)
-		web.WriteError(s.logger, w, http.StatusBadGateway, "balances unavailable")
+		web.WriteError(w, http.StatusBadGateway, "balances unavailable", s.logger)
 		return
 	}
-	web.WriteJSON(s.logger, w, http.StatusOK, b)
+	web.WriteJSON(w, http.StatusOK, b, s.logger)
 }
 
 func (s *Service) getTransfers(w http.ResponseWriter, r *http.Request) {
 	transfers, err := s.list(r.Context())
 	if err != nil {
 		s.logger.Error("list transfers", "error", err)
-		web.WriteError(s.logger, w, http.StatusInternalServerError, "transfers unavailable")
+		web.WriteError(w, http.StatusInternalServerError, "transfers unavailable", s.logger)
 		return
 	}
-	web.WriteJSON(s.logger, w, http.StatusOK, map[string][]transfer{"transfers": transfers})
+	web.WriteJSON(w, http.StatusOK, map[string][]transfer{"transfers": transfers}, s.logger)
 }
 
 func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
@@ -199,43 +197,43 @@ func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 	if err := decoder.Decode(&request); err != nil || !errors.Is(decoder.Decode(new(json.RawMessage)), io.EOF) {
-		web.WriteError(s.logger, w, http.StatusBadRequest, "request body must be a JSON object with an amount")
+		web.WriteError(w, http.StatusBadRequest, "request body must be a JSON object with an amount", s.logger)
 		return
 	}
 	amount, err := parseAmount(string(request.Amount))
 	if err != nil {
-		web.WriteError(s.logger, w, http.StatusBadRequest, err.Error())
+		web.WriteError(w, http.StatusBadRequest, err.Error(), s.logger)
 		return
 	}
 	t, err := s.submit(r.Context(), amount)
 	if pending, ok := errors.AsType[pendingTransferError](err); ok {
-		web.WriteJSON(s.logger, w, http.StatusConflict, map[string]string{
+		web.WriteJSON(w, http.StatusConflict, map[string]string{
 			"error":               "another transfer is still pending; submit again once it has finished",
 			"pending_transfer_id": pending.PendingID,
-		})
+		}, s.logger)
 		return
 	}
 	if err != nil {
 		s.logger.Error("submit transfer", "error", err)
-		web.WriteError(s.logger, w, http.StatusInternalServerError, "transfer could not be started")
+		web.WriteError(w, http.StatusInternalServerError, "transfer could not be started", s.logger)
 		return
 	}
 	w.Header().Set("Location", "/api/transfers/"+t.ID)
-	web.WriteJSON(s.logger, w, http.StatusAccepted, t)
+	web.WriteJSON(w, http.StatusAccepted, t, s.logger)
 }
 
 func (s *Service) getTransfer(w http.ResponseWriter, r *http.Request) {
 	t, err := s.find(r.Context(), r.PathValue("transferID"))
 	if errors.Is(err, errTransferNotFound) {
-		web.WriteError(s.logger, w, http.StatusNotFound, "transfer not found")
+		web.WriteError(w, http.StatusNotFound, "transfer not found", s.logger)
 		return
 	}
 	if err != nil {
 		s.logger.Error("read transfer", "error", err)
-		web.WriteError(s.logger, w, http.StatusInternalServerError, "transfer unavailable")
+		web.WriteError(w, http.StatusInternalServerError, "transfer unavailable", s.logger)
 		return
 	}
-	web.WriteJSON(s.logger, w, http.StatusOK, t)
+	web.WriteJSON(w, http.StatusOK, t, s.logger)
 }
 
 type homePage struct {
