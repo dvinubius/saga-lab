@@ -129,10 +129,10 @@ func pendingTransferLink(page []byte) string {
 	return string(match[1])
 }
 
-func (d *demonstration) holdBankADebits(t *testing.T) (release func()) {
+func (d *inProcessDemonstration) holdBankADebits(t *testing.T) (release func()) {
 	t.Helper()
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, "postgres://bank_a:bank_a@"+serviceAddress(t, d.project, "postgres", "5432")+"/bank_a?sslmode=disable")
+	conn, err := pgx.Connect(ctx, d.bankA.settings.DatabaseURL)
 	if err != nil {
 		t.Fatalf("connect to Bank A database: %v", err)
 	}
