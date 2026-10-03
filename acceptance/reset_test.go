@@ -9,7 +9,7 @@ import (
 
 func TestResetRestoresThePreparedDemonstration(t *testing.T) {
 	t.Parallel()
-	demo := startDemonstration(t)
+	demo := startComposeDemonstration(t)
 	earlier := demo.submitTransfer(t, `{"amount": 25}`)
 	demo.awaitTransfer(t, earlier.TransferID, "completed")
 
@@ -48,7 +48,7 @@ func TestResetRestoresThePreparedDemonstration(t *testing.T) {
 	}
 }
 
-func (d *demonstration) reset(t *testing.T) {
+func (d *composeDemonstration) reset(t *testing.T) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), composeDeadline)
 	defer cancel()
