@@ -157,7 +157,7 @@ func (d *inProcessDemonstration) awaitReady(t *testing.T, s *inProcessService) {
 		}
 		select {
 		case <-s.done:
-			t.Fatalf("%s stopped before it was ready", s.name)
+			t.Fatalf("%s stopped before it was ready: %v", s.name, s.err)
 		case <-time.After(25 * time.Millisecond):
 		}
 	}
