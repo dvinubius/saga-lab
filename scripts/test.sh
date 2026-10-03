@@ -11,7 +11,7 @@ remove_acceptance_projects() {
   local project
   for project in $(docker compose ls --all --quiet); do
     if [[ "$project" == "$SAGA_LAB_ACCEPTANCE_PREFIX"* ]]; then
-      docker compose --project-name "$project" down --volumes --remove-orphans
+      docker compose --project-name "$project" down --timeout 0 --volumes --remove-orphans
     fi
   done
 }
@@ -21,7 +21,7 @@ teardown() {
   if [ "$status" -ne 0 ]; then
     docker compose logs --no-color --tail=100
   fi
-  docker compose down --volumes --remove-orphans
+  docker compose down --timeout 0 --volumes --remove-orphans
   remove_acceptance_projects
   exit "$status"
 }

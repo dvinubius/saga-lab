@@ -51,7 +51,7 @@ func startProject(t *testing.T, env []string, services ...string) *demonstration
 			logs, _ := compose(project, nil, "logs", "--no-color", "--tail=100")
 			t.Logf("%s logs:\n%s", project, logs)
 		}
-		if out, err := compose(project, nil, "down", "--volumes", "--remove-orphans"); err != nil {
+		if out, err := compose(project, nil, "down", "--timeout", "0", "--volumes", "--remove-orphans"); err != nil {
 			t.Errorf("stop %s: %v\n%s", project, err, out)
 		}
 	})
