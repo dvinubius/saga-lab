@@ -9,41 +9,50 @@ import (
 
 func TestResetRestoresThePreparedDemonstration(t *testing.T) {
 	t.Parallel()
+	demo := startDemonstration(t)
+	earlier := demo.submitTransfer(t, `{"amount": 25}`)
+	demo.awaitTransfer(t, earlier.TransferID, "completed")
+	demo.bankA.stop(t)
+	stale := demo.submitTransfer(t, `{"amount": 10}`)
+
+	demo.reset(t)
+
+	demo.assertPrepared(t, earlier.TransferID, stale.TransferID)
+}
+
+func TestResetScriptRestoresThePreparedDemonstration(t *testing.T) {
+	t.Parallel()
 	demo := startComposeDemonstration(t)
 	earlier := demo.submitTransfer(t, `{"amount": 25}`)
 	demo.awaitTransfer(t, earlier.TransferID, "completed")
-
-	demo.compose(t, "stop", "transfer-service", "bank-a", "bank-b")
-	demo.compose(t, "up", "--detach", "--no-build", "--wait", "transfer-service")
-	demo.reconnect(t)
-	demo.assertBalances(t, 75, 25)
-	if transfers := demo.transfers(t); len(transfers) != 1 || transfers[0].TransferID != earlier.TransferID {
-		t.Fatalf("transfers after restart = %+v, want only %s", transfers, earlier.TransferID)
-	}
-
 	demo.compose(t, "stop", "bank-a")
 	stale := demo.submitTransfer(t, `{"amount": 10}`)
 
 	demo.reset(t)
 
-	demo.assertBalances(t, 100, 0)
-	if transfers := demo.transfers(t); len(transfers) != 0 {
+	demo.assertPrepared(t, earlier.TransferID, stale.TransferID)
+}
+
+func (d *demonstration) assertPrepared(t *testing.T, clearedTransferIDs ...string) {
+	t.Helper()
+	d.assertBalances(t, 100, 0)
+	if transfers := d.transfers(t); len(transfers) != 0 {
 		t.Errorf("transfers after reset = %+v, want none", transfers)
 	}
-	for _, id := range []string{earlier.TransferID, stale.TransferID} {
-		if r := demo.request(t, http.MethodGet, "/api/transfers/"+id, "", ""); r.status != http.StatusNotFound {
+	for _, id := range clearedTransferIDs {
+		if r := d.request(t, http.MethodGet, "/api/transfers/"+id, "", ""); r.status != http.StatusNotFound {
 			t.Errorf("GET transfer %s after reset: status %d, want %d", id, r.status, http.StatusNotFound)
 		}
 	}
-	if home := demo.get(t, "/"); submissionDisabled(home) || pendingTransferLink(home) != "" {
+	if home := d.get(t, "/"); submissionDisabled(home) || pendingTransferLink(home) != "" {
 		t.Errorf("home page holds submission after reset")
 	}
 
-	again := demo.submitTransfer(t, `{"amount": 25}`)
-	completed := demo.awaitTransfer(t, again.TransferID, "completed")
+	again := d.submitTransfer(t, `{"amount": 25}`)
+	completed := d.awaitTransfer(t, again.TransferID, "completed")
 	assertSteps(t, completed.History, "requested", "debit_committed", "credit_committed", "finished")
-	demo.assertBalances(t, 75, 25)
-	if transfers := demo.transfers(t); len(transfers) != 1 || transfers[0].TransferID != again.TransferID {
+	d.assertBalances(t, 75, 25)
+	if transfers := d.transfers(t); len(transfers) != 1 || transfers[0].TransferID != again.TransferID {
 		t.Errorf("transfers = %+v, want only %s", transfers, again.TransferID)
 	}
 }

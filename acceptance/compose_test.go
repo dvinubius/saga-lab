@@ -32,6 +32,9 @@ func startObservedDemonstration(t *testing.T) *composeDemonstration {
 
 func startProject(t *testing.T, env []string, services ...string) *composeDemonstration {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("starts a Compose project; skipped with -short")
+	}
 	prefix := os.Getenv(projectPrefixVariable)
 	if prefix == "" {
 		t.Skipf("%s is not set; run scripts/test.sh", projectPrefixVariable)

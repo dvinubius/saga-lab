@@ -28,11 +28,23 @@ teardown() {
   exit "$status"
 }
 
+short=false
+for argument in "$@"; do
+  if [ "$argument" = -short ]; then
+    short=true
+  fi
+done
+
 trap teardown EXIT
 echo "Test run $run"
-docker compose build
-docker compose pull --quiet --policy missing postgres rabbitmq otel-collector tempo grafana
-docker compose --file compose.yaml --file compose.test.yaml up --detach --wait postgres rabbitmq
+if [ "$short" = true ]; then
+  pull=never
+else
+  docker compose build
+  docker compose pull --quiet --policy missing postgres rabbitmq otel-collector tempo grafana
+  pull=missing
+fi
+docker compose --file compose.yaml --file compose.test.yaml up --pull "$pull" --detach --wait postgres rabbitmq
 postgres_address="$(docker compose port postgres 5432)"
 rabbitmq_address="$(docker compose port rabbitmq 5672)"
 management_url="http://saga_lab:saga_lab@$(docker compose port rabbitmq 15672)"
