@@ -12,7 +12,9 @@ func TestResetRestoresThePreparedDemonstration(t *testing.T) {
 	demo := startDemonstration(t)
 	earlier := demo.submitTransfer(t, `{"amount": 25}`)
 	demo.awaitTransfer(t, earlier.TransferID, "completed")
-	demo.bankA.stop(t)
+	if !demo.bankA.stop(t) {
+		t.FailNow()
+	}
 	stale := demo.submitTransfer(t, `{"amount": 10}`)
 
 	demo.reset(t)
