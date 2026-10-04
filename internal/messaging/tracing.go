@@ -1,6 +1,8 @@
 package messaging
 
 import (
+	"context"
+
 	"github.com/ThreeDotsLabs/watermill/message"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,17 +19,21 @@ type tracingPublisher struct {
 
 func (p tracingPublisher) Publish(topic string, msgs ...*message.Message) error {
 	for _, msg := range msgs {
-		ctx, span := tracer.Start(msg.Context(), "send "+topic,
-			trace.WithSpanKind(trace.SpanKindProducer),
-			trace.WithAttributes(messageAttributes("send", topic, msg)...))
-		otel.GetTextMapPropagator().Inject(ctx, propagation.MapCarrier(msg.Metadata))
-		err := p.Publisher.Publish(topic, msg)
-		endSpan(span, err)
-		if err != nil {
+		if err := send(msg.Context(), p.Publisher, topic, msg); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func send(ctx context.Context, publisher message.Publisher, topic string, msg *message.Message) error {
+	ctx, span := tracer.Start(ctx, "send "+topic,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(messageAttributes("send", topic, msg)...))
+	otel.GetTextMapPropagator().Inject(ctx, propagation.MapCarrier(msg.Metadata))
+	err := publisher.Publish(topic, msg)
+	endSpan(span, err)
+	return err
 }
 
 func traceHandling(h message.HandlerFunc) message.HandlerFunc {
