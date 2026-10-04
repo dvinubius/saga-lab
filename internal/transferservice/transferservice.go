@@ -58,7 +58,7 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 		return err
 	}
 	defer broker.Close()
-	s.handleEvents(broker)
+	s.attachBroker(broker)
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return broker.Run(ctx) })
@@ -83,7 +83,7 @@ func Reset(ctx context.Context, settings service.Settings) error {
 		if _, err := tx.Exec(ctx, schema); err != nil {
 			return fmt.Errorf("apply schema: %w", err)
 		}
-		return messaging.RecreateTables(ctx, tx)
+		return messaging.Outbox.Recreate(ctx, tx)
 	})
 }
 
@@ -100,19 +100,19 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 	if _, err := db.Exec(ctx, schema); err != nil {
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
-	if err := messaging.CreateTables(ctx, db); err != nil {
+	if err := messaging.Outbox.Create(ctx, db); err != nil {
 		return nil, err
 	}
 	return &Service{
 		db:         db,
-		bankA:      newBankClient(bankAName, config.BankAURL),
-		bankB:      newBankClient(bankBName, config.BankBURL),
+		bankA:      newBankClient(messaging.BankA, config.BankAURL),
+		bankB:      newBankClient(messaging.BankB, config.BankBURL),
 		grafanaURL: strings.TrimSuffix(config.GrafanaURL, "/"),
 		logger:     logger,
 	}, nil
 }
 
-func (s *Service) handleEvents(broker *messaging.Broker) {
+func (s *Service) attachBroker(broker *messaging.Broker) {
 	s.broker = broker
 	broker.Router.AddConsumerHandler("funds-debited",
 		messaging.FundsDebitedTopic, broker.Subscriber,
@@ -217,14 +217,14 @@ func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, http.StatusBadRequest, err.Error(), s.logger)
 		return
 	}
-	sc := happyPath
+	chosen := happyPath
 	if request.Scenario != nil {
-		if sc, err = parseScenario(*request.Scenario); err != nil {
+		if chosen, err = parseScenario(*request.Scenario); err != nil {
 			web.WriteError(w, http.StatusBadRequest, err.Error(), s.logger)
 			return
 		}
 	}
-	t, err := s.submit(r.Context(), amount, sc)
+	t, err := s.submit(r.Context(), amount, chosen)
 	if pending, ok := errors.AsType[pendingTransferError](err); ok {
 		web.WriteJSON(w, http.StatusConflict, map[string]string{
 			"error":               "another transfer is still pending; submit again once it has finished",
@@ -270,6 +270,7 @@ type homePage struct {
 type transferPage struct {
 	Balances balances
 	Transfer transfer
+	Lanes    []string
 	History  []historyRow
 	TraceURL string
 }
@@ -306,19 +307,19 @@ func (s *Service) postTransferForm(w http.ResponseWriter, r *http.Request) {
 	if r.PostForm.Has("scenario") {
 		slug = r.PostForm.Get("scenario")
 	}
-	sc, err := parseScenario(slug)
+	chosen, err := parseScenario(slug)
 	if err != nil {
 		s.renderHome(w, r, http.StatusBadRequest, homePage{Amount: text, ScenarioError: err.Error()})
 		return
 	}
 	amount, err := parseAmount(text)
 	if err != nil {
-		s.renderHome(w, r, http.StatusBadRequest, homePage{Amount: text, Scenario: sc, Error: err.Error()})
+		s.renderHome(w, r, http.StatusBadRequest, homePage{Amount: text, Scenario: chosen, Error: err.Error()})
 		return
 	}
-	t, err := s.submit(r.Context(), amount, sc)
+	t, err := s.submit(r.Context(), amount, chosen)
 	if pending, ok := errors.AsType[pendingTransferError](err); ok {
-		s.renderHome(w, r, http.StatusConflict, homePage{PendingID: pending.PendingID, Amount: text, Scenario: sc, Overlap: true})
+		s.renderHome(w, r, http.StatusConflict, homePage{PendingID: pending.PendingID, Amount: text, Scenario: chosen, Overlap: true})
 		return
 	}
 	if err != nil {
@@ -346,7 +347,7 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Balances are temporarily unavailable.", http.StatusBadGateway)
 		return
 	}
-	page := transferPage{Balances: b, Transfer: t, History: historyRows(t.History)}
+	page := transferPage{Balances: b, Transfer: t, Lanes: lanes, History: historyRows(t.History)}
 	if t.TraceID != "" {
 		page.TraceURL = s.traceURL(t.TraceID)
 	}

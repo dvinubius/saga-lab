@@ -274,6 +274,7 @@ the GitHub mark in the footer, drawn inline in the template in
     | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's intro, the History explanation |
     | `.dim` | dim, nothing else | a value inside a row that is already mono |
     | `.comment` | mono, `--text-mono-meta`, muted, 0.01em | the machine's own `//` asides: the prefix of a processing observation in the History table |
+    | `.history .meta` | own line, muted, the table's mono size | the detail line under a History entry: command, attempt number, short attempt ID |
     | `.sr-only` | visually hidden | text for screen readers only |
 
     `.comment` is hooklook's, taken over unchanged. hooklook has one more, to

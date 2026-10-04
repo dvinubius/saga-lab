@@ -33,9 +33,20 @@ type execer interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
 
-func CreateTables(ctx context.Context, db execer) error {
-	if _, err := db.Exec(ctx, inboxSchema); err != nil {
-		return fmt.Errorf("create inbox: %w", err)
+type Tables struct {
+	inbox bool
+}
+
+var (
+	Outbox         = Tables{}
+	InboxAndOutbox = Tables{inbox: true}
+)
+
+func (t Tables) Create(ctx context.Context, db execer) error {
+	if t.inbox {
+		if _, err := db.Exec(ctx, inboxSchema); err != nil {
+			return fmt.Errorf("create inbox: %w", err)
+		}
 	}
 	if _, err := db.Exec(ctx, outboxSchema); err != nil {
 		return fmt.Errorf("create outbox: %w", err)
@@ -43,11 +54,15 @@ func CreateTables(ctx context.Context, db execer) error {
 	return nil
 }
 
-func RecreateTables(ctx context.Context, tx pgx.Tx) error {
-	if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS inbox, outbox`); err != nil {
-		return fmt.Errorf("drop inbox and outbox: %w", err)
+func (t Tables) Recreate(ctx context.Context, tx pgx.Tx) error {
+	drop := `DROP TABLE IF EXISTS outbox`
+	if t.inbox {
+		drop += `, inbox`
 	}
-	return CreateTables(ctx, tx)
+	if _, err := tx.Exec(ctx, drop); err != nil {
+		return fmt.Errorf("drop messaging tables: %w", err)
+	}
+	return t.Create(ctx, tx)
 }
 
 func Enqueue(ctx context.Context, tx pgx.Tx, topic string, msg *message.Message) error {
@@ -76,9 +91,13 @@ func (b *Broker) RunRelay(ctx context.Context, db *pgxpool.Pool, logger *slog.Lo
 	failures := 0
 	for {
 		delay := relayInterval
-		failed, err := b.relay(ctx, db)
+		published, failed, err := b.relay(ctx, db)
 		if ctx.Err() != nil {
 			return nil
+		}
+		if published > 0 && failures > 0 {
+			logger.Info("outbox relay resumed", "failures", failures)
+			failures = 0
 		}
 		if err != nil {
 			failures++
@@ -88,9 +107,6 @@ func (b *Broker) RunRelay(ctx context.Context, db *pgxpool.Pool, logger *slog.Lo
 			}
 			logger.Warn("outbox relay failed", attributes...)
 			delay = min(relayInterval<<min(failures, 4), relayMaxDelay)
-		} else if failures > 0 {
-			logger.Info("outbox relay resumed", "failures", failures)
-			failures = 0
 		}
 		select {
 		case <-ctx.Done():
@@ -100,20 +116,21 @@ func (b *Broker) RunRelay(ctx context.Context, db *pgxpool.Pool, logger *slog.Lo
 	}
 }
 
-func (b *Broker) relay(ctx context.Context, db *pgxpool.Pool) (*outboxEntry, error) {
+func (b *Broker) relay(ctx context.Context, db *pgxpool.Pool) (int, *outboxEntry, error) {
 	tx, err := db.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	defer tx.Rollback(ctx)
 	rows, err := tx.Query(ctx, `SELECT id, topic, message_id, payload, metadata FROM outbox ORDER BY id LIMIT $1 FOR UPDATE`, relayBatchSize)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	entries, err := pgx.CollectRows(rows, pgx.RowToStructByPos[outboxEntry])
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
+	published := 0
 	var failed *outboxEntry
 	var publishErr error
 	for _, entry := range entries {
@@ -121,14 +138,15 @@ func (b *Broker) relay(ctx context.Context, db *pgxpool.Pool) (*outboxEntry, err
 			failed = &entry
 			break
 		}
+		published++
 		if _, err := tx.Exec(ctx, `DELETE FROM outbox WHERE id = $1`, entry.ID); err != nil {
-			return nil, err
+			return published, nil, err
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return published, nil, err
 	}
-	return failed, publishErr
+	return published, failed, publishErr
 }
 
 func (b *Broker) forward(ctx context.Context, entry outboxEntry) error {

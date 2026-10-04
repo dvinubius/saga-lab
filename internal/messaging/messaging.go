@@ -25,6 +25,14 @@ const (
 )
 
 const (
+	TransferService = "Transfer Service"
+	BankA           = "Bank A"
+	BankB           = "Bank B"
+)
+
+const DebitRedelivery = "debit_redelivery"
+
+const (
 	NackRequested       = "NackRequested"
 	DuplicateSuppressed = "DuplicateSuppressed"
 )
@@ -89,7 +97,7 @@ func CausationID(msg *message.Message) string {
 	return msg.Metadata.Get(causationIDKey)
 }
 
-func AttemptIDOf(msg *message.Message) string {
+func ProducerAttemptID(msg *message.Message) string {
 	return msg.Metadata.Get(attemptIDMetadataKey)
 }
 

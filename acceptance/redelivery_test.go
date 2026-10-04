@@ -47,6 +47,14 @@ func TestDebitRedeliveryRejectsAnUnaffordableDebit(t *testing.T) {
 
 	demo.assertBalances(t, 100, 0)
 	assertSteps(t, rejected.History, "requested", "debit_rejected")
+	if !rejected.VisualisationReady {
+		t.Error("visualisation_ready = false, want true")
+	}
+	for _, e := range rejected.History {
+		if e.Observation != "" {
+			t.Errorf("history has observation %s, want none; history %+v", e.Observation, rejected.History)
+		}
+	}
 }
 
 func (d *demonstration) awaitReadiness(t *testing.T, id, status string) transfer {
