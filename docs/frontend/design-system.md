@@ -279,19 +279,25 @@ the GitHub mark in the footer, drawn inline in the template in
 12. **Lists and tables are rows parted by hairlines.** One item per row, a
     hairline above the first and under each, square, mono at
     `--text-mono-meta` with code leading, 6px × 12px padding — hooklook's
-    request headers, generalised. A two-column list (the Transfers list, a
-    transfer's facts) has a 160px name column. Names are body, values dim;
+    request headers, generalised. A two-column list (a transfer's facts) has
+    a 160px name column. The Transfers list has three columns — amount,
+    scenario, status — the first two 160px wide. Names are body, values dim;
     column headings are `.caps` at `--text-mono-micro`. A row that leads
     somewhere is a whole-row link whose hover is `--surface-shade`, applied
     instantly.
 
-13. **Forms are one row.** The control label (`.fact`), the field and the
-    primary button sit on one line at `--row-height` (36px). A field is mono
-    at `--text-mono-meta` on the page surface with a hairline border. A
-    rejected value, or a submission refused because another transfer is
-    pending, is explained under the row in Brick, sans at `--text-small` —
-    the text says what is wrong; the color only marks it. A disabled field,
-    like a disabled button, drops to `--disabled-opacity`.
+13. **Forms are one row.** The control label (`.fact`), the field, any
+    radio choice and the primary button sit on one line at `--row-height`
+    (36px). A field is mono at `--text-mono-meta` on the page surface with a
+    hairline border. A radio choice (the scenario: Happy path, Debit
+    redelivery) is a borderless fieldset whose visually hidden legend names
+    it; each option is a `.fact` label after its native radio, tinted in
+    body text with `accent-color` — not the accent, which would then carry
+    the selection alone. A rejected value, or a submission refused because
+    another transfer is pending, is explained under the row in Brick, sans
+    at `--text-small` — the text says what is wrong; the color only marks
+    it. A disabled field or radio choice, like a disabled button, drops to
+    `--disabled-opacity`.
 
 14. **Statuses are words, not colors.** The brand has one accent and no status
     palette. A transfer's status and its history steps take no hue:

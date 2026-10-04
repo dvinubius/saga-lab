@@ -76,6 +76,7 @@ func (s step) Label() string {
 type transfer struct {
 	ID              string         `json:"transfer_id"`
 	Amount          int64          `json:"amount"`
+	Scenario        scenario       `json:"scenario"`
 	Status          status         `json:"status"`
 	RejectionReason string         `json:"rejection_reason,omitempty"`
 	TraceID         string         `json:"trace_id,omitempty"`
@@ -103,12 +104,15 @@ func (e pendingTransferError) Error() string {
 	return "transfer " + e.PendingID + " is still pending"
 }
 
-func (s *Service) submit(ctx context.Context, amount int64) (transfer, error) {
-	t := transfer{ID: watermill.NewUUID(), Amount: amount, Status: debitPending, RequestedAt: time.Now()}
+func (s *Service) submit(ctx context.Context, amount int64, sc scenario) (transfer, error) {
+	t := transfer{ID: watermill.NewUUID(), Amount: amount, Scenario: sc, Status: debitPending, RequestedAt: time.Now()}
 	if span := trace.SpanContextFromContext(ctx); span.IsValid() {
 		t.TraceID = span.TraceID().String()
 	}
-	debit, err := messaging.New(ctx, t.ID, messaging.DebitFunds{TransferID: t.ID, VisitorID: visitor.PreparedID, Amount: amount}, "")
+	debit, err := messaging.New(ctx, t.ID, messaging.DebitFunds{
+		AccountOperation: messaging.AccountOperation{TransferID: t.ID, VisitorID: visitor.PreparedID, Amount: amount},
+		Scenario:         string(sc),
+	}, "")
 	if err != nil {
 		return transfer{}, err
 	}
@@ -136,9 +140,9 @@ func (s *Service) admit(ctx context.Context, t transfer, debit *message.Message)
 	admitted := false
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		inserted, err := tx.Exec(ctx,
-			`INSERT INTO transfers (transfer_id, visitor_id, amount, status, requested_at, trace_id) VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))
+			`INSERT INTO transfers (transfer_id, visitor_id, amount, scenario, status, requested_at, trace_id) VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''))
 			 ON CONFLICT (visitor_id) WHERE status IN ('debit_pending', 'credit_pending') DO NOTHING`,
-			t.ID, visitor.PreparedID, t.Amount, t.Status, t.RequestedAt, t.TraceID,
+			t.ID, visitor.PreparedID, t.Amount, t.Scenario, t.Status, t.RequestedAt, t.TraceID,
 		)
 		if err != nil || inserted.RowsAffected() == 0 {
 			return err
@@ -287,9 +291,9 @@ func record(ctx context.Context, tx pgx.Tx, transferID string, entry historyEntr
 func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	t := transfer{ID: id}
 	err := s.db.QueryRow(ctx,
-		`SELECT amount, status, COALESCE(rejection_reason, ''), COALESCE(trace_id, ''), requested_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
+		`SELECT amount, scenario, status, COALESCE(rejection_reason, ''), COALESCE(trace_id, ''), requested_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
 		id, visitor.PreparedID,
-	).Scan(&t.Amount, &t.Status, &t.RejectionReason, &t.TraceID, &t.RequestedAt)
+	).Scan(&t.Amount, &t.Scenario, &t.Status, &t.RejectionReason, &t.TraceID, &t.RequestedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return transfer{}, errTransferNotFound
 	}
@@ -315,7 +319,7 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 
 func (s *Service) list(ctx context.Context) ([]transfer, error) {
 	rows, err := s.db.Query(ctx,
-		`SELECT transfer_id, amount, status, requested_at FROM transfers WHERE visitor_id = $1 ORDER BY requested_at DESC`,
+		`SELECT transfer_id, amount, scenario, status, requested_at FROM transfers WHERE visitor_id = $1 ORDER BY requested_at DESC`,
 		visitor.PreparedID,
 	)
 	if err != nil {
@@ -323,7 +327,7 @@ func (s *Service) list(ctx context.Context) ([]transfer, error) {
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (transfer, error) {
 		var t transfer
-		err := row.Scan(&t.ID, &t.Amount, &t.Status, &t.RequestedAt)
+		err := row.Scan(&t.ID, &t.Amount, &t.Scenario, &t.Status, &t.RequestedAt)
 		return t, err
 	})
 }

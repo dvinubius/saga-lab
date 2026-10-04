@@ -38,7 +38,10 @@ type OperationCommitted struct {
 	ObservedAt time.Time `json:"observed_at"`
 }
 
-type DebitFunds AccountOperation
+type DebitFunds struct {
+	AccountOperation
+	Scenario string `json:"scenario"`
+}
 
 type FundsDebited OperationCommitted
 

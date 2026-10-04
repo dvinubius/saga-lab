@@ -201,7 +201,8 @@ func (s *Service) getTransfers(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Amount json.RawMessage `json:"amount"`
+		Amount   json.RawMessage `json:"amount"`
+		Scenario *string         `json:"scenario"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 	if err := decoder.Decode(&request); err != nil || !errors.Is(decoder.Decode(new(json.RawMessage)), io.EOF) {
@@ -213,7 +214,14 @@ func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, http.StatusBadRequest, err.Error(), s.logger)
 		return
 	}
-	t, err := s.submit(r.Context(), amount)
+	sc := happyPath
+	if request.Scenario != nil {
+		if sc, err = parseScenario(*request.Scenario); err != nil {
+			web.WriteError(w, http.StatusBadRequest, err.Error(), s.logger)
+			return
+		}
+	}
+	t, err := s.submit(r.Context(), amount, sc)
 	if pending, ok := errors.AsType[pendingTransferError](err); ok {
 		web.WriteJSON(w, http.StatusConflict, map[string]string{
 			"error":               "another transfer is still pending; submit again once it has finished",
@@ -245,12 +253,15 @@ func (s *Service) getTransfer(w http.ResponseWriter, r *http.Request) {
 }
 
 type homePage struct {
-	Balances  balances
-	Transfers []transfer
-	PendingID string
-	Amount    string
-	Error     string
-	Overlap   bool
+	Balances      balances
+	Transfers     []transfer
+	PendingID     string
+	Amount        string
+	Scenario      scenario
+	Scenarios     []scenario
+	Error         string
+	ScenarioError string
+	Overlap       bool
 }
 
 type transferPage struct {
@@ -278,19 +289,32 @@ func (s *Service) renderHome(w http.ResponseWriter, r *http.Request, status int,
 	if i := slices.IndexFunc(page.Transfers, func(t transfer) bool { return t.Status.Pending() }); i >= 0 && page.PendingID == "" {
 		page.PendingID = page.Transfers[i].ID
 	}
+	page.Scenarios = scenarios
+	if page.Scenario == "" {
+		page.Scenario = happyPath
+	}
 	s.render(w, status, "home", page)
 }
 
 func (s *Service) postTransferForm(w http.ResponseWriter, r *http.Request) {
 	text := strings.TrimSpace(r.PostFormValue("amount"))
-	amount, err := parseAmount(text)
+	slug := string(happyPath)
+	if r.PostForm.Has("scenario") {
+		slug = r.PostForm.Get("scenario")
+	}
+	sc, err := parseScenario(slug)
 	if err != nil {
-		s.renderHome(w, r, http.StatusBadRequest, homePage{Amount: text, Error: err.Error()})
+		s.renderHome(w, r, http.StatusBadRequest, homePage{Amount: text, ScenarioError: err.Error()})
 		return
 	}
-	t, err := s.submit(r.Context(), amount)
+	amount, err := parseAmount(text)
+	if err != nil {
+		s.renderHome(w, r, http.StatusBadRequest, homePage{Amount: text, Scenario: sc, Error: err.Error()})
+		return
+	}
+	t, err := s.submit(r.Context(), amount, sc)
 	if pending, ok := errors.AsType[pendingTransferError](err); ok {
-		s.renderHome(w, r, http.StatusConflict, homePage{PendingID: pending.PendingID, Amount: text, Overlap: true})
+		s.renderHome(w, r, http.StatusConflict, homePage{PendingID: pending.PendingID, Amount: text, Scenario: sc, Overlap: true})
 		return
 	}
 	if err != nil {
