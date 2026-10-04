@@ -34,6 +34,9 @@ type execer interface {
 }
 
 func CreateTables(ctx context.Context, db execer) error {
+	if _, err := db.Exec(ctx, inboxSchema); err != nil {
+		return fmt.Errorf("create inbox: %w", err)
+	}
 	if _, err := db.Exec(ctx, outboxSchema); err != nil {
 		return fmt.Errorf("create outbox: %w", err)
 	}
@@ -41,8 +44,8 @@ func CreateTables(ctx context.Context, db execer) error {
 }
 
 func RecreateTables(ctx context.Context, tx pgx.Tx) error {
-	if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS outbox`); err != nil {
-		return fmt.Errorf("drop outbox: %w", err)
+	if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS inbox, outbox`); err != nil {
+		return fmt.Errorf("drop inbox and outbox: %w", err)
 	}
 	return CreateTables(ctx, tx)
 }

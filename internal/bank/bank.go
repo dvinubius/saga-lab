@@ -152,8 +152,7 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 		b.logger.Error("discard debit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
 		return nil
 	}
-	ctx := msg.Context()
-	err := pgx.BeginFunc(ctx, b.db, func(tx pgx.Tx) error {
+	return b.apply(msg, messaging.DebitFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
 		var balance int64
 		if err := tx.QueryRow(ctx,
 			`SELECT balance FROM accounts WHERE visitor_id = $1 FOR UPDATE`, command.VisitorID,
@@ -173,14 +172,6 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 		}
 		return enqueue(tx, command.TransferID, messaging.FundsDebitedTopic, messaging.FundsDebited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		b.logger.Warn("debit not applied: account missing", "transfer_id", command.TransferID)
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("debit for transfer %s: %w", command.TransferID, err)
-	}
-	return nil
 }
 
 func (b *Bank) creditFunds(msg *message.Message) error {
@@ -193,9 +184,7 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 		b.logger.Error("discard credit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
 		return nil
 	}
-	ctx := msg.Context()
-	missing := false
-	err := pgx.BeginFunc(ctx, b.db, func(tx pgx.Tx) error {
+	return b.apply(msg, messaging.CreditFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
 		credited, err := tx.Exec(ctx,
 			`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1`,
 			command.VisitorID, command.Amount,
@@ -204,16 +193,35 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 			return err
 		}
 		if credited.RowsAffected() == 0 {
-			missing = true
-			return nil
+			return pgx.ErrNoRows
 		}
 		return enqueue(tx, command.TransferID, messaging.FundsCreditedTopic, messaging.FundsCredited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 	})
-	if err != nil {
-		return fmt.Errorf("credit for transfer %s: %w", command.TransferID, err)
+}
+
+func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func(context.Context, pgx.Tx) error) error {
+	ctx := msg.Context()
+	duplicate := false
+	err := pgx.BeginFunc(ctx, b.db, func(tx pgx.Tx) error {
+		claimed, err := messaging.Claim(ctx, tx, msg)
+		if err != nil {
+			return err
+		}
+		if !claimed {
+			duplicate = true
+			return nil
+		}
+		return effect(ctx, tx)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		b.logger.Warn("command not applied: account missing", "command", topic, "transfer_id", transferID, "message_id", msg.UUID)
+		return nil
 	}
-	if missing {
-		b.logger.Warn("credit not applied: account missing", "transfer_id", command.TransferID)
+	if err != nil {
+		return fmt.Errorf("%s for transfer %s: %w", topic, transferID, err)
+	}
+	if duplicate {
+		b.logger.Info("ignore duplicate command", "command", topic, "transfer_id", transferID, "message_id", msg.UUID)
 	}
 	return nil
 }
