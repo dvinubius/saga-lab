@@ -177,7 +177,7 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 		return nil
 	}
 	ctx := msg.Context()
-	advanced := false
+	missed := ""
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		credit := messaging.CreditFunds{TransferID: event.TransferID}
 		err := tx.QueryRow(ctx,
@@ -185,12 +185,12 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 			event.TransferID, creditPending, debitPending,
 		).Scan(&credit.VisitorID, &credit.Amount)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
+			missed, err = currentStatus(ctx, tx, event.TransferID)
+			return err
 		}
 		if err != nil {
 			return err
 		}
-		advanced = true
 		command, err := messaging.New(ctx, event.TransferID, credit, msg.UUID)
 		if err != nil {
 			return err
@@ -206,8 +206,8 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 	if err != nil {
 		return fmt.Errorf("record debit for transfer %s: %w", event.TransferID, err)
 	}
-	if !advanced {
-		s.logger.Warn("ignore FundsDebited for transfer not awaiting a debit", "transfer_id", event.TransferID, "message_id", msg.UUID)
+	if missed != "" {
+		s.logger.Info("ignore event that fails the status guard", "event", "FundsDebited", "transfer_id", event.TransferID, "message_id", msg.UUID, "status", missed)
 	}
 	return nil
 }
@@ -219,16 +219,19 @@ func (s *Service) debitRejected(msg *message.Message) error {
 		return nil
 	}
 	ctx := msg.Context()
-	advanced := false
+	missed := ""
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		updated, err := tx.Exec(ctx,
 			`UPDATE transfers SET status = $2, rejection_reason = $4 WHERE transfer_id = $1 AND status = $3`,
 			event.TransferID, rejected, debitPending, event.Reason,
 		)
-		if err != nil || updated.RowsAffected() == 0 {
+		if err != nil {
 			return err
 		}
-		advanced = true
+		if updated.RowsAffected() == 0 {
+			missed, err = currentStatus(ctx, tx, event.TransferID)
+			return err
+		}
 		return record(ctx, tx, event.TransferID, historyEntry{
 			Step: debitRejected, Service: bankAName, ObservedAt: event.ObservedAt,
 			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
@@ -237,8 +240,8 @@ func (s *Service) debitRejected(msg *message.Message) error {
 	if err != nil {
 		return fmt.Errorf("record debit rejection for transfer %s: %w", event.TransferID, err)
 	}
-	if !advanced {
-		s.logger.Warn("ignore DebitRejected for transfer not awaiting a debit", "transfer_id", event.TransferID, "message_id", msg.UUID)
+	if missed != "" {
+		s.logger.Info("ignore event that fails the status guard", "event", "DebitRejected", "transfer_id", event.TransferID, "message_id", msg.UUID, "status", missed)
 	}
 	return nil
 }
@@ -250,16 +253,19 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 		return nil
 	}
 	ctx := msg.Context()
-	advanced := false
+	missed := ""
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		updated, err := tx.Exec(ctx,
 			`UPDATE transfers SET status = $2 WHERE transfer_id = $1 AND status = $3`,
 			event.TransferID, completed, creditPending,
 		)
-		if err != nil || updated.RowsAffected() == 0 {
+		if err != nil {
 			return err
 		}
-		advanced = true
+		if updated.RowsAffected() == 0 {
+			missed, err = currentStatus(ctx, tx, event.TransferID)
+			return err
+		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: creditCommitted, Service: bankBName, ObservedAt: event.ObservedAt,
 			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
@@ -273,10 +279,19 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 	if err != nil {
 		return fmt.Errorf("record credit for transfer %s: %w", event.TransferID, err)
 	}
-	if !advanced {
-		s.logger.Warn("ignore FundsCredited for transfer not awaiting a credit", "transfer_id", event.TransferID, "message_id", msg.UUID)
+	if missed != "" {
+		s.logger.Info("ignore event that fails the status guard", "event", "FundsCredited", "transfer_id", event.TransferID, "message_id", msg.UUID, "status", missed)
 	}
 	return nil
+}
+
+func currentStatus(ctx context.Context, tx pgx.Tx, transferID string) (string, error) {
+	var current string
+	err := tx.QueryRow(ctx, `SELECT status FROM transfers WHERE transfer_id = $1`, transferID).Scan(&current)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "not found", nil
+	}
+	return current, err
 }
 
 func record(ctx context.Context, tx pgx.Tx, transferID string, entry historyEntry) error {
