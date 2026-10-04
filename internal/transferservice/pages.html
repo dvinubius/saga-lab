@@ -58,6 +58,9 @@
 
 {{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{.UTC.Format "15:04:05.000"}}</time>{{end}}
 
+{{define "history-entry"}}{{if .Step}}<span class="label">{{.Step.Label}}</span>{{else}}<span class="label"><span class="comment">// </span>{{.Observation.Label}}</span>{{end}}
+{{with .Cause}}<span class="meta">{{.}}{{with $.AttemptID}} · attempt {{$.Attempt}} · <code title="{{.}}">{{slice . 0 8}}</code>{{end}}</span>{{end}}{{end}}
+
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
 {{if and .PendingID (not .Overlap)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
 {{template "top"}}
@@ -144,19 +147,18 @@
 
 <section class="section">
   <h3 class="caps section-label">History</h3>
-  <table class="table">
-    <thead><tr><th class="caps">Step</th><th class="caps">Reported by</th><th class="caps">Observed (UTC)</th><th class="caps">Recorded (UTC)</th></tr></thead>
+  <table class="table history">
+    <thead><tr><th class="caps">Observed (UTC)</th><th class="caps">Transfer Service</th><th class="caps">Bank A</th><th class="caps">Bank B</th></tr></thead>
     <tbody>
-    {{range .History}}{{if .Step}}<tr data-step="{{.Step}}">
-      <td>{{.Step.Label}}</td>{{else}}<tr data-observation="{{.Observation}}">
-      <td>{{.Observation.Label}}</td>{{end}}
-      <td>{{.Service}}</td>
+    {{range $.History}}{{if .Step}}<tr data-step="{{.Step}}">{{else}}<tr data-observation="{{.Observation}}">{{end}}
       <td>{{template "time" .ObservedAt}}</td>
-      <td>{{template "time" .RecordedAt}}</td>
+      <td>{{if eq .Service "Transfer Service"}}{{template "history-entry" .}}{{end}}</td>
+      <td>{{if eq .Service "Bank A"}}{{template "history-entry" .}}{{end}}</td>
+      <td>{{if eq .Service "Bank B"}}{{template "history-entry" .}}{{end}}</td>
     </tr>
     {{end}}</tbody>
   </table>
-  <p class="note">Observed is when the reporting service saw the step happen; recorded is when the Transfer Service stored it.</p>
+  <p class="note">Each column is a service, and each row is one entry it reported, in the order the entries were observed. Recorded times are left out.</p>
 </section>
 {{end}}
 

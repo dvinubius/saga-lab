@@ -270,6 +270,7 @@ type homePage struct {
 type transferPage struct {
 	Balances balances
 	Transfer transfer
+	History  []historyRow
 	TraceURL string
 }
 
@@ -345,7 +346,7 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Balances are temporarily unavailable.", http.StatusBadGateway)
 		return
 	}
-	page := transferPage{Balances: b, Transfer: t}
+	page := transferPage{Balances: b, Transfer: t, History: historyRows(t.History)}
 	if t.TraceID != "" {
 		page.TraceURL = s.traceURL(t.TraceID)
 	}
