@@ -23,8 +23,9 @@ const (
 )
 
 const (
-	causationIDKey = "causation_id"
-	transferIDKey  = "transfer_id"
+	causationIDKey       = "causation_id"
+	transferIDKey        = "transfer_id"
+	attemptIDMetadataKey = "attempt_id"
 )
 
 type AccountOperation struct {

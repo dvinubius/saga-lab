@@ -168,9 +168,10 @@ func (s *Service) pendingTransferID(ctx context.Context) (string, error) {
 }
 
 func (s *Service) fundsDebited(msg *message.Message) error {
+	logger := messaging.AttemptLogger(msg.Context(), s.logger)
 	var event messaging.FundsDebited
 	if err := messaging.Decode(msg, &event); err != nil {
-		s.logger.Error("discard event", "error", err)
+		logger.Error("discard event", "error", err)
 		return nil
 	}
 	ctx := msg.Context()
@@ -204,15 +205,16 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 		return fmt.Errorf("record debit for transfer %s: %w", event.TransferID, err)
 	}
 	if missed != "" {
-		s.logger.Info("ignore event that fails the status guard", "event", "FundsDebited", "transfer_id", event.TransferID, "message_id", msg.UUID, "status", missed)
+		logger.Info("ignore event that fails the status guard", "event", "FundsDebited", "transfer_id", event.TransferID, "message_id", msg.UUID, "status", missed)
 	}
 	return nil
 }
 
 func (s *Service) debitRejected(msg *message.Message) error {
+	logger := messaging.AttemptLogger(msg.Context(), s.logger)
 	var event messaging.DebitRejected
 	if err := messaging.Decode(msg, &event); err != nil {
-		s.logger.Error("discard event", "error", err)
+		logger.Error("discard event", "error", err)
 		return nil
 	}
 	ctx := msg.Context()
@@ -238,15 +240,16 @@ func (s *Service) debitRejected(msg *message.Message) error {
 		return fmt.Errorf("record debit rejection for transfer %s: %w", event.TransferID, err)
 	}
 	if missed != "" {
-		s.logger.Info("ignore event that fails the status guard", "event", "DebitRejected", "transfer_id", event.TransferID, "message_id", msg.UUID, "status", missed)
+		logger.Info("ignore event that fails the status guard", "event", "DebitRejected", "transfer_id", event.TransferID, "message_id", msg.UUID, "status", missed)
 	}
 	return nil
 }
 
 func (s *Service) fundsCredited(msg *message.Message) error {
+	logger := messaging.AttemptLogger(msg.Context(), s.logger)
 	var event messaging.FundsCredited
 	if err := messaging.Decode(msg, &event); err != nil {
-		s.logger.Error("discard event", "error", err)
+		logger.Error("discard event", "error", err)
 		return nil
 	}
 	ctx := msg.Context()
@@ -277,7 +280,7 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 		return fmt.Errorf("record credit for transfer %s: %w", event.TransferID, err)
 	}
 	if missed != "" {
-		s.logger.Info("ignore event that fails the status guard", "event", "FundsCredited", "transfer_id", event.TransferID, "message_id", msg.UUID, "status", missed)
+		logger.Info("ignore event that fails the status guard", "event", "FundsCredited", "transfer_id", event.TransferID, "message_id", msg.UUID, "status", missed)
 	}
 	return nil
 }
