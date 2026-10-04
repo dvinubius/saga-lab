@@ -30,14 +30,17 @@ const debitRedelivery = "debit_redelivery"
 var errInjectedFailure = errors.New("injected failure after commit")
 
 type Role struct {
-	commandTopic  string
-	outcomeTopics []string
-	execute       func(*Bank, *message.Message) error
+	service         string
+	commandTopic    string
+	publishedTopics []string
+	execute         func(*Bank, *message.Message) error
 }
 
 var (
-	Source      = Role{messaging.DebitFundsTopic, []string{messaging.FundsDebitedTopic, messaging.DebitRejectedTopic}, (*Bank).debitFunds}
-	Destination = Role{messaging.CreditFundsTopic, []string{messaging.FundsCreditedTopic}, (*Bank).creditFunds}
+	Source = Role{"Bank A", messaging.DebitFundsTopic,
+		[]string{messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.ProcessingObservedTopic}, (*Bank).debitFunds}
+	Destination = Role{"Bank B", messaging.CreditFundsTopic,
+		[]string{messaging.FundsCreditedTopic, messaging.ProcessingObservedTopic}, (*Bank).creditFunds}
 )
 
 type Config struct {
@@ -63,7 +66,7 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 	if err != nil {
 		return err
 	}
-	broker, err := messaging.Connect(settings.AMQPURL, settings.Logger, config.Role.outcomeTopics...)
+	broker, err := messaging.Connect(settings.AMQPURL, settings.Logger, config.Role.publishedTopics...)
 	if err != nil {
 		return err
 	}
@@ -185,6 +188,11 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 	}
 	trace.SpanFromContext(msg.Context()).AddEvent("fault.injected")
 	logger.Warn("handler failed after commit; Nack (requeue) requested", "transfer_id", command.TransferID, "message_id", msg.UUID)
+	if err := pgx.BeginFunc(msg.Context(), b.db, func(tx pgx.Tx) error {
+		return b.observe(tx, command.TransferID, messaging.NackRequested, msg)
+	}); err != nil {
+		logger.Error("record NackRequested", "transfer_id", command.TransferID, "message_id", msg.UUID, "error", err)
+	}
 	return errInjectedFailure
 }
 
@@ -224,7 +232,7 @@ func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func
 		}
 		if !claimed {
 			duplicate = true
-			return nil
+			return b.observe(tx, transferID, messaging.DuplicateSuppressed, msg)
 		}
 		return effect(ctx, tx)
 	})
@@ -239,6 +247,13 @@ func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func
 		logger.Info("ignore duplicate command", "command", topic, "transfer_id", transferID, "message_id", msg.UUID)
 	}
 	return nil
+}
+
+func (b *Bank) observe(tx pgx.Tx, transferID, observation string, command *message.Message) error {
+	return enqueue(tx, transferID, messaging.ProcessingObservedTopic, messaging.ProcessingObserved{
+		TransferID: transferID, Observation: observation, Service: b.role.service,
+		AttemptID: messaging.AttemptID(command.Context()), ObservedAt: time.Now(),
+	}, command)
 }
 
 func enqueue(tx pgx.Tx, transferID, topic string, event any, command *message.Message) error {
