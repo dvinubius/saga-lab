@@ -18,11 +18,16 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
 
 //go:embed schema.sql
 var schema string
+
+const debitRedelivery = "debit_redelivery"
+
+var errInjectedFailure = errors.New("injected failure after commit")
 
 type Role struct {
 	commandTopic  string
@@ -143,16 +148,18 @@ func (b *Bank) executeCommands(broker *messaging.Broker) {
 }
 
 func (b *Bank) debitFunds(msg *message.Message) error {
+	logger := messaging.AttemptLogger(msg.Context(), b.logger)
 	var command messaging.DebitFunds
 	if err := messaging.Decode(msg, &command); err != nil {
-		b.logger.Error("discard command", "error", err)
+		logger.Error("discard command", "error", err)
 		return nil
 	}
 	if command.Amount <= 0 {
-		b.logger.Error("discard debit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
+		logger.Error("discard debit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
 		return nil
 	}
-	return b.apply(msg, messaging.DebitFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
+	debited := false
+	err := b.apply(msg, messaging.DebitFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
 		var balance int64
 		if err := tx.QueryRow(ctx,
 			`SELECT balance FROM accounts WHERE visitor_id = $1 FOR UPDATE`, command.VisitorID,
@@ -170,18 +177,26 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 		); err != nil {
 			return err
 		}
+		debited = true
 		return enqueue(tx, command.TransferID, messaging.FundsDebitedTopic, messaging.FundsDebited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
-	})
+	}, logger)
+	if err != nil || !debited || command.Scenario != debitRedelivery {
+		return err
+	}
+	trace.SpanFromContext(msg.Context()).AddEvent("fault.injected")
+	logger.Warn("handler failed after commit; Nack (requeue) requested", "transfer_id", command.TransferID, "message_id", msg.UUID)
+	return errInjectedFailure
 }
 
 func (b *Bank) creditFunds(msg *message.Message) error {
+	logger := messaging.AttemptLogger(msg.Context(), b.logger)
 	var command messaging.CreditFunds
 	if err := messaging.Decode(msg, &command); err != nil {
-		b.logger.Error("discard command", "error", err)
+		logger.Error("discard command", "error", err)
 		return nil
 	}
 	if command.Amount <= 0 {
-		b.logger.Error("discard credit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
+		logger.Error("discard credit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
 		return nil
 	}
 	return b.apply(msg, messaging.CreditFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
@@ -196,10 +211,10 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 			return pgx.ErrNoRows
 		}
 		return enqueue(tx, command.TransferID, messaging.FundsCreditedTopic, messaging.FundsCredited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
-	})
+	}, logger)
 }
 
-func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func(context.Context, pgx.Tx) error) error {
+func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func(context.Context, pgx.Tx) error, logger *slog.Logger) error {
 	ctx := msg.Context()
 	duplicate := false
 	err := pgx.BeginFunc(ctx, b.db, func(tx pgx.Tx) error {
@@ -214,14 +229,14 @@ func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func
 		return effect(ctx, tx)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		b.logger.Warn("command not applied: account missing", "command", topic, "transfer_id", transferID, "message_id", msg.UUID)
+		logger.Warn("command not applied: account missing", "command", topic, "transfer_id", transferID, "message_id", msg.UUID)
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("%s for transfer %s: %w", topic, transferID, err)
 	}
 	if duplicate {
-		b.logger.Info("ignore duplicate command", "command", topic, "transfer_id", transferID, "message_id", msg.UUID)
+		logger.Info("ignore duplicate command", "command", topic, "transfer_id", transferID, "message_id", msg.UUID)
 	}
 	return nil
 }

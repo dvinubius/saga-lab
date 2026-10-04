@@ -52,6 +52,9 @@ func RecreateTables(ctx context.Context, tx pgx.Tx) error {
 
 func Enqueue(ctx context.Context, tx pgx.Tx, topic string, msg *message.Message) error {
 	otel.GetTextMapPropagator().Inject(ctx, propagation.MapCarrier(msg.Metadata))
+	if attemptID := AttemptID(ctx); attemptID != "" {
+		msg.Metadata.Set(attemptIDMetadataKey, attemptID)
+	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO outbox (topic, message_id, payload, metadata) VALUES ($1, $2, $3, $4)`,
 		topic, msg.UUID, msg.Payload, msg.Metadata,
