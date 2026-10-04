@@ -67,12 +67,16 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return broker.Run(ctx) })
+	g.Go(func() error { return broker.RunRelay(ctx, db, settings.Logger) })
 	g.Go(func() error { return web.Serve(ctx, settings.Listener, b.Handler(), web.Internal, settings.Logger) })
 	return g.Wait()
 }
 
 func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Logger) (*Bank, error) {
 	if err := provision(ctx, db, config); err != nil {
+		return nil, err
+	}
+	if err := messaging.CreateTables(ctx, db); err != nil {
 		return nil, err
 	}
 	return &Bank{db: db, role: config.Role, logger: logger}, nil
@@ -90,6 +94,9 @@ func Reset(ctx context.Context, settings service.Settings, config Config) error 
 	return pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS accounts`); err != nil {
 			return fmt.Errorf("drop accounts: %w", err)
+		}
+		if err := messaging.RecreateTables(ctx, tx); err != nil {
+			return err
 		}
 		return provision(ctx, tx, config)
 	})
@@ -146,7 +153,6 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 		return nil
 	}
 	ctx := msg.Context()
-	insufficient := false
 	err := pgx.BeginFunc(ctx, b.db, func(tx pgx.Tx) error {
 		var balance int64
 		if err := tx.QueryRow(ctx,
@@ -155,14 +161,17 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 			return err
 		}
 		if balance < command.Amount {
-			insufficient = true
-			return nil
+			return enqueue(tx, command.TransferID, messaging.DebitRejectedTopic, messaging.DebitRejected{
+				TransferID: command.TransferID, Reason: "Insufficient funds", ObservedAt: time.Now(),
+			}, msg)
 		}
-		_, err := tx.Exec(ctx,
+		if _, err := tx.Exec(ctx,
 			`UPDATE accounts SET balance = balance - $2 WHERE visitor_id = $1`,
 			command.VisitorID, command.Amount,
-		)
-		return err
+		); err != nil {
+			return err
+		}
+		return enqueue(tx, command.TransferID, messaging.FundsDebitedTopic, messaging.FundsDebited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		b.logger.Warn("debit not applied: account missing", "transfer_id", command.TransferID)
@@ -171,12 +180,7 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 	if err != nil {
 		return fmt.Errorf("debit for transfer %s: %w", command.TransferID, err)
 	}
-	if insufficient {
-		return b.publish(command.TransferID, messaging.DebitRejectedTopic, messaging.DebitRejected{
-			TransferID: command.TransferID, Reason: "Insufficient funds", ObservedAt: time.Now(),
-		}, msg)
-	}
-	return b.publish(command.TransferID, messaging.FundsDebitedTopic, messaging.FundsDebited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
+	return nil
 }
 
 func (b *Bank) creditFunds(msg *message.Message) error {
@@ -189,26 +193,37 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 		b.logger.Error("discard credit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
 		return nil
 	}
-	credited, err := b.db.Exec(msg.Context(),
-		`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1`,
-		command.VisitorID, command.Amount,
-	)
+	ctx := msg.Context()
+	missing := false
+	err := pgx.BeginFunc(ctx, b.db, func(tx pgx.Tx) error {
+		credited, err := tx.Exec(ctx,
+			`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1`,
+			command.VisitorID, command.Amount,
+		)
+		if err != nil {
+			return err
+		}
+		if credited.RowsAffected() == 0 {
+			missing = true
+			return nil
+		}
+		return enqueue(tx, command.TransferID, messaging.FundsCreditedTopic, messaging.FundsCredited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
+	})
 	if err != nil {
 		return fmt.Errorf("credit for transfer %s: %w", command.TransferID, err)
 	}
-	if credited.RowsAffected() == 0 {
+	if missing {
 		b.logger.Warn("credit not applied: account missing", "transfer_id", command.TransferID)
-		return nil
 	}
-	return b.publish(command.TransferID, messaging.FundsCreditedTopic, messaging.FundsCredited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
+	return nil
 }
 
-func (b *Bank) publish(transferID, topic string, event any, command *message.Message) error {
+func enqueue(tx pgx.Tx, transferID, topic string, event any, command *message.Message) error {
 	msg, err := messaging.New(command.Context(), transferID, event, command.UUID)
 	if err != nil {
 		return err
 	}
-	return b.broker.Publisher.Publish(topic, msg)
+	return messaging.Enqueue(command.Context(), tx, topic, msg)
 }
 
 type account struct {

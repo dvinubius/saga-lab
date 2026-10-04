@@ -1,6 +1,7 @@
 package transferservice_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -21,7 +22,8 @@ import (
 
 func TestEventsForUnknownTransferAreIgnoredWithoutBroker(t *testing.T) {
 	db := pgtest.NewDatabase(t)
-	s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.NewTextHandler(t.Output(), nil)))
+	var logs bytes.Buffer
+	s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.NewJSONHandler(&logs, nil)))
 	if err != nil {
 		t.Fatalf("open transfer service: %v", err)
 	}
@@ -34,6 +36,10 @@ func TestEventsForUnknownTransferAreIgnoredWithoutBroker(t *testing.T) {
 	}
 	if err := transferservice.FundsCredited(s, event(t, "unknown", messaging.FundsCredited{TransferID: "unknown", ObservedAt: time.Now()})); err != nil {
 		t.Fatalf("FundsCredited: %v", err)
+	}
+	logged := map[string]any{"level": "INFO", "transfer_id": "unknown", "status": "not found"}
+	if got := records(t, &logs, "level", "transfer_id", "status"); !reflect.DeepEqual(got, []map[string]any{logged, logged, logged}) {
+		t.Fatalf("logs = %v, want three Info lines for a transfer not found", got)
 	}
 
 	response := httptest.NewRecorder()
@@ -49,6 +55,76 @@ func TestEventsForUnknownTransferAreIgnoredWithoutBroker(t *testing.T) {
 	}
 }
 
+func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
+	type handler func(*transferservice.Service, *message.Message) error
+	debited := func(id string) *message.Message {
+		return event(t, id, messaging.FundsDebited{TransferID: id, ObservedAt: time.Now()})
+	}
+	tests := []struct {
+		name      string
+		before    []handler
+		handle    handler
+		duplicate func(id string) *message.Message
+		want      state
+	}{
+		{
+			name:      "FundsDebited",
+			handle:    transferservice.FundsDebited,
+			duplicate: debited,
+			want:      state{Status: "credit_pending", Steps: []string{"requested", "debit_committed"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic}},
+		},
+		{
+			name:   "DebitRejected",
+			handle: transferservice.DebitRejected,
+			duplicate: func(id string) *message.Message {
+				return event(t, id, messaging.DebitRejected{TransferID: id, Reason: "Insufficient funds", ObservedAt: time.Now()})
+			},
+			want: state{Status: "rejected", Steps: []string{"requested", "debit_rejected"}, Outbox: []string{messaging.DebitFundsTopic}},
+		},
+		{
+			name:   "FundsCredited",
+			before: []handler{transferservice.FundsDebited},
+			handle: transferservice.FundsCredited,
+			duplicate: func(id string) *message.Message {
+				return event(t, id, messaging.FundsCredited{TransferID: id, ObservedAt: time.Now()})
+			},
+			want: state{Status: "completed", Steps: []string{"requested", "debit_committed", "credit_committed", "finished"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db := pgtest.NewDatabase(t)
+			var logs bytes.Buffer
+			s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.NewJSONHandler(&logs, nil)))
+			if err != nil {
+				t.Fatalf("open transfer service: %v", err)
+			}
+			id := submit(t, s)
+			for _, before := range test.before {
+				if err := before(s, debited(id)); err != nil {
+					t.Fatalf("prepare transfer: %v", err)
+				}
+			}
+			msg := test.duplicate(id)
+
+			for range 2 {
+				logs.Reset()
+				if err := test.handle(s, msg); err != nil {
+					t.Fatalf("%s: %v", test.name, err)
+				}
+			}
+
+			if got := snapshot(t, db, id); !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("after duplicate: %+v, want %+v", got, test.want)
+			}
+			want := []map[string]any{{"level": "INFO", "event": test.name, "transfer_id": id, "message_id": msg.UUID, "status": test.want.Status}}
+			if got := records(t, &logs, "level", "event", "transfer_id", "message_id", "status"); !reflect.DeepEqual(got, want) {
+				t.Fatalf("logs for duplicate = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
 func TestFundsDebitedCommitsNothingWhenEnqueueFails(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
@@ -56,16 +132,9 @@ func TestFundsDebitedCommitsNothingWhenEnqueueFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open transfer service: %v", err)
 	}
-	response := httptest.NewRecorder()
-	s.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/transfers", strings.NewReader(`{"amount": 25}`)))
-	var submitted struct {
-		ID string `json:"transfer_id"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&submitted); err != nil || response.Code != http.StatusAccepted {
-		t.Fatalf("POST /api/transfers: status %d, decode error %v", response.Code, err)
-	}
-	debited := event(t, submitted.ID, messaging.FundsDebited{TransferID: submitted.ID, ObservedAt: time.Now()})
-	before := snapshot(t, db, submitted.ID)
+	id := submit(t, s)
+	debited := event(t, id, messaging.FundsDebited{TransferID: id, ObservedAt: time.Now()})
+	before := snapshot(t, db, id)
 	if want := (state{Status: "debit_pending", Steps: []string{"requested"}, Outbox: []string{messaging.DebitFundsTopic}}); !reflect.DeepEqual(before, want) {
 		t.Fatalf("after submission: %+v, want %+v", before, want)
 	}
@@ -78,7 +147,7 @@ func TestFundsDebitedCommitsNothingWhenEnqueueFails(t *testing.T) {
 	if err := transferservice.FundsDebited(s, debited); err == nil {
 		t.Fatal("FundsDebited with a refusing outbox succeeded, want an error")
 	}
-	if after := snapshot(t, db, submitted.ID); !reflect.DeepEqual(after, before) {
+	if after := snapshot(t, db, id); !reflect.DeepEqual(after, before) {
 		t.Fatalf("after failed handling: %+v, want unchanged %+v", after, before)
 	}
 
@@ -89,9 +158,42 @@ func TestFundsDebitedCommitsNothingWhenEnqueueFails(t *testing.T) {
 		t.Fatalf("FundsDebited: %v", err)
 	}
 	want := state{Status: "credit_pending", Steps: []string{"requested", "debit_committed"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic}}
-	if after := snapshot(t, db, submitted.ID); !reflect.DeepEqual(after, want) {
+	if after := snapshot(t, db, id); !reflect.DeepEqual(after, want) {
 		t.Fatalf("after handling: %+v, want %+v", after, want)
 	}
+}
+
+func submit(t *testing.T, s *transferservice.Service) string {
+	t.Helper()
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/transfers", strings.NewReader(`{"amount": 25}`)))
+	var submitted struct {
+		ID string `json:"transfer_id"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&submitted); err != nil || response.Code != http.StatusAccepted {
+		t.Fatalf("POST /api/transfers: status %d, decode error %v", response.Code, err)
+	}
+	return submitted.ID
+}
+
+func records(t *testing.T, logs *bytes.Buffer, keys ...string) []map[string]any {
+	t.Helper()
+	var got []map[string]any
+	decoder := json.NewDecoder(logs)
+	for decoder.More() {
+		var record map[string]any
+		if err := decoder.Decode(&record); err != nil {
+			t.Fatalf("decode log record: %v", err)
+		}
+		picked := map[string]any{}
+		for _, key := range keys {
+			if value, ok := record[key]; ok {
+				picked[key] = value
+			}
+		}
+		got = append(got, picked)
+	}
+	return got
 }
 
 type state struct {
