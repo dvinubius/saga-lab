@@ -78,7 +78,6 @@ func Decode(msg *message.Message, payload any) error {
 }
 
 type Broker struct {
-	Publisher     message.Publisher
 	Subscriber    *amqp.Subscriber
 	Router        *message.Router
 	amqpPublisher *amqp.Publisher
@@ -100,7 +99,7 @@ func Connect(url string, logger *slog.Logger, publishedTopics ...string) (*Broke
 		publisher.Close()
 		return nil, fmt.Errorf("connect subscriber: %w", err)
 	}
-	b := &Broker{Publisher: tracingPublisher{publisher}, Subscriber: subscriber, amqpPublisher: publisher}
+	b := &Broker{Subscriber: subscriber, amqpPublisher: publisher}
 	for _, topic := range publishedTopics {
 		if err := subscriber.SubscribeInitialize(topic); err != nil {
 			b.Close()

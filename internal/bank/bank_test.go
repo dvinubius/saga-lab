@@ -6,11 +6,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/dvinubius/saga-lab/internal/bank"
+	"github.com/dvinubius/saga-lab/internal/messaging"
 	"github.com/dvinubius/saga-lab/internal/postgres/pgtest"
 	"github.com/dvinubius/saga-lab/internal/visitor"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -42,6 +45,57 @@ func TestVisitorWithoutAccountIsNotFound(t *testing.T) {
 	if got := get(b, "/accounts/unknown-visitor").Code; got != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", got, http.StatusNotFound)
 	}
+}
+
+func TestDebitCommitsNothingWhenEnqueueFails(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	ctx := context.Background()
+	b := open(t, db, bank.Config{PreparedBalance: 100, Role: bank.Source})
+	command, err := messaging.New(ctx, "transfer", messaging.DebitFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25}, "")
+	if err != nil {
+		t.Fatalf("new command: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		CREATE FUNCTION refuse_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'outbox refused'; END $$;
+		CREATE TRIGGER refuse_outbox BEFORE INSERT ON outbox FOR EACH ROW EXECUTE FUNCTION refuse_outbox();`); err != nil {
+		t.Fatalf("install outbox trigger: %v", err)
+	}
+	if err := bank.DebitFunds(b, command); err == nil {
+		t.Fatal("DebitFunds with a refusing outbox succeeded, want an error")
+	}
+	if got := balance(t, b, visitor.PreparedID); got != 100 {
+		t.Fatalf("balance after failed handling = %d, want unchanged 100", got)
+	}
+	if got := outbox(t, db); len(got) != 0 {
+		t.Fatalf("outbox after failed handling = %v, want empty", got)
+	}
+
+	if _, err := db.Exec(ctx, `DROP TRIGGER refuse_outbox ON outbox`); err != nil {
+		t.Fatalf("drop outbox trigger: %v", err)
+	}
+	if err := bank.DebitFunds(b, command); err != nil {
+		t.Fatalf("DebitFunds: %v", err)
+	}
+	if got := balance(t, b, visitor.PreparedID); got != 75 {
+		t.Fatalf("balance after handling = %d, want 75", got)
+	}
+	if got, want := outbox(t, db), []string{messaging.FundsDebitedTopic}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("outbox after handling = %v, want %v", got, want)
+	}
+}
+
+func outbox(t *testing.T, db *pgxpool.Pool) []string {
+	t.Helper()
+	rows, err := db.Query(context.Background(), `SELECT topic FROM outbox ORDER BY id`)
+	if err != nil {
+		t.Fatalf("read outbox: %v", err)
+	}
+	topics, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("read outbox: %v", err)
+	}
+	return topics
 }
 
 func open(t *testing.T, db *pgxpool.Pool, config bank.Config) *bank.Bank {

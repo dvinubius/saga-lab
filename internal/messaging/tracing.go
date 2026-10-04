@@ -13,19 +13,6 @@ import (
 
 var tracer = otel.Tracer("github.com/dvinubius/saga-lab/internal/messaging")
 
-type tracingPublisher struct {
-	message.Publisher
-}
-
-func (p tracingPublisher) Publish(topic string, msgs ...*message.Message) error {
-	for _, msg := range msgs {
-		if err := send(msg.Context(), p.Publisher, topic, msg); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func send(ctx context.Context, publisher message.Publisher, topic string, msg *message.Message) error {
 	ctx, span := tracer.Start(ctx, "send "+topic,
 		trace.WithSpanKind(trace.SpanKindProducer),
