@@ -49,15 +49,16 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 		return err
 	}
 	defer db.Close()
+	s, err := Open(ctx, db, config, settings.Logger)
+	if err != nil {
+		return err
+	}
 	broker, err := messaging.Connect(settings.AMQPURL, settings.Logger, messaging.DebitFundsTopic, messaging.CreditFundsTopic)
 	if err != nil {
 		return err
 	}
 	defer broker.Close()
-	s, err := Open(ctx, db, broker, config, settings.Logger)
-	if err != nil {
-		return err
-	}
+	s.handleEvents(broker)
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return broker.Run(ctx) })
@@ -94,18 +95,21 @@ type Service struct {
 	logger     *slog.Logger
 }
 
-func Open(ctx context.Context, db *pgxpool.Pool, broker *messaging.Broker, config Config, logger *slog.Logger) (*Service, error) {
+func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Logger) (*Service, error) {
 	if _, err := db.Exec(ctx, schema); err != nil {
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
-	s := &Service{
+	return &Service{
 		db:         db,
-		broker:     broker,
 		bankA:      newBankClient(bankAName, config.BankAURL),
 		bankB:      newBankClient(bankBName, config.BankBURL),
 		grafanaURL: strings.TrimSuffix(config.GrafanaURL, "/"),
 		logger:     logger,
-	}
+	}, nil
+}
+
+func (s *Service) handleEvents(broker *messaging.Broker) {
+	s.broker = broker
 	broker.Router.AddHandler("funds-debited",
 		messaging.FundsDebitedTopic, broker.Subscriber,
 		messaging.CreditFundsTopic, broker.Publisher,
@@ -116,7 +120,6 @@ func Open(ctx context.Context, db *pgxpool.Pool, broker *messaging.Broker, confi
 	broker.Router.AddConsumerHandler("funds-credited",
 		messaging.FundsCreditedTopic, broker.Subscriber,
 		s.fundsCredited)
-	return s, nil
 }
 
 func (s *Service) Handler() http.Handler {
@@ -144,8 +147,10 @@ func staticFiles() http.Handler {
 }
 
 func (s *Service) ready(ctx context.Context) error {
-	if err := s.broker.Ready(); err != nil {
-		return err
+	if s.broker != nil {
+		if err := s.broker.Ready(); err != nil {
+			return err
+		}
 	}
 	return s.db.Ping(ctx)
 }
