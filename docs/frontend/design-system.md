@@ -46,8 +46,8 @@ back/forward cache. Going back from a transfer to the home page shows the
 current balances and Transfers list; the amount field is not restored.
 
 Fonts are served with a year-long immutable cache; CSS and JS are not cached.
-A pending transfer page, and the home page while a transfer is pending, reload
-themselves once a second, and fonts fetched again on every reload would flash.
+A transfer page whose evidence is not yet complete, and the home page while a
+transfer is pending, reload themselves once a second, and fonts fetched again on every reload would flash.
 Changing a font file therefore means renaming it.
 
 ## The binding rules
@@ -125,6 +125,9 @@ background, border — ease over 150ms (`--transition-state` from the brand,
 spent through `--hover-transition`). List rows change instantly. A pending
 transfer says what it is waiting for in words ("Waiting for Bank A to
 debit"), and the page reloads itself until it is done; there is no spinner.
+Once the transfer has ended, its **Evidence** row, under Status, says
+"Being collected" until the history holds everything the scenario needs, then
+"Complete"; the page keeps reloading until then, however long that takes.
 While a transfer is pending the home page disables the transfer form, says why
 in a `.note`, links the pending transfer with a quiet link on its own line
 (**Follow pending transfer →**), and reloads itself the same way —
@@ -301,6 +304,7 @@ the GitHub mark in the footer, drawn inline in the template in
 
 14. **Statuses are words, not colors.** The brand has one accent and no status
     palette. A transfer's status and its history steps take no hue:
-    "Completed" and "Waiting for Bank A to debit" differ in words alone. If a
+    "Completed" and "Waiting for Bank A to debit" differ in words alone, and
+    so do the Evidence row's "Being collected" and "Complete". If a
     state ever needs a hue, it keeps its text label, and the decision is
     recorded here first.

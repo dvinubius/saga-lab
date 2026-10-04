@@ -54,10 +54,13 @@ func (d *demonstration) awaitPage(t *testing.T, path, status string) []byte {
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		page := d.get(t, path)
-		current := pageData(page, "transfer-status")
+		current, evidence := pageData(page, "transfer-status"), pageData(page, "transfer-evidence")
 		polling := regexp.MustCompile(`<meta http-equiv="refresh"`).Match(page)
-		if pending := current == "debit_pending" || current == "credit_pending"; polling != pending {
-			t.Fatalf("status %q shown with polling = %t", current, polling)
+		if pending := current == "debit_pending" || current == "credit_pending"; pending != (evidence == "") {
+			t.Fatalf("status %q shown with evidence %q", current, evidence)
+		}
+		if polling != (evidence != "complete") {
+			t.Fatalf("status %q and evidence %q shown with polling = %t", current, evidence, polling)
 		}
 		if current == status {
 			return page

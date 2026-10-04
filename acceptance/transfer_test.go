@@ -24,6 +24,14 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 	}
 	assertSteps(t, completed.History, "requested", "debit_committed", "credit_committed", "finished")
 	assertServices(t, completed.History, "Transfer Service", "Bank A", "Bank B", "Transfer Service")
+	if !completed.VisualisationReady {
+		t.Error("visualisation_ready = false, want true")
+	}
+	for _, entry := range completed.History {
+		if entry.Observation != "" {
+			t.Errorf("history has observation %s, want none on the happy path", entry.Observation)
+		}
+	}
 
 	requested, debit, credit, done := completed.History[0], completed.History[1], completed.History[2], completed.History[3]
 	messageIDs := map[string]string{
@@ -65,6 +73,8 @@ type transfer struct {
 	RejectionReason string         `json:"rejection_reason"`
 	TraceID         string         `json:"trace_id"`
 	History         []historyEntry `json:"history"`
+
+	VisualisationReady bool `json:"visualisation_ready"`
 }
 
 type historyEntry struct {
