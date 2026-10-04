@@ -19,6 +19,9 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 	if completed.Amount != 25 {
 		t.Errorf("amount = %d, want 25", completed.Amount)
 	}
+	if completed.Scenario != "happy_path" {
+		t.Errorf("scenario = %q, want happy_path", completed.Scenario)
+	}
 	assertSteps(t, completed.History, "requested", "debit_committed", "credit_committed", "finished")
 	assertServices(t, completed.History, "Transfer Service", "Bank A", "Bank B", "Transfer Service")
 
@@ -57,6 +60,7 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 type transfer struct {
 	TransferID      string         `json:"transfer_id"`
 	Amount          int64          `json:"amount"`
+	Scenario        string         `json:"scenario"`
 	Status          string         `json:"status"`
 	RejectionReason string         `json:"rejection_reason"`
 	TraceID         string         `json:"trace_id"`

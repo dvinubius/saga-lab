@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS transfers (
 
 ALTER TABLE transfers ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
 ALTER TABLE transfers ADD COLUMN IF NOT EXISTS trace_id TEXT;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS scenario TEXT NOT NULL DEFAULT 'happy_path';
 
 CREATE INDEX IF NOT EXISTS transfers_by_visitor ON transfers (visitor_id, requested_at);
 
