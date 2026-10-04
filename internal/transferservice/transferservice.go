@@ -199,7 +199,7 @@ func (s *Service) getTransfers(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, http.StatusInternalServerError, "transfers unavailable", s.logger)
 		return
 	}
-	web.WriteJSON(w, http.StatusOK, map[string][]transfer{"transfers": transfers}, s.logger)
+	web.WriteJSON(w, http.StatusOK, map[string][]transferSummary{"transfers": transfers}, s.logger)
 }
 
 func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
@@ -257,7 +257,7 @@ func (s *Service) getTransfer(w http.ResponseWriter, r *http.Request) {
 
 type homePage struct {
 	Balances      balances
-	Transfers     []transfer
+	Transfers     []transferSummary
 	PendingID     string
 	Amount        string
 	Scenario      scenario
@@ -289,7 +289,7 @@ func (s *Service) renderHome(w http.ResponseWriter, r *http.Request, status int,
 		http.Error(w, "Transfers are temporarily unavailable.", http.StatusInternalServerError)
 		return
 	}
-	if i := slices.IndexFunc(page.Transfers, func(t transfer) bool { return t.Status.Pending() }); i >= 0 && page.PendingID == "" {
+	if i := slices.IndexFunc(page.Transfers, func(t transferSummary) bool { return t.Status.Pending() }); i >= 0 && page.PendingID == "" {
 		page.PendingID = page.Transfers[i].ID
 	}
 	page.Scenarios = scenarios

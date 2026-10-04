@@ -98,7 +98,7 @@
 {{template "foot"}}{{end}}
 
 {{define "transfer"}}{{template "head"}}<title>Transfer {{.Transfer.ID}} · Saga Lab</title>
-{{if .Transfer.Status.Pending}}<meta http-equiv="refresh" content="1">{{end}}
+{{if not .Transfer.VisualisationReady}}<meta http-equiv="refresh" content="1">{{end}}
 {{template "top"}}
 {{template "balances" .Balances}}
 <a class="btn btn-secondary back" href="/">← Back</a>
@@ -119,6 +119,10 @@
       <dt>Status</dt>
       <dd><data id="transfer-status" value="{{.Status}}">{{.Status.Label}}</data></dd>
     </div>
+    {{if not .Status.Pending}}<div>
+      <dt>Evidence</dt>
+      <dd>{{if .VisualisationReady}}<data id="transfer-evidence" value="complete">Complete</data>{{else}}<data id="transfer-evidence" value="collecting">Being collected</data>{{end}}</dd>
+    </div>{{end}}
     {{with .RejectionReason}}<div>
       <dt>Reason</dt>
       <dd><data id="rejection-reason" value="{{.}}">{{.}}</data></dd>

@@ -10,7 +10,7 @@ func TestDebitRedeliveryCompletesWithoutADuplicateDebit(t *testing.T) {
 	demo := startDemonstration(t)
 
 	accepted := demo.submitTransfer(t, `{"amount": 25, "scenario": "debit_redelivery"}`)
-	completed := demo.awaitTransfer(t, accepted.TransferID, "completed")
+	completed := demo.awaitReadiness(t, accepted.TransferID, "completed")
 
 	demo.assertBalances(t, 75, 25)
 	if completed.Scenario != "debit_redelivery" {
@@ -18,7 +18,7 @@ func TestDebitRedeliveryCompletesWithoutADuplicateDebit(t *testing.T) {
 	}
 	assertSteps(t, completed.History, "requested", "debit_committed", "credit_committed", "finished")
 
-	history := demo.awaitObservations(t, accepted.TransferID, "NackRequested", "DuplicateSuppressed").History
+	history := completed.History
 	requested, debit := entry(t, history, "requested"), entry(t, history, "debit_committed")
 	nacks, duplicates := observations(history, "NackRequested"), observations(history, "DuplicateSuppressed")
 	if len(nacks) != 1 || len(duplicates) != 1 {
@@ -49,20 +49,16 @@ func TestDebitRedeliveryRejectsAnUnaffordableDebit(t *testing.T) {
 	assertSteps(t, rejected.History, "requested", "debit_rejected")
 }
 
-func (d *demonstration) awaitObservations(t *testing.T, id string, want ...string) transfer {
+func (d *demonstration) awaitReadiness(t *testing.T, id, status string) transfer {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		current := d.transfer(t, id)
-		missing := false
-		for _, observation := range want {
-			missing = missing || len(observations(current.History, observation)) == 0
-		}
-		if !missing {
+		if current.Status == status && current.VisualisationReady {
 			return current
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("transfer %s history lacks one of %q after test deadline: %+v", id, want, current.History)
+			t.Fatalf("transfer %s status = %q, visualisation_ready = %v after test deadline, want %q and ready; history %+v", id, current.Status, current.VisualisationReady, status, current.History)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

@@ -80,6 +80,18 @@ The prepared visitor has at most one pending transfer. Admission is atomic in th
 
 This increment has no inbox or outbox, so a redelivered command can be applied twice, and a crash between a local commit and the following publish leaves a transfer pending for good, which also holds the visitor's next submission until `make reset`. A handler that fails rejects its message, which RabbitMQ redelivers at once, without backoff.
 
+A transfer's business status and its evidence are reported separately. `GET /api/transfers/{transferID}` includes `visualisation_ready`, which is true once the history holds everything the transfer's scenario needs to be explained: at once for a rejected transfer and a completed happy-path one; for a completed debit redelivery, once the history holds Bank A's `NackRequested` from the attempt that committed the debit and its `DuplicateSuppressed` from a later attempt, both caused by the transfer's `DebitFunds`. It is computed whenever a transfer is read and never stored, and it gates nothing: a transfer whose evidence is still being collected doesn't hold the next submission. The transfer page shows it as the **Evidence** row, "Being collected" or "Complete", once the transfer has ended, and keeps reloading until it is complete.
+
+## Known gaps
+
+A passing demonstration is not a crash-safe or stall-safe system. These gaps are known and accepted for now:
+
+- A connected broker that withholds publisher confirms (during a memory or disk alarm) stalls the relay silently, until milestone 6 adds a metric for it; the stalled transfer stays visibly pending.
+- A `NackRequested` whose own transaction fails leaves its transfer not ready indefinitely; the history honestly shows what was recorded.
+- A command for a missing account, possible only after a reset in mid-flight, leaves its transfer pending.
+- A partial reset, of some services by hand rather than through `make reset`, is unguarded.
+- A blind HTTP retry of a submission after the transfer has ended starts a second transfer.
+
 ## Traces
 
 The three services send OpenTelemetry traces to the Collector, which forwards them to Tempo; Grafana reads Tempo. All configuration lives in `deploy/` and is provisioned on startup. Traces are kept in the `tempo-data` volume.

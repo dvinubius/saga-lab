@@ -100,6 +100,16 @@ type transfer struct {
 	TraceID         string         `json:"trace_id,omitempty"`
 	RequestedAt     time.Time      `json:"requested_at"`
 	History         []historyEntry `json:"history,omitempty"`
+
+	VisualisationReady bool `json:"visualisation_ready"`
+}
+
+type transferSummary struct {
+	ID          string    `json:"transfer_id"`
+	Amount      int64     `json:"amount"`
+	Scenario    scenario  `json:"scenario"`
+	Status      status    `json:"status"`
+	RequestedAt time.Time `json:"requested_at"`
 }
 
 type historyEntry struct {
@@ -376,10 +386,42 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 		err := row.Scan(&e.Step, &e.Observation, &e.Service, &e.AttemptID, &e.ObservedAt, &e.RecordedAt, &e.MessageID, &e.CausationID, &e.IssuedMessageID)
 		return e, err
 	})
+	t.VisualisationReady = visualisationReady(t.Scenario, t.Status, t.History)
 	return t, err
 }
 
-func (s *Service) list(ctx context.Context) ([]transfer, error) {
+func visualisationReady(sc scenario, st status, history []historyEntry) bool {
+	if st == rejected || (st == completed && sc != debitRedelivery) {
+		return true
+	}
+	if st != completed {
+		return false
+	}
+	var debitCommand, debitAttempt string
+	for _, e := range history {
+		switch e.Step {
+		case requested:
+			debitCommand = e.IssuedMessageID
+		case debitCommitted:
+			debitAttempt = e.AttemptID
+		}
+	}
+	nacked, suppressed := false, false
+	for _, e := range history {
+		if e.CausationID != debitCommand || e.AttemptID == "" {
+			continue
+		}
+		switch e.Observation {
+		case nackRequested:
+			nacked = nacked || e.AttemptID == debitAttempt
+		case duplicateSuppressed:
+			suppressed = suppressed || e.AttemptID != debitAttempt
+		}
+	}
+	return nacked && suppressed
+}
+
+func (s *Service) list(ctx context.Context) ([]transferSummary, error) {
 	rows, err := s.db.Query(ctx,
 		`SELECT transfer_id, amount, scenario, status, requested_at FROM transfers WHERE visitor_id = $1 ORDER BY requested_at DESC`,
 		visitor.PreparedID,
@@ -387,8 +429,8 @@ func (s *Service) list(ctx context.Context) ([]transfer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (transfer, error) {
-		var t transfer
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (transferSummary, error) {
+		var t transferSummary
 		err := row.Scan(&t.ID, &t.Amount, &t.Scenario, &t.Status, &t.RequestedAt)
 		return t, err
 	})
