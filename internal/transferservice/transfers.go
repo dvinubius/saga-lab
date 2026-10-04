@@ -365,7 +365,7 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	rows, err := s.db.Query(ctx,
 		`SELECT COALESCE(step, ''), COALESCE(observation, ''), service, COALESCE(attempt_id, ''), observed_at, recorded_at,
 		        COALESCE(message_id, ''), COALESCE(causation_id, ''), COALESCE(issued_message_id, '')
-		 FROM transfer_history WHERE transfer_id = $1 ORDER BY entry_id`,
+		 FROM transfer_history WHERE transfer_id = $1 ORDER BY observed_at, entry_id`,
 		id,
 	)
 	if err != nil {

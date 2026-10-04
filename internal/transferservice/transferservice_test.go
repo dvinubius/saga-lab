@@ -132,7 +132,7 @@ func TestDuplicateObservationIsRecordedOnce(t *testing.T) {
 		t.Fatalf("open transfer service: %v", err)
 	}
 	id := submit(t, s)
-	observedAt := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	observedAt := time.Now().UTC().Truncate(time.Microsecond)
 	msg, err := messaging.New(context.Background(), id, messaging.ProcessingObserved{
 		TransferID: id, Observation: messaging.DuplicateSuppressed, Service: "Bank A", AttemptID: "attempt-2", ObservedAt: observedAt,
 	}, "debit-command")

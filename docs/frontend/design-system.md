@@ -67,14 +67,15 @@ light-theme / dark-theme pair, like the accent:
 | | Light | Dark | Role here |
 | --- | --- | --- | --- |
 | Ember | `#A8500F` | `#DE8A42` | brand, the primary action, quiet-link rules |
-| Teal | `#087581` | `#5BC8D0` | primary data and syntax color — nothing spends it yet |
+| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; its first use is the `DuplicateSuppressed` label in the History table (rule 14) |
 | Violet | `#6B5D91` | `#AFA3CF` | secondary data and syntax color — nothing spends it yet |
-| Brick | `#A03028` | `#E0756A` | `--danger`: the message under the transfer form for a rejected amount or an overlapping submission |
+| Brick | `#A03028` | `#E0756A` | `--danger`: the message under the transfer form for a rejected amount or an overlapping submission, and the `NackRequested` label in the History table (rule 14) |
 
 Stone, Ink and Paper carry the overwhelming majority of the interface. Teal
 and Violet are for syntax on code surfaces and for data marks (a chart, a
 timeline), and are declared so that the first of those does not have to
-invent them.
+invent them. The one exception is the observation labels in the History
+table, recorded under rule 14.
 
 **Accent dosage** is binding: at most ~2% of any composition, never on running
 text, never the sole carrier of a UI state. Several accent elements may share
@@ -180,8 +181,9 @@ the GitHub mark in the footer, drawn inline in the template in
    whole.
 
    The frame is `--shell-width` (1180px) wide, as in hooklook. The content
-   inside it is a single column of `--content-width` (760px), left-aligned
-   under the wordmark. Sections sit 40px apart; the items in a section 14px
+   inside it is a single column of `--content-width` (600px), left-aligned
+   under the wordmark. Only the History table is wider (rule 12): it runs
+   past the column to the right, inside the frame. Sections sit 40px apart; the items in a section 14px
    apart.
 
 3. **The product wordmark is type alone.** "Saga Lab" in Space Grotesk 500
@@ -210,14 +212,14 @@ the GitHub mark in the footer, drawn inline in the template in
    | --- | --- | --- | --- |
    | `--text-body` | Ink, 17.6:1 | Paper, 17.6:1 | the wordmarks, titles, section labels, balance figures, the name column of a row |
    | `--text-dim` | `#3D3D3D`, 10.4:1 | `#B5B5B5`, 9.0:1 | prose, control labels, units, statuses, fact values, table values |
-   | `--text-muted` | Stone, 4.9:1 | Muted on Dark, 6.6:1 | the theme switch at rest, the footer credit, placeholders, `//` asides |
+   | `--text-muted` | Stone, 4.9:1 | Muted on Dark, 6.6:1 | the theme switch at rest, the footer credit, placeholders, `//` asides, the detail line under a history entry |
 
    **A label outranks what sits beside it:** "Bank A" is body, its "credits"
    is dim; a fact's name is body, its value dim.
 
    *Departure from hooklook:* hooklook sets timestamps muted, as incidental.
-   Here the observed and recorded times are what the History table exists to
-   show, so they take the dim tier with the rest of the table's values.
+   Here the observed time is what orders the History table, so it leads each
+   row in body text, like the name column of any other row.
 
 7. **Floating layers** — popovers, menus, dialogs — do not exist yet. When
    one appears it takes hooklook's treatment: `--surface-float` as its fill
@@ -268,11 +270,12 @@ the GitHub mark in the footer, drawn inline in the template in
     | `.fact` | mono, `--text-mono-meta`, dim | a control label, a unit beside a figure |
     | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's intro, the History explanation |
     | `.dim` | dim, nothing else | a value inside a row that is already mono |
+    | `.comment` | mono, `--text-mono-meta`, muted, 0.01em | the machine's own `//` asides: the prefix of a processing observation in the History table |
     | `.sr-only` | visually hidden | text for screen readers only |
 
-    hooklook has two more, to take over unchanged when they are first needed:
-    `.comment` (mono, `--text-mono-meta`, muted, 0.01em — the machine's own
-    `//` asides) and `.micro` (mono, `--text-mono-micro`, size only). Text
+    `.comment` is hooklook's, taken over unchanged. hooklook has one more, to
+    take over unchanged when it is first needed: `.micro` (mono,
+    `--text-mono-micro`, size only). Text
     doing the same job in two places gets a role here rather than a second
     declaration.
 
@@ -282,9 +285,23 @@ the GitHub mark in the footer, drawn inline in the template in
     request headers, generalised. A two-column list (a transfer's facts) has
     a 160px name column. The Transfers list has three columns — amount,
     scenario, status — the first two 160px wide. Names are body, values dim;
-    column headings are `.caps` at `--text-mono-micro`. A row that leads
-    somewhere is a whole-row link whose hover is `--surface-shade`, applied
-    instantly.
+    column headings are `.caps` at `--text-mono-micro`.
+
+    The History table is the one table wider than the content column: 1000px
+    with fixed layout, inside the 1180px frame. Its columns are **Observed
+    (UTC)** (124px), **Transfer Service** (200px), and **Bank A** and **Bank
+    B**, which split the rest equally. Each row is one history entry, ordered
+    by observed time, with the entry in the column of the service that
+    reported it and the other service cells empty. A cell's first line is the
+    entry's label; a processing observation's label starts with a muted `// `
+    (`.comment`) and does not name the bank, since the column does. Under it,
+    one muted line names the message the entry answers, then, for a bank
+    handling attempt, `attempt <n> · <first 8 characters of the attempt ID>`,
+    with the full ID in a `title`. A note under the table explains the
+    columns and the order and says recorded times are left out.
+
+    A row that leads somewhere is a whole-row link whose hover is
+    `--surface-shade`, applied instantly.
 
 13. **Forms are one row.** The control label (`.fact`), the field, any
     radio choice and the primary button sit on one line at `--row-height`
@@ -304,3 +321,12 @@ the GitHub mark in the footer, drawn inline in the template in
     "Completed" and "Waiting for Bank A to debit" differ in words alone. If a
     state ever needs a hue, it keeps its text label, and the decision is
     recorded here first.
+
+    *The one exception, a recorded departure:* the two processing-observation
+    labels in the History table. "Failed after commit; requeue requested"
+    (`NackRequested`) is Brick (`--danger`); "Repeat recognised; nothing
+    applied" (`DuplicateSuppressed`) is Teal at weight 500. The styles belong
+    to the observation, not the bank, so a Bank B `DuplicateSuppressed` looks
+    the same. Both keep their words and their `// ` prefix, so the hue is
+    never the only signal. The accent was tried for `DuplicateSuppressed` and
+    sat too close to Brick on the light theme, hence Teal.
