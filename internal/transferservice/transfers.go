@@ -109,10 +109,7 @@ func (s *Service) submit(ctx context.Context, amount int64, sc scenario) (transf
 	if span := trace.SpanContextFromContext(ctx); span.IsValid() {
 		t.TraceID = span.TraceID().String()
 	}
-	debit, err := messaging.New(ctx, t.ID, messaging.DebitFunds{
-		AccountOperation: messaging.AccountOperation{TransferID: t.ID, VisitorID: visitor.PreparedID, Amount: amount},
-		Scenario:         string(sc),
-	}, "")
+	debit, err := messaging.New(ctx, t.ID, messaging.DebitFunds{TransferID: t.ID, VisitorID: visitor.PreparedID, Amount: amount, Scenario: string(sc)}, "")
 	if err != nil {
 		return transfer{}, err
 	}

@@ -17,7 +17,7 @@ func TestRecreateTablesEmptiesTheOutbox(t *testing.T) {
 	}
 	err := pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
 		for range 2 {
-			msg, err := messaging.New(ctx, "transfer", messaging.DebitFunds{AccountOperation: messaging.AccountOperation{TransferID: "transfer", Amount: 25}}, "")
+			msg, err := messaging.New(ctx, "transfer", messaging.DebitFunds{TransferID: "transfer", Amount: 25}, "")
 			if err != nil {
 				return err
 			}
