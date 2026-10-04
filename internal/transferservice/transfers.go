@@ -113,7 +113,7 @@ func (s *Service) submit(ctx context.Context, amount int64) (transfer, error) {
 		return transfer{}, err
 	}
 	for {
-		admitted, err := s.admit(ctx, t, debit.UUID)
+		admitted, err := s.admit(ctx, t, debit)
 		if err != nil {
 			return transfer{}, fmt.Errorf("record transfer: %w", err)
 		}
@@ -129,13 +129,10 @@ func (s *Service) submit(ctx context.Context, amount int64) (transfer, error) {
 			return transfer{}, pendingTransferError{PendingID: pending}
 		}
 	}
-	if err := s.broker.Publisher.Publish(messaging.DebitFundsTopic, debit); err != nil {
-		return transfer{}, fmt.Errorf("send DebitFunds for transfer %s: %w", t.ID, err)
-	}
 	return s.find(ctx, t.ID)
 }
 
-func (s *Service) admit(ctx context.Context, t transfer, debitID string) (bool, error) {
+func (s *Service) admit(ctx context.Context, t transfer, debit *message.Message) (bool, error) {
 	admitted := false
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		inserted, err := tx.Exec(ctx,
@@ -147,9 +144,12 @@ func (s *Service) admit(ctx context.Context, t transfer, debitID string) (bool, 
 			return err
 		}
 		admitted = true
-		return record(ctx, tx, t.ID, historyEntry{
-			Step: requested, Service: transferServiceName, ObservedAt: t.RequestedAt, IssuedMessageID: debitID,
-		})
+		if err := record(ctx, tx, t.ID, historyEntry{
+			Step: requested, Service: transferServiceName, ObservedAt: t.RequestedAt, IssuedMessageID: debit.UUID,
+		}); err != nil {
+			return err
+		}
+		return messaging.Enqueue(ctx, tx, messaging.DebitFundsTopic, debit)
 	})
 	return admitted, err
 }
@@ -166,14 +166,14 @@ func (s *Service) pendingTransferID(ctx context.Context) (string, error) {
 	return id, err
 }
 
-func (s *Service) fundsDebited(msg *message.Message) ([]*message.Message, error) {
+func (s *Service) fundsDebited(msg *message.Message) error {
 	var event messaging.FundsDebited
 	if err := messaging.Decode(msg, &event); err != nil {
 		s.logger.Error("discard event", "error", err)
-		return nil, nil
+		return nil
 	}
 	ctx := msg.Context()
-	var command *message.Message
+	advanced := false
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		credit := messaging.CreditFunds{TransferID: event.TransferID}
 		err := tx.QueryRow(ctx,
@@ -186,22 +186,26 @@ func (s *Service) fundsDebited(msg *message.Message) ([]*message.Message, error)
 		if err != nil {
 			return err
 		}
-		if command, err = messaging.New(ctx, event.TransferID, credit, msg.UUID); err != nil {
+		advanced = true
+		command, err := messaging.New(ctx, event.TransferID, credit, msg.UUID)
+		if err != nil {
 			return err
 		}
-		return record(ctx, tx, event.TransferID, historyEntry{
+		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: debitCommitted, Service: bankAName, ObservedAt: event.ObservedAt,
 			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), IssuedMessageID: command.UUID,
-		})
+		}); err != nil {
+			return err
+		}
+		return messaging.Enqueue(ctx, tx, messaging.CreditFundsTopic, command)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("record debit for transfer %s: %w", event.TransferID, err)
+		return fmt.Errorf("record debit for transfer %s: %w", event.TransferID, err)
 	}
-	if command == nil {
+	if !advanced {
 		s.logger.Warn("ignore FundsDebited for transfer not awaiting a debit", "transfer_id", event.TransferID, "message_id", msg.UUID)
-		return nil, nil
 	}
-	return []*message.Message{command}, nil
+	return nil
 }
 
 func (s *Service) debitRejected(msg *message.Message) error {

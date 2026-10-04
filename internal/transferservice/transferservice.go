@@ -62,6 +62,7 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return broker.Run(ctx) })
+	g.Go(func() error { return broker.RunRelay(ctx, db, settings.Logger) })
 	g.Go(func() error { return web.Serve(ctx, settings.Listener, s.Handler(), web.Public, settings.Logger) })
 	return g.Wait()
 }
@@ -82,7 +83,7 @@ func Reset(ctx context.Context, settings service.Settings) error {
 		if _, err := tx.Exec(ctx, schema); err != nil {
 			return fmt.Errorf("apply schema: %w", err)
 		}
-		return nil
+		return messaging.RecreateTables(ctx, tx)
 	})
 }
 
@@ -99,6 +100,9 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 	if _, err := db.Exec(ctx, schema); err != nil {
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
+	if err := messaging.CreateTables(ctx, db); err != nil {
+		return nil, err
+	}
 	return &Service{
 		db:         db,
 		bankA:      newBankClient(bankAName, config.BankAURL),
@@ -110,9 +114,8 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 
 func (s *Service) handleEvents(broker *messaging.Broker) {
 	s.broker = broker
-	broker.Router.AddHandler("funds-debited",
+	broker.Router.AddConsumerHandler("funds-debited",
 		messaging.FundsDebitedTopic, broker.Subscriber,
-		messaging.CreditFundsTopic, broker.Publisher,
 		s.fundsDebited)
 	broker.Router.AddConsumerHandler("debit-rejected",
 		messaging.DebitRejectedTopic, broker.Subscriber,
