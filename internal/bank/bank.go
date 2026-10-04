@@ -25,8 +25,6 @@ import (
 //go:embed schema.sql
 var schema string
 
-const debitRedelivery = "debit_redelivery"
-
 var errInjectedFailure = errors.New("injected failure after commit")
 
 type Role struct {
@@ -37,9 +35,9 @@ type Role struct {
 }
 
 var (
-	Source = Role{"Bank A", messaging.DebitFundsTopic,
+	Source = Role{messaging.BankA, messaging.DebitFundsTopic,
 		[]string{messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.ProcessingObservedTopic}, (*Bank).debitFunds}
-	Destination = Role{"Bank B", messaging.CreditFundsTopic,
+	Destination = Role{messaging.BankB, messaging.CreditFundsTopic,
 		[]string{messaging.FundsCreditedTopic, messaging.ProcessingObservedTopic}, (*Bank).creditFunds}
 )
 
@@ -71,7 +69,7 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 		return err
 	}
 	defer broker.Close()
-	b.executeCommands(broker)
+	b.attachBroker(broker)
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return broker.Run(ctx) })
@@ -84,7 +82,7 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 	if err := provision(ctx, db, config); err != nil {
 		return nil, err
 	}
-	if err := messaging.CreateTables(ctx, db); err != nil {
+	if err := messaging.InboxAndOutbox.Create(ctx, db); err != nil {
 		return nil, err
 	}
 	return &Bank{db: db, role: config.Role, logger: logger}, nil
@@ -103,7 +101,7 @@ func Reset(ctx context.Context, settings service.Settings, config Config) error 
 		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS accounts`); err != nil {
 			return fmt.Errorf("drop accounts: %w", err)
 		}
-		if err := messaging.RecreateTables(ctx, tx); err != nil {
+		if err := messaging.InboxAndOutbox.Recreate(ctx, tx); err != nil {
 			return err
 		}
 		return provision(ctx, tx, config)
@@ -143,7 +141,7 @@ func (b *Bank) ready(ctx context.Context) error {
 	return b.db.Ping(ctx)
 }
 
-func (b *Bank) executeCommands(broker *messaging.Broker) {
+func (b *Bank) attachBroker(broker *messaging.Broker) {
 	b.broker = broker
 	broker.Router.AddConsumerHandler(b.role.commandTopic, b.role.commandTopic, broker.Subscriber, func(msg *message.Message) error {
 		return b.role.execute(b, msg)
@@ -183,7 +181,7 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 		debited = true
 		return enqueue(tx, command.TransferID, messaging.FundsDebitedTopic, messaging.FundsDebited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 	}, logger)
-	if err != nil || !debited || command.Scenario != debitRedelivery {
+	if err != nil || !debited || command.Scenario != messaging.DebitRedelivery {
 		return err
 	}
 	trace.SpanFromContext(msg.Context()).AddEvent("fault.injected")

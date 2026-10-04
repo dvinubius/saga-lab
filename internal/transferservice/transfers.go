@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -13,12 +14,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"go.opentelemetry.io/otel/trace"
-)
-
-const (
-	transferServiceName = "Transfer Service"
-	bankAName           = "Bank A"
-	bankBName           = "Bank B"
 )
 
 type status string
@@ -91,25 +86,21 @@ func (o observation) Label() string {
 	return string(o)
 }
 
-type transfer struct {
-	ID              string         `json:"transfer_id"`
-	Amount          int64          `json:"amount"`
-	Scenario        scenario       `json:"scenario"`
-	Status          status         `json:"status"`
-	RejectionReason string         `json:"rejection_reason,omitempty"`
-	TraceID         string         `json:"trace_id,omitempty"`
-	RequestedAt     time.Time      `json:"requested_at"`
-	History         []historyEntry `json:"history,omitempty"`
-
-	VisualisationReady bool `json:"visualisation_ready"`
-}
-
 type transferSummary struct {
 	ID          string    `json:"transfer_id"`
 	Amount      int64     `json:"amount"`
 	Scenario    scenario  `json:"scenario"`
 	Status      status    `json:"status"`
 	RequestedAt time.Time `json:"requested_at"`
+}
+
+type transfer struct {
+	transferSummary
+	RejectionReason string         `json:"rejection_reason,omitempty"`
+	TraceID         string         `json:"trace_id,omitempty"`
+	History         []historyEntry `json:"history,omitempty"`
+
+	VisualisationReady bool `json:"visualisation_ready"`
 }
 
 type historyEntry struct {
@@ -136,12 +127,12 @@ func (e pendingTransferError) Error() string {
 	return "transfer " + e.PendingID + " is still pending"
 }
 
-func (s *Service) submit(ctx context.Context, amount int64, sc scenario) (transfer, error) {
-	t := transfer{ID: watermill.NewUUID(), Amount: amount, Scenario: sc, Status: debitPending, RequestedAt: time.Now()}
+func (s *Service) submit(ctx context.Context, amount int64, chosen scenario) (transfer, error) {
+	t := transfer{transferSummary: transferSummary{ID: watermill.NewUUID(), Amount: amount, Scenario: chosen, Status: debitPending, RequestedAt: time.Now()}}
 	if span := trace.SpanContextFromContext(ctx); span.IsValid() {
 		t.TraceID = span.TraceID().String()
 	}
-	debit, err := messaging.New(ctx, t.ID, messaging.DebitFunds{TransferID: t.ID, VisitorID: visitor.PreparedID, Amount: amount, Scenario: string(sc)}, "")
+	debit, err := messaging.New(ctx, t.ID, messaging.DebitFunds{TransferID: t.ID, VisitorID: visitor.PreparedID, Amount: amount, Scenario: string(chosen)}, "")
 	if err != nil {
 		return transfer{}, err
 	}
@@ -178,7 +169,7 @@ func (s *Service) admit(ctx context.Context, t transfer, debit *message.Message)
 		}
 		admitted = true
 		if err := record(ctx, tx, t.ID, historyEntry{
-			Step: requested, Service: transferServiceName, ObservedAt: t.RequestedAt, IssuedMessageID: debit.UUID,
+			Step: requested, Service: messaging.TransferService, ObservedAt: t.RequestedAt, IssuedMessageID: debit.UUID,
 		}); err != nil {
 			return err
 		}
@@ -207,7 +198,7 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 		return nil
 	}
 	ctx := msg.Context()
-	missed := ""
+	current := ""
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		credit := messaging.CreditFunds{TransferID: event.TransferID}
 		err := tx.QueryRow(ctx,
@@ -215,7 +206,7 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 			event.TransferID, creditPending, debitPending,
 		).Scan(&credit.VisitorID, &credit.Amount)
 		if errors.Is(err, pgx.ErrNoRows) {
-			missed, err = currentStatus(ctx, tx, event.TransferID)
+			current, err = currentStatus(ctx, tx, event.TransferID)
 			return err
 		}
 		if err != nil {
@@ -226,20 +217,14 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 			return err
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
-			Step: debitCommitted, Service: bankAName, ObservedAt: event.ObservedAt, AttemptID: messaging.AttemptIDOf(msg),
+			Step: debitCommitted, Service: messaging.BankA, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
 			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), IssuedMessageID: command.UUID,
 		}); err != nil {
 			return err
 		}
 		return messaging.Enqueue(ctx, tx, messaging.CreditFundsTopic, command)
 	})
-	if err != nil {
-		return fmt.Errorf("record debit for transfer %s: %w", event.TransferID, err)
-	}
-	if missed != "" {
-		logger.Info("ignore event that fails the status guard", "event", "FundsDebited", "transfer_id", event.TransferID, "message_id", msg.UUID, "status", missed)
-	}
-	return nil
+	return endTransition(err, messaging.FundsDebitedTopic, event.TransferID, current, msg, logger)
 }
 
 func (s *Service) debitRejected(msg *message.Message) error {
@@ -250,7 +235,7 @@ func (s *Service) debitRejected(msg *message.Message) error {
 		return nil
 	}
 	ctx := msg.Context()
-	missed := ""
+	current := ""
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		updated, err := tx.Exec(ctx,
 			`UPDATE transfers SET status = $2, rejection_reason = $4 WHERE transfer_id = $1 AND status = $3`,
@@ -260,21 +245,15 @@ func (s *Service) debitRejected(msg *message.Message) error {
 			return err
 		}
 		if updated.RowsAffected() == 0 {
-			missed, err = currentStatus(ctx, tx, event.TransferID)
+			current, err = currentStatus(ctx, tx, event.TransferID)
 			return err
 		}
 		return record(ctx, tx, event.TransferID, historyEntry{
-			Step: debitRejected, Service: bankAName, ObservedAt: event.ObservedAt, AttemptID: messaging.AttemptIDOf(msg),
+			Step: debitRejected, Service: messaging.BankA, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
 			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
 		})
 	})
-	if err != nil {
-		return fmt.Errorf("record debit rejection for transfer %s: %w", event.TransferID, err)
-	}
-	if missed != "" {
-		logger.Info("ignore event that fails the status guard", "event", "DebitRejected", "transfer_id", event.TransferID, "message_id", msg.UUID, "status", missed)
-	}
-	return nil
+	return endTransition(err, messaging.DebitRejectedTopic, event.TransferID, current, msg, logger)
 }
 
 func (s *Service) fundsCredited(msg *message.Message) error {
@@ -285,7 +264,7 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 		return nil
 	}
 	ctx := msg.Context()
-	missed := ""
+	current := ""
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		updated, err := tx.Exec(ctx,
 			`UPDATE transfers SET status = $2 WHERE transfer_id = $1 AND status = $3`,
@@ -295,26 +274,20 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 			return err
 		}
 		if updated.RowsAffected() == 0 {
-			missed, err = currentStatus(ctx, tx, event.TransferID)
+			current, err = currentStatus(ctx, tx, event.TransferID)
 			return err
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
-			Step: creditCommitted, Service: bankBName, ObservedAt: event.ObservedAt, AttemptID: messaging.AttemptIDOf(msg),
+			Step: creditCommitted, Service: messaging.BankB, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
 			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
 		}); err != nil {
 			return err
 		}
 		return record(ctx, tx, event.TransferID, historyEntry{
-			Step: finished, Service: transferServiceName, ObservedAt: time.Now(), CausationID: msg.UUID,
+			Step: finished, Service: messaging.TransferService, ObservedAt: time.Now(), CausationID: msg.UUID,
 		})
 	})
-	if err != nil {
-		return fmt.Errorf("record credit for transfer %s: %w", event.TransferID, err)
-	}
-	if missed != "" {
-		logger.Info("ignore event that fails the status guard", "event", "FundsCredited", "transfer_id", event.TransferID, "message_id", msg.UUID, "status", missed)
-	}
-	return nil
+	return endTransition(err, messaging.FundsCreditedTopic, event.TransferID, current, msg, logger)
 }
 
 func (s *Service) processingObserved(msg *message.Message) error {
@@ -341,6 +314,16 @@ func (s *Service) processingObserved(msg *message.Message) error {
 	return nil
 }
 
+func endTransition(err error, event, transferID, guardMissStatus string, msg *message.Message, logger *slog.Logger) error {
+	if err != nil {
+		return fmt.Errorf("record %s for transfer %s: %w", event, transferID, err)
+	}
+	if guardMissStatus != "" {
+		logger.Info("ignore event that fails the status guard", "event", event, "transfer_id", transferID, "message_id", msg.UUID, "status", guardMissStatus)
+	}
+	return nil
+}
+
 func currentStatus(ctx context.Context, tx pgx.Tx, transferID string) (string, error) {
 	var current string
 	err := tx.QueryRow(ctx, `SELECT status FROM transfers WHERE transfer_id = $1`, transferID).Scan(&current)
@@ -361,7 +344,7 @@ func record(ctx context.Context, tx pgx.Tx, transferID string, entry historyEntr
 }
 
 func (s *Service) find(ctx context.Context, id string) (transfer, error) {
-	t := transfer{ID: id}
+	t := transfer{transferSummary: transferSummary{ID: id}}
 	err := s.db.QueryRow(ctx,
 		`SELECT amount, scenario, status, COALESCE(rejection_reason, ''), COALESCE(trace_id, ''), requested_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
 		id, visitor.PreparedID,
@@ -375,7 +358,7 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	rows, err := s.db.Query(ctx,
 		`SELECT COALESCE(step, ''), COALESCE(observation, ''), service, COALESCE(attempt_id, ''), observed_at, recorded_at,
 		        COALESCE(message_id, ''), COALESCE(causation_id, ''), COALESCE(issued_message_id, '')
-		 FROM transfer_history WHERE transfer_id = $1 ORDER BY observed_at, entry_id`,
+		 FROM transfer_history WHERE transfer_id = $1 ORDER BY entry_id`,
 		id,
 	)
 	if err != nil {
@@ -390,25 +373,23 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	return t, err
 }
 
-func visualisationReady(sc scenario, st status, history []historyEntry) bool {
-	if st == rejected || (st == completed && sc != debitRedelivery) {
+func visualisationReady(chosen scenario, current status, history []historyEntry) bool {
+	if current == rejected || (current == completed && chosen != debitRedelivery) {
 		return true
 	}
-	if st != completed {
+	if current != completed {
 		return false
 	}
-	var debitCommand, debitAttempt string
+	topics := messageTopics(history)
+	debitAttempt := ""
 	for _, e := range history {
-		switch e.Step {
-		case requested:
-			debitCommand = e.IssuedMessageID
-		case debitCommitted:
+		if e.Step == debitCommitted {
 			debitAttempt = e.AttemptID
 		}
 	}
 	nacked, suppressed := false, false
 	for _, e := range history {
-		if e.CausationID != debitCommand || e.AttemptID == "" {
+		if topics[e.CausationID] != messaging.DebitFundsTopic || e.AttemptID == "" {
 			continue
 		}
 		switch e.Observation {

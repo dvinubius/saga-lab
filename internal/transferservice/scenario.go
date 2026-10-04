@@ -3,13 +3,15 @@ package transferservice
 import (
 	"errors"
 	"slices"
+
+	"github.com/dvinubius/saga-lab/internal/messaging"
 )
 
 type scenario string
 
 const (
 	happyPath       scenario = "happy_path"
-	debitRedelivery scenario = "debit_redelivery"
+	debitRedelivery scenario = messaging.DebitRedelivery
 )
 
 var scenarios = []scenario{happyPath, debitRedelivery}

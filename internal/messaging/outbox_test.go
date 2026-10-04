@@ -9,10 +9,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func TestRecreateTablesEmptiesTheInboxAndOutbox(t *testing.T) {
+func TestRecreateEmptiesTheInboxAndOutbox(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
-	if err := messaging.CreateTables(ctx, db); err != nil {
+	if err := messaging.InboxAndOutbox.Create(ctx, db); err != nil {
 		t.Fatalf("create tables: %v", err)
 	}
 	err := pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
@@ -34,7 +34,7 @@ func TestRecreateTablesEmptiesTheInboxAndOutbox(t *testing.T) {
 		t.Fatalf("seed inbox and outbox: %v", err)
 	}
 
-	if err := pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error { return messaging.RecreateTables(ctx, tx) }); err != nil {
+	if err := pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error { return messaging.InboxAndOutbox.Recreate(ctx, tx) }); err != nil {
 		t.Fatalf("recreate tables: %v", err)
 	}
 
@@ -46,5 +46,24 @@ func TestRecreateTablesEmptiesTheInboxAndOutbox(t *testing.T) {
 		if rows != 0 {
 			t.Fatalf("%s rows = %d, want none", table, rows)
 		}
+	}
+}
+
+func TestOutboxTablesHaveNoInbox(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	ctx := context.Background()
+	if err := messaging.Outbox.Create(ctx, db); err != nil {
+		t.Fatalf("create tables: %v", err)
+	}
+	if err := pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error { return messaging.Outbox.Recreate(ctx, tx) }); err != nil {
+		t.Fatalf("recreate tables: %v", err)
+	}
+
+	var inbox, outbox bool
+	if err := db.QueryRow(ctx, `SELECT to_regclass('inbox') IS NOT NULL, to_regclass('outbox') IS NOT NULL`).Scan(&inbox, &outbox); err != nil {
+		t.Fatalf("look up tables: %v", err)
+	}
+	if inbox || !outbox {
+		t.Fatalf("inbox exists = %v, outbox exists = %v, want only the outbox", inbox, outbox)
 	}
 }

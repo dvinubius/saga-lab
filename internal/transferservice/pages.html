@@ -148,13 +148,11 @@
 <section class="section">
   <h3 class="caps section-label">History</h3>
   <table class="table history">
-    <thead><tr><th class="caps">Observed (UTC)</th><th class="caps">Transfer Service</th><th class="caps">Bank A</th><th class="caps">Bank B</th></tr></thead>
+    <thead><tr><th class="caps">Observed (UTC)</th>{{range $.Lanes}}<th class="caps">{{.}}</th>{{end}}</tr></thead>
     <tbody>
-    {{range $.History}}{{if .Step}}<tr data-step="{{.Step}}">{{else}}<tr data-observation="{{.Observation}}">{{end}}
+    {{range $row := $.History}}{{if .Step}}<tr data-step="{{.Step}}">{{else}}<tr data-observation="{{.Observation}}">{{end}}
       <td>{{template "time" .ObservedAt}}</td>
-      <td>{{if eq .Service "Transfer Service"}}{{template "history-entry" .}}{{end}}</td>
-      <td>{{if eq .Service "Bank A"}}{{template "history-entry" .}}{{end}}</td>
-      <td>{{if eq .Service "Bank B"}}{{template "history-entry" .}}{{end}}</td>
+      {{range $lane, $_ := $.Lanes}}<td>{{if eq $lane $row.Lane}}{{template "history-entry" $row}}{{end}}</td>{{end}}
     </tr>
     {{end}}</tbody>
   </table>
