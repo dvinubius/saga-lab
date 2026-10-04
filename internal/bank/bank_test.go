@@ -70,6 +70,9 @@ func TestDebitCommitsNothingWhenEnqueueFails(t *testing.T) {
 	if got := outbox(t, db); len(got) != 0 {
 		t.Fatalf("outbox after failed handling = %v, want empty", got)
 	}
+	if got := inbox(t, db); got != 0 {
+		t.Fatalf("inbox rows after failed handling = %d, want none", got)
+	}
 
 	if _, err := db.Exec(ctx, `DROP TRIGGER refuse_outbox ON outbox`); err != nil {
 		t.Fatalf("drop outbox trigger: %v", err)
@@ -83,6 +86,61 @@ func TestDebitCommitsNothingWhenEnqueueFails(t *testing.T) {
 	if got, want := outbox(t, db), []string{messaging.FundsDebitedTopic}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("outbox after handling = %v, want %v", got, want)
 	}
+}
+
+func TestDuplicateDebitAppliesNothing(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	ctx := context.Background()
+	b := open(t, db, bank.Config{PreparedBalance: 100, Role: bank.Source})
+	command, err := messaging.New(ctx, "transfer", messaging.DebitFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25}, "")
+	if err != nil {
+		t.Fatalf("new command: %v", err)
+	}
+
+	for range 2 {
+		if err := bank.DebitFunds(b, command); err != nil {
+			t.Fatalf("DebitFunds: %v", err)
+		}
+	}
+
+	if got := balance(t, b, visitor.PreparedID); got != 75 {
+		t.Errorf("balance after duplicate debit = %d, want 75", got)
+	}
+	if got, want := outbox(t, db), []string{messaging.FundsDebitedTopic}; !reflect.DeepEqual(got, want) {
+		t.Errorf("outbox after duplicate debit = %v (%d FundsDebited rows), want %v (1 FundsDebited row)", got, len(got), want)
+	}
+}
+
+func TestDuplicateCreditAppliesNothing(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	ctx := context.Background()
+	b := open(t, db, bank.Config{PreparedBalance: 100, Role: bank.Destination})
+	command, err := messaging.New(ctx, "transfer", messaging.CreditFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25}, "")
+	if err != nil {
+		t.Fatalf("new command: %v", err)
+	}
+
+	for range 2 {
+		if err := bank.CreditFunds(b, command); err != nil {
+			t.Fatalf("CreditFunds: %v", err)
+		}
+	}
+
+	if got := balance(t, b, visitor.PreparedID); got != 125 {
+		t.Errorf("balance after duplicate credit = %d, want 125", got)
+	}
+	if got, want := outbox(t, db), []string{messaging.FundsCreditedTopic}; !reflect.DeepEqual(got, want) {
+		t.Errorf("outbox after duplicate credit = %v, want %v", got, want)
+	}
+}
+
+func inbox(t *testing.T, db *pgxpool.Pool) int {
+	t.Helper()
+	var rows int
+	if err := db.QueryRow(context.Background(), `SELECT count(*) FROM inbox`).Scan(&rows); err != nil {
+		t.Fatalf("count inbox rows: %v", err)
+	}
+	return rows
 }
 
 func outbox(t *testing.T, db *pgxpool.Pool) []string {
