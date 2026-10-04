@@ -143,8 +143,9 @@
   <table class="table">
     <thead><tr><th class="caps">Step</th><th class="caps">Reported by</th><th class="caps">Observed (UTC)</th><th class="caps">Recorded (UTC)</th></tr></thead>
     <tbody>
-    {{range .History}}<tr data-step="{{.Step}}">
-      <td>{{.Step.Label}}</td>
+    {{range .History}}{{if .Step}}<tr data-step="{{.Step}}">
+      <td>{{.Step.Label}}</td>{{else}}<tr data-observation="{{.Observation}}">
+      <td>{{.Observation.Label}}</td>{{end}}
       <td>{{.Service}}</td>
       <td>{{template "time" .ObservedAt}}</td>
       <td>{{template "time" .RecordedAt}}</td>

@@ -125,6 +125,66 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 	}
 }
 
+func TestDuplicateObservationIsRecordedOnce(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatalf("open transfer service: %v", err)
+	}
+	id := submit(t, s)
+	observedAt := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	msg, err := messaging.New(context.Background(), id, messaging.ProcessingObserved{
+		TransferID: id, Observation: messaging.DuplicateSuppressed, Service: "Bank A", AttemptID: "attempt-2", ObservedAt: observedAt,
+	}, "debit-command")
+	if err != nil {
+		t.Fatalf("new observation: %v", err)
+	}
+
+	for range 2 {
+		if err := transferservice.ProcessingObserved(s, msg); err != nil {
+			t.Fatalf("ProcessingObserved: %v", err)
+		}
+	}
+
+	got := transfer(t, s, id)
+	if got.Status != "debit_pending" {
+		t.Errorf("status = %q, want debit_pending", got.Status)
+	}
+	want := []historyEntry{
+		{Step: "requested", Service: "Transfer Service"},
+		{Observation: "DuplicateSuppressed", Service: "Bank A", AttemptID: "attempt-2", MessageID: msg.UUID, CausationID: "debit-command", ObservedAt: observedAt},
+	}
+	got.History[0] = historyEntry{Step: got.History[0].Step, Service: got.History[0].Service}
+	got.History[1].ObservedAt = got.History[1].ObservedAt.UTC()
+	if !reflect.DeepEqual(got.History, want) {
+		t.Fatalf("history = %+v, want %+v", got.History, want)
+	}
+}
+
+func TestObservationForUnknownTransferIsIgnored(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	var logs bytes.Buffer
+	s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.NewJSONHandler(&logs, nil)))
+	if err != nil {
+		t.Fatalf("open transfer service: %v", err)
+	}
+	msg := event(t, "unknown", messaging.ProcessingObserved{
+		TransferID: "unknown", Observation: messaging.NackRequested, Service: "Bank A", AttemptID: "attempt-1", ObservedAt: time.Now(),
+	})
+
+	if err := transferservice.ProcessingObserved(s, msg); err != nil {
+		t.Fatalf("ProcessingObserved: %v", err)
+	}
+
+	want := []map[string]any{{"level": "INFO", "transfer_id": "unknown", "message_id": msg.UUID}}
+	if got := records(t, &logs, "level", "transfer_id", "message_id"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("logs = %v, want %v", got, want)
+	}
+	if rows, err := column(context.Background(), db, `SELECT entry_id::text FROM transfer_history`); err != nil || len(rows) != 0 {
+		t.Fatalf("history rows = %v (error %v), want none", rows, err)
+	}
+}
+
 func TestFundsDebitedCommitsNothingWhenEnqueueFails(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
@@ -174,6 +234,32 @@ func submit(t *testing.T, s *transferservice.Service) string {
 		t.Fatalf("POST /api/transfers: status %d, decode error %v", response.Code, err)
 	}
 	return submitted.ID
+}
+
+type historyEntry struct {
+	Step        string    `json:"step"`
+	Observation string    `json:"observation"`
+	Service     string    `json:"service"`
+	AttemptID   string    `json:"attempt_id"`
+	MessageID   string    `json:"message_id"`
+	CausationID string    `json:"causation_id"`
+	ObservedAt  time.Time `json:"observed_at"`
+}
+
+type transferJSON struct {
+	Status  string         `json:"status"`
+	History []historyEntry `json:"history"`
+}
+
+func transfer(t *testing.T, s *transferservice.Service, id string) transferJSON {
+	t.Helper()
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/transfers/"+id, nil))
+	var got transferJSON
+	if err := json.NewDecoder(response.Body).Decode(&got); err != nil || response.Code != http.StatusOK {
+		t.Fatalf("GET /api/transfers/%s: status %d, decode error %v", id, response.Code, err)
+	}
+	return got
 }
 
 func records(t *testing.T, logs *bytes.Buffer, keys ...string) []map[string]any {

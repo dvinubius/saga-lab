@@ -11,6 +11,7 @@ import (
 	"github.com/dvinubius/saga-lab/internal/messaging"
 	"github.com/dvinubius/saga-lab/internal/visitor"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -73,6 +74,23 @@ func (s step) Label() string {
 	return string(s)
 }
 
+type observation string
+
+const (
+	nackRequested       observation = messaging.NackRequested
+	duplicateSuppressed observation = messaging.DuplicateSuppressed
+)
+
+func (o observation) Label() string {
+	switch o {
+	case nackRequested:
+		return "Failed after commit; requeue requested"
+	case duplicateSuppressed:
+		return "Repeat recognised; nothing applied"
+	}
+	return string(o)
+}
+
 type transfer struct {
 	ID              string         `json:"transfer_id"`
 	Amount          int64          `json:"amount"`
@@ -85,14 +103,18 @@ type transfer struct {
 }
 
 type historyEntry struct {
-	Step            step      `json:"step"`
-	Service         string    `json:"service"`
-	ObservedAt      time.Time `json:"observed_at"`
-	RecordedAt      time.Time `json:"recorded_at"`
-	MessageID       string    `json:"message_id,omitempty"`
-	CausationID     string    `json:"causation_id,omitempty"`
-	IssuedMessageID string    `json:"issued_message_id,omitempty"`
+	Step            step        `json:"step,omitempty"`
+	Observation     observation `json:"observation,omitempty"`
+	Service         string      `json:"service"`
+	AttemptID       string      `json:"attempt_id,omitempty"`
+	ObservedAt      time.Time   `json:"observed_at"`
+	RecordedAt      time.Time   `json:"recorded_at"`
+	MessageID       string      `json:"message_id,omitempty"`
+	CausationID     string      `json:"causation_id,omitempty"`
+	IssuedMessageID string      `json:"issued_message_id,omitempty"`
 }
+
+const foreignKeyViolation = "23503"
 
 var errTransferNotFound = errors.New("transfer not found")
 
@@ -194,7 +216,7 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 			return err
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
-			Step: debitCommitted, Service: bankAName, ObservedAt: event.ObservedAt,
+			Step: debitCommitted, Service: bankAName, ObservedAt: event.ObservedAt, AttemptID: messaging.AttemptIDOf(msg),
 			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), IssuedMessageID: command.UUID,
 		}); err != nil {
 			return err
@@ -232,7 +254,7 @@ func (s *Service) debitRejected(msg *message.Message) error {
 			return err
 		}
 		return record(ctx, tx, event.TransferID, historyEntry{
-			Step: debitRejected, Service: bankAName, ObservedAt: event.ObservedAt,
+			Step: debitRejected, Service: bankAName, ObservedAt: event.ObservedAt, AttemptID: messaging.AttemptIDOf(msg),
 			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
 		})
 	})
@@ -267,7 +289,7 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 			return err
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
-			Step: creditCommitted, Service: bankBName, ObservedAt: event.ObservedAt,
+			Step: creditCommitted, Service: bankBName, ObservedAt: event.ObservedAt, AttemptID: messaging.AttemptIDOf(msg),
 			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
 		}); err != nil {
 			return err
@@ -285,6 +307,30 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 	return nil
 }
 
+func (s *Service) processingObserved(msg *message.Message) error {
+	logger := messaging.AttemptLogger(msg.Context(), s.logger)
+	var event messaging.ProcessingObserved
+	if err := messaging.Decode(msg, &event); err != nil {
+		logger.Error("discard event", "error", err)
+		return nil
+	}
+	ctx := msg.Context()
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		return record(ctx, tx, event.TransferID, historyEntry{
+			Observation: observation(event.Observation), Service: event.Service, ObservedAt: event.ObservedAt, AttemptID: event.AttemptID,
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+		})
+	})
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == foreignKeyViolation {
+		logger.Info("ignore observation for unknown transfer", "observation", event.Observation, "transfer_id", event.TransferID, "message_id", msg.UUID)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("record %s for transfer %s: %w", event.Observation, event.TransferID, err)
+	}
+	return nil
+}
+
 func currentStatus(ctx context.Context, tx pgx.Tx, transferID string) (string, error) {
 	var current string
 	err := tx.QueryRow(ctx, `SELECT status FROM transfers WHERE transfer_id = $1`, transferID).Scan(&current)
@@ -296,9 +342,10 @@ func currentStatus(ctx context.Context, tx pgx.Tx, transferID string) (string, e
 
 func record(ctx context.Context, tx pgx.Tx, transferID string, entry historyEntry) error {
 	_, err := tx.Exec(ctx,
-		`INSERT INTO transfer_history (transfer_id, step, service, observed_at, message_id, causation_id, issued_message_id)
-		 VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''), NULLIF($7, ''))`,
-		transferID, entry.Step, entry.Service, entry.ObservedAt, entry.MessageID, entry.CausationID, entry.IssuedMessageID,
+		`INSERT INTO transfer_history (transfer_id, step, observation, service, observed_at, attempt_id, message_id, causation_id, issued_message_id)
+		 VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4, $5, NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''))
+		 ON CONFLICT (message_id) DO NOTHING`,
+		transferID, entry.Step, entry.Observation, entry.Service, entry.ObservedAt, entry.AttemptID, entry.MessageID, entry.CausationID, entry.IssuedMessageID,
 	)
 	return err
 }
@@ -316,7 +363,7 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 		return transfer{}, err
 	}
 	rows, err := s.db.Query(ctx,
-		`SELECT step, service, observed_at, recorded_at,
+		`SELECT COALESCE(step, ''), COALESCE(observation, ''), service, COALESCE(attempt_id, ''), observed_at, recorded_at,
 		        COALESCE(message_id, ''), COALESCE(causation_id, ''), COALESCE(issued_message_id, '')
 		 FROM transfer_history WHERE transfer_id = $1 ORDER BY entry_id`,
 		id,
@@ -326,7 +373,7 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	}
 	t.History, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (historyEntry, error) {
 		var e historyEntry
-		err := row.Scan(&e.Step, &e.Service, &e.ObservedAt, &e.RecordedAt, &e.MessageID, &e.CausationID, &e.IssuedMessageID)
+		err := row.Scan(&e.Step, &e.Observation, &e.Service, &e.AttemptID, &e.ObservedAt, &e.RecordedAt, &e.MessageID, &e.CausationID, &e.IssuedMessageID)
 		return e, err
 	})
 	return t, err

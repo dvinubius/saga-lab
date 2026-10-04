@@ -20,6 +20,13 @@ const (
 	DebitRejectedTopic = "DebitRejected"
 	CreditFundsTopic   = "CreditFunds"
 	FundsCreditedTopic = "FundsCredited"
+
+	ProcessingObservedTopic = "ProcessingObserved"
+)
+
+const (
+	NackRequested       = "NackRequested"
+	DuplicateSuppressed = "DuplicateSuppressed"
 )
 
 const (
@@ -56,6 +63,14 @@ type CreditFunds AccountOperation
 
 type FundsCredited OperationCommitted
 
+type ProcessingObserved struct {
+	TransferID  string    `json:"transfer_id"`
+	Observation string    `json:"observation"`
+	Service     string    `json:"service"`
+	AttemptID   string    `json:"attempt_id"`
+	ObservedAt  time.Time `json:"observed_at"`
+}
+
 func New(ctx context.Context, transferID string, payload any, causationID string) (*message.Message, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -72,6 +87,10 @@ func New(ctx context.Context, transferID string, payload any, causationID string
 
 func CausationID(msg *message.Message) string {
 	return msg.Metadata.Get(causationIDKey)
+}
+
+func AttemptIDOf(msg *message.Message) string {
+	return msg.Metadata.Get(attemptIDMetadataKey)
 }
 
 func Decode(msg *message.Message, payload any) error {

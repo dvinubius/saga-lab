@@ -69,7 +69,9 @@ type transfer struct {
 
 type historyEntry struct {
 	Step            string    `json:"step"`
+	Observation     string    `json:"observation"`
 	Service         string    `json:"service"`
+	AttemptID       string    `json:"attempt_id"`
 	ObservedAt      time.Time `json:"observed_at"`
 	RecordedAt      time.Time `json:"recorded_at"`
 	MessageID       string    `json:"message_id"`
@@ -123,9 +125,11 @@ func (d *demonstration) awaitTransfer(t *testing.T, id, status string) transfer 
 
 func assertSteps(t *testing.T, history []historyEntry, want ...string) {
 	t.Helper()
-	got := make([]string, len(history))
-	for i, entry := range history {
-		got[i] = entry.Step
+	var got []string
+	for _, entry := range history {
+		if entry.Step != "" {
+			got = append(got, entry.Step)
+		}
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("history steps = %q, want %q", got, want)

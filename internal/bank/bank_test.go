@@ -106,9 +106,10 @@ func TestDuplicateDebitAppliesNothing(t *testing.T) {
 	if got := balance(t, b, visitor.PreparedID); got != 75 {
 		t.Errorf("balance after duplicate debit = %d, want 75", got)
 	}
-	if got, want := outbox(t, db), []string{messaging.FundsDebitedTopic}; !reflect.DeepEqual(got, want) {
-		t.Errorf("outbox after duplicate debit = %v (%d FundsDebited rows), want %v (1 FundsDebited row)", got, len(got), want)
+	if got, want := outbox(t, db), []string{messaging.FundsDebitedTopic, messaging.ProcessingObservedTopic}; !reflect.DeepEqual(got, want) {
+		t.Errorf("outbox after duplicate debit = %v, want %v", got, want)
 	}
+	assertObservations(t, db, messaging.DuplicateSuppressed)
 }
 
 func TestDuplicateCreditAppliesNothing(t *testing.T) {
@@ -129,8 +130,24 @@ func TestDuplicateCreditAppliesNothing(t *testing.T) {
 	if got := balance(t, b, visitor.PreparedID); got != 125 {
 		t.Errorf("balance after duplicate credit = %d, want 125", got)
 	}
-	if got, want := outbox(t, db), []string{messaging.FundsCreditedTopic}; !reflect.DeepEqual(got, want) {
+	if got, want := outbox(t, db), []string{messaging.FundsCreditedTopic, messaging.ProcessingObservedTopic}; !reflect.DeepEqual(got, want) {
 		t.Errorf("outbox after duplicate credit = %v, want %v", got, want)
+	}
+	assertObservations(t, db, messaging.DuplicateSuppressed)
+}
+
+func assertObservations(t *testing.T, db *pgxpool.Pool, want ...string) {
+	t.Helper()
+	rows, err := db.Query(context.Background(), `SELECT convert_from(payload, 'UTF8')::jsonb->>'observation' FROM outbox WHERE topic = $1 ORDER BY id`, messaging.ProcessingObservedTopic)
+	if err != nil {
+		t.Fatalf("read observations: %v", err)
+	}
+	got, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("read observations: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("enqueued observations = %q, want %q", got, want)
 	}
 }
 

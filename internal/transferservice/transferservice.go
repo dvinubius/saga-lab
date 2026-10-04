@@ -68,7 +68,7 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 }
 
 func Reset(ctx context.Context, settings service.Settings) error {
-	if err := messaging.Purge(settings.AMQPURL, messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.FundsCreditedTopic); err != nil {
+	if err := messaging.Purge(settings.AMQPURL, messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.FundsCreditedTopic, messaging.ProcessingObservedTopic); err != nil {
 		return err
 	}
 	db, err := postgres.Connect(ctx, settings.DatabaseURL)
@@ -123,6 +123,9 @@ func (s *Service) handleEvents(broker *messaging.Broker) {
 	broker.Router.AddConsumerHandler("funds-credited",
 		messaging.FundsCreditedTopic, broker.Subscriber,
 		s.fundsCredited)
+	broker.Router.AddConsumerHandler("processing-observed",
+		messaging.ProcessingObservedTopic, broker.Subscriber,
+		s.processingObserved)
 }
 
 func (s *Service) Handler() http.Handler {
