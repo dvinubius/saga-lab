@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -57,6 +58,45 @@ func TestInvalidAmountsAreRejectedBeforeAnyTransfer(t *testing.T) {
 			}
 		})
 	}
+
+	if transfers := demo.transfers(t); len(transfers) != 0 {
+		t.Errorf("transfers = %+v, want none", transfers)
+	}
+	demo.assertBalances(t, 100, 0)
+}
+
+func TestUnknownScenariosAreRejectedBeforeAnyTransfer(t *testing.T) {
+	t.Parallel()
+	demo := startDemonstration(t)
+
+	for name, body := range map[string]string{
+		"unknown slug":    `{"amount": 25, "scenario": "chaos"}`,
+		"not yet offered": `{"amount": 25, "scenario": "credit_rejection"}`,
+		"empty":           `{"amount": 25, "scenario": ""}`,
+	} {
+		t.Run("API "+name, func(t *testing.T) {
+			r := demo.post(t, "/api/transfers", "application/json", body)
+			if r.status != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body %q", r.status, http.StatusBadRequest, r.body)
+			}
+			var problem struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(r.body, &problem); err != nil || !strings.Contains(problem.Error, "happy_path") || !strings.Contains(problem.Error, "debit_redelivery") {
+				t.Errorf("body %q does not list the accepted scenarios", r.body)
+			}
+		})
+	}
+
+	t.Run("page", func(t *testing.T) {
+		r := demo.post(t, "/transfers", "application/x-www-form-urlencoded", url.Values{"amount": {"25"}, "scenario": {"chaos"}}.Encode())
+		if r.status != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d; Location %q", r.status, http.StatusBadRequest, r.location)
+		}
+		if !regexp.MustCompile(`id="scenario-error"`).Match(r.body) {
+			t.Errorf("page does not explain the rejection: %s", r.body)
+		}
+	})
 
 	if transfers := demo.transfers(t); len(transfers) != 0 {
 		t.Errorf("transfers = %+v, want none", transfers)

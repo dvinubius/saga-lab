@@ -72,9 +72,15 @@
     <label class="fact">Amount in credits
       <input class="field" name="amount" value="{{.Amount}}" inputmode="numeric" autocomplete="off"{{if .PendingID}} disabled{{end}}>
     </label>
+    <fieldset class="scenarios"{{if .PendingID}} disabled{{end}}>
+      <legend class="sr-only">Scenario</legend>
+      {{range .Scenarios}}<label class="fact"><input type="radio" name="scenario" value="{{.}}"{{if eq . $.Scenario}} checked{{end}}>{{.Label}}</label>
+      {{end}}
+    </fieldset>
     <button class="btn btn-primary"{{if .PendingID}} disabled{{end}}>Transfer</button>
   </form>
   {{with .Error}}<p class="error" id="amount-error">{{.}}</p>{{end}}
+  {{with .ScenarioError}}<p class="error" id="scenario-error">{{.}}</p>{{end}}
   {{if .Overlap}}<p class="error" id="overlap-error">This transfer was not started: another transfer is still pending.</p>{{end}}
   {{with .PendingID}}<p class="note">A new transfer can start once the pending one has finished.</p>
   <p><a class="quiet-link" id="pending-transfer" href="/transfers/{{.}}">Follow pending transfer →</a></p>{{end}}
@@ -84,7 +90,7 @@
 <section class="section">
   <h2 class="caps section-label">Transfers</h2>
   <ul class="rows">
-    {{range .}}<li><a href="/transfers/{{.ID}}"><span>{{.Amount}} credits</span><span class="dim">{{.Status.Label}}</span></a></li>
+    {{range .}}<li><a href="/transfers/{{.ID}}"><span>{{.Amount}} credits</span><span class="dim">{{.Scenario.Label}}</span><span class="dim">{{.Status.Label}}</span></a></li>
     {{end}}
   </ul>
 </section>
@@ -104,6 +110,10 @@
     <div>
       <dt>Transfer ID</dt>
       <dd><code><data id="transfer-id" value="{{.ID}}">{{.ID}}</data></code></dd>
+    </div>
+    <div>
+      <dt>Scenario</dt>
+      <dd><data id="transfer-scenario" value="{{.Scenario}}">{{.Scenario.Label}}</data></dd>
     </div>
     <div>
       <dt>Status</dt>
