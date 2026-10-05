@@ -69,7 +69,7 @@ light-theme / dark-theme pair, like the accent:
 | Ember | `#A8500F` | `#DE8A42` | brand, the primary action, quiet-link rules |
 | Teal | `#087581` | `#5BC8D0` | primary data and syntax color; a state's hue (rule 14) |
 | Violet | `#6B5D91` | `#AFA3CF` | secondary data and syntax color — nothing spends it yet |
-| Brick | `#A03028` | `#E0756A` | `--danger`: the message under the transfer form for a rejected amount or an overlapping submission; a failed state's hue (rule 14) |
+| Brick | `#A03028` | `#E0756A` | `--danger`: a rejected value or refused submission (rule 13); a failed state's hue (rule 14) |
 
 Stone, Ink and Paper carry the overwhelming majority of the interface. Teal
 and Violet are for syntax on code surfaces and for data marks (a chart, a
@@ -124,16 +124,9 @@ transfer ID, the trace ID) takes no fill of its own.
 **Motion.** None is defined in the brand. Default to no animation; nothing
 bounces, pulses or spins. Hover changes on buttons and links — color,
 background, border — ease over 150ms (`--transition-state` from the brand,
-spent through `--hover-transition`). List rows change instantly. A pending
-transfer says what it is waiting for in words ("Waiting for Bank A to
-debit"), and the page reloads itself until it is done; there is no spinner.
-Once the transfer has ended, its **Evidence** row, under Status, says
-"Being collected" until the history holds everything the scenario needs, then
-"Complete"; the page keeps reloading until then, however long that takes.
-While a transfer is pending the home page disables the transfer form, says why
-in a `.note`, links the pending transfer with a quiet link on its own line
-(**Follow pending transfer →**), and reloads itself the same way —
-except when it answers a refused submission, whose explanation stays put.
+spent through `--hover-transition`). List rows change instantly. Something
+in progress says what it is waiting for in words, and the page reloads itself
+until it is done; there is no spinner.
 
 **Buttons and links.** Primary: solid accent fill — Paper text on light, Ink
 text on dark (Paper on Ember Light is too faint). Its hover is
@@ -188,10 +181,9 @@ because `ⓘ` is outside the vendored font subsets.
 
    The frame is `--shell-width` (1180px) wide, as in hooklook. The content
    inside it is a single column of `--content-width` (600px), left-aligned
-   under the wordmark. Only the History table is wider (rule 12): it runs
-   past the column to the right, inside the frame. Sections sit 40px apart; the items in a section 14px
-   apart. On the home page a hairline, centred in that gap, divides the
-   transfer form from the Transfers list.
+   under the wordmark. Sections sit 40px apart; the items in a section 14px
+   apart. Where two sections need a firmer break, a hairline centred in the
+   gap divides them.
 
 3. **The product wordmark carries a mark**, hooklook-style. "Saga Lab" in
    Space Grotesk 500 at 24px with the wordmark's −0.018em tracking, in body
@@ -306,33 +298,22 @@ because `ⓘ` is outside the vendored font subsets.
 12. **Lists and tables are rows parted by hairlines.** One item per row, a
     hairline above the first and under each, square, mono at
     `--text-mono-meta` with code leading, 6px × 12px padding — hooklook's
-    request headers, generalised. A two-column list (a transfer's facts) has
-    a name column and a value column. The Transfers list has three columns —
-    amount, scenario, status. Names are body, values dim;
+    request headers, generalised. Names are body, values dim;
     column headings are `.caps` at `--text-mono-micro`.
-
-    The History table is the one table wider than the content column: 1000px
-    with fixed layout, inside the 1180px frame.
 
     A row that leads somewhere is a whole-row link whose hover is
     `--surface-shade`, applied instantly.
 
-13. **The transfer form is three parts**, 12px apart: the control label
-    (`.fact`) and the field at `--row-height` (36px), then the radio choice,
-    both left-aligned, then the primary button at `--row-height`, aligned to
-    the right edge of the content column. A field is mono at
-    `--text-mono-meta` on the page surface with a hairline border. A radio
-    choice (the scenario: Happy path, Debit redelivery, Credit rejection &
-    refund, Credit rejection & refund redelivery) is a borderless fieldset
-    whose visually hidden legend names it; its options stack one per line,
-    8px apart, because their labels don't fit one line of the content
-    column. Each option is a `.fact` label after its native radio. The selected radio's dot is the accent,
-    through `accent-color`; the filled native radio marks the selection on its
-    own, so the accent never carries it alone. A rejected value, or a submission refused because
-    another transfer is pending, is explained under the row in Brick, sans
-    at `--text-small` — the text says what is wrong; the color only marks
-    it. A disabled field or radio choice, like a disabled button, drops to
-    `--disabled-opacity`.
+13. **Form controls.** A field is mono at `--text-mono-meta` on the page
+    surface with a hairline border, at `--row-height` (36px), like a button.
+    A radio choice is a borderless fieldset whose visually hidden legend
+    names it; each option is a `.fact` label after its native radio. The
+    selected radio's dot is the accent, through `accent-color`; the filled
+    native radio marks the selection on its own, so the accent never carries
+    it alone. A rejected value or a refused submission is explained under
+    the control in Brick, sans at `--text-small` — the text says what is
+    wrong; the color only marks it. A disabled field or radio choice, like a
+    disabled button, drops to `--disabled-opacity`.
 
 14. **Statuses are words, not colors.** The brand has one accent and no status
     palette. A transfer's status and its history steps take no hue:
