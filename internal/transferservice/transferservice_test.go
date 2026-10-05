@@ -471,6 +471,45 @@ func testRequest(method, path string, body io.Reader) *http.Request {
 	return r
 }
 
+func TestTopUpChangesNothingWhenBankBIsUnavailable(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	toppedUp := false
+	bankA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		toppedUp = toppedUp || r.Method == http.MethodPost
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"balance":200}`)
+	}))
+	defer bankA.Close()
+	bankB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.Error(w, "bank unavailable", http.StatusServiceUnavailable)
+	}))
+	defer bankB.Close()
+	config := bankConfig(t)
+	config.BankAURL, config.BankBURL = bankA.URL, bankB.URL
+	s, err := transferservice.Open(context.Background(), db, config, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, testRequest(http.MethodPost, "/api/top-ups", nil))
+
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("POST /api/top-ups with Bank B unavailable: status %d, body %q", response.Code, response.Body)
+	}
+	if toppedUp {
+		t.Fatal("Bank A was topped up although the top-up failed")
+	}
+}
+
 func TestNewVisitorRetriesUnavailableAccountOpening(t *testing.T) {
 	for _, path := range []string{"/api/transfers", "/"} {
 		t.Run(path, func(t *testing.T) {

@@ -23,7 +23,7 @@ func TestDebitRedeliveryCompletesWithoutADuplicateDebit(t *testing.T) {
 	assertBalancePair(t, debit, 100, 75)
 	assertBalancePair(t, entry(t, history, "credit_committed"), 0, 25)
 	assertNoBalancePair(t, history, "debit_committed", "credit_committed")
-	assertOutcome(t, completed, `{
+	assertOutcomeSummary(t, completed, `{
 		"balances": {"bank_a": {"before": 100, "after": 75}, "bank_b": {"before": 0, "after": 25, "involved": true}},
 		"commands": {"debit": {"attempts": 2, "effects": 1}, "credit": {"attempts": 1, "effects": 1}, "refund": null},
 		"duplicates_suppressed": 1,
