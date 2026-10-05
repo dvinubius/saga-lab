@@ -54,6 +54,33 @@ func TestCreditRejectionConfirmedAlwaysExplainsTheRefund(t *testing.T) {
 	}
 }
 
+func TestRefundRowsNameTheirMessagesAndNumberRefundAttempts(t *testing.T) {
+	history := []historyEntry{
+		{Step: requested, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
+		{Step: creditRequested, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
+		{Step: creditRejected, AttemptID: "attempt-b1", MessageID: "credit-rejected", CausationID: "credit-funds"},
+		{Step: refundRequested, CausationID: "credit-rejected", IssuedMessageID: "refund-funds"},
+		{Step: refundCommitted, AttemptID: "attempt-a2", MessageID: "funds-refunded", CausationID: "refund-funds"},
+		{Observation: duplicateSuppressed, AttemptID: "attempt-a3", MessageID: "duplicate", CausationID: "refund-funds"},
+		{Step: transferRefunded, CausationID: "funds-refunded"},
+	}
+
+	type shown struct {
+		Cause   string
+		Attempt int
+	}
+	var got []shown
+	for _, row := range historyRows(history)[5:] {
+		got = append(got, shown{row.Cause, row.Attempt})
+	}
+
+	want := []shown{{"RefundFunds", 1}, {"RefundFunds", 2}, {"FundsRefunded", 0}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("refund rows = %v, want %v", got, want)
+	}
+}
+
 func TestCreditRequestedIsExplainedOnlyAfterALostDebitAcknowledgement(t *testing.T) {
 	happy := []historyEntry{
 		{Step: requested, IssuedMessageID: "debit-funds"},

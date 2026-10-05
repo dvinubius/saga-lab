@@ -23,6 +23,7 @@ func TestVisualisationReadiness(t *testing.T) {
 		{"happy path rejected", happyPath, rejected, []historyEntry{requestedStep, {Step: debitRejected}}, true},
 		{"debit redelivery rejected", debitRedelivery, rejected, []historyEntry{requestedStep, {Step: debitRejected}}, true},
 		{"happy path pending", happyPath, creditPending, steps[:2], false},
+		{"credit rejection refunded", creditRejection, refunded, []historyEntry{requestedStep, debitStep, {Step: creditRequested}, {Step: creditRejected}, {Step: refundRequested}, {Step: refundCommitted}, {Step: transferRefunded}}, true},
 		{"credit rejection pending its refund", creditRejection, refundPending, []historyEntry{requestedStep, debitStep, {Step: creditRequested}, {Step: creditRejected}, {Step: refundRequested}}, false},
 		{"debit redelivery pending with all evidence", debitRedelivery, creditPending, []historyEntry{requestedStep, debitStep, nack, duplicate}, false},
 		{"evidence arriving after completed", debitRedelivery, completed, append(steps[:4:4], nack, duplicate), true},

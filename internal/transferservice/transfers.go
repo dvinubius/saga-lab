@@ -25,6 +25,7 @@ const (
 	refundPending status = "refund_pending"
 	completed     status = "completed"
 	rejected      status = "rejected"
+	refunded      status = "refunded"
 )
 
 var pendingStatuses = []status{debitPending, creditPending, refundPending}
@@ -45,6 +46,8 @@ func (s status) Label() string {
 		return "Completed"
 	case rejected:
 		return "Rejected by Bank A"
+	case refunded:
+		return "Refunded after Bank B rejected the credit"
 	}
 	return string(s)
 }
@@ -61,6 +64,8 @@ const (
 	finished         step = "finished"
 	creditRejected   step = "credit_rejected"
 	refundRequested  step = "refund_requested"
+	refundCommitted  step = "refund_committed"
+	transferRefunded step = "transfer_refunded"
 )
 
 func (s step) Label() string {
@@ -83,6 +88,10 @@ func (s step) Label() string {
 		return "Bank B rejected the credit"
 	case refundRequested:
 		return "Credit rejection confirmed"
+	case refundCommitted:
+		return "Bank A committed the refund"
+	case transferRefunded:
+		return "Transfer refunded"
 	}
 	return string(s)
 }
@@ -370,6 +379,40 @@ func (s *Service) creditRejected(msg *message.Message) error {
 	return endTransition(err, messaging.CreditRejectedTopic, event.TransferID, current, msg, logger)
 }
 
+func (s *Service) fundsRefunded(msg *message.Message) error {
+	logger := messaging.AttemptLogger(msg.Context(), s.logger)
+	var event messaging.FundsRefunded
+	if err := messaging.Decode(msg, &event); err != nil {
+		logger.Error("discard event", "error", err)
+		return nil
+	}
+	ctx := msg.Context()
+	current := ""
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		updated, err := tx.Exec(ctx,
+			`UPDATE transfers SET status = $2 WHERE transfer_id = $1 AND status = $3`,
+			event.TransferID, refunded, refundPending,
+		)
+		if err != nil {
+			return err
+		}
+		if updated.RowsAffected() == 0 {
+			current, err = currentStatus(ctx, tx, event.TransferID)
+			return err
+		}
+		if err := record(ctx, tx, event.TransferID, historyEntry{
+			Step: refundCommitted, Service: messaging.BankA, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+		}); err != nil {
+			return err
+		}
+		return record(ctx, tx, event.TransferID, historyEntry{
+			Step: transferRefunded, Service: messaging.TransferService, ObservedAt: time.Now(), CausationID: msg.UUID,
+		})
+	})
+	return endTransition(err, messaging.FundsRefundedTopic, event.TransferID, current, msg, logger)
+}
+
 func (s *Service) processingObserved(msg *message.Message) error {
 	logger := messaging.AttemptLogger(msg.Context(), s.logger)
 	var event messaging.ProcessingObserved
@@ -455,7 +498,7 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 
 func visualisationReady(chosen scenario, current status, history []historyEntry) bool {
 	switch {
-	case current == rejected:
+	case current == rejected, current == refunded:
 		return true
 	case current != completed:
 		return false
