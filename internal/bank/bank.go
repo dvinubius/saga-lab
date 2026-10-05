@@ -190,10 +190,8 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 	}
 	debited := false
 	err := b.apply(msg, messaging.DebitFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
-		var balance int64
-		if err := tx.QueryRow(ctx,
-			`SELECT balance FROM accounts WHERE visitor_id = $1 FOR UPDATE`, command.VisitorID,
-		).Scan(&balance); err != nil {
+		balance, err := lockedBalance(ctx, tx, command.VisitorID)
+		if err != nil {
 			return err
 		}
 		if balance < command.Amount {
@@ -244,10 +242,8 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 	rejected := false
 	err := b.apply(msg, messaging.CreditFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
 		if command.Scenario == messaging.CreditRejection || command.Scenario == messaging.RefundRedelivery {
-			var balance int64
-			if err := tx.QueryRow(ctx,
-				`SELECT balance FROM accounts WHERE visitor_id = $1 FOR UPDATE`, command.VisitorID,
-			).Scan(&balance); err != nil {
+			balance, err := lockedBalance(ctx, tx, command.VisitorID)
+			if err != nil {
 				return err
 			}
 			rejected = true
@@ -295,16 +291,28 @@ func (b *Bank) refundFunds(msg *message.Message) error {
 }
 
 func addFunds(ctx context.Context, tx pgx.Tx, visitorID string, amount int64) (before, after int64, err error) {
-	if err := tx.QueryRow(ctx,
-		`SELECT balance FROM accounts WHERE visitor_id = $1 FOR UPDATE`, visitorID,
-	).Scan(&before); err != nil {
+	if before, err = lockedBalance(ctx, tx, visitorID); err != nil {
 		return 0, 0, err
 	}
-	err = tx.QueryRow(ctx,
+	after, err = increaseBalance(ctx, tx, visitorID, amount)
+	return before, after, err
+}
+
+func lockedBalance(ctx context.Context, tx pgx.Tx, visitorID string) (balance int64, err error) {
+	err = tx.QueryRow(ctx, `SELECT balance FROM accounts WHERE visitor_id = $1 FOR UPDATE`, visitorID).Scan(&balance)
+	return balance, err
+}
+
+type queryRower interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func increaseBalance(ctx context.Context, db queryRower, visitorID string, amount int64) (balance int64, err error) {
+	err = db.QueryRow(ctx,
 		`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1 RETURNING balance`,
 		visitorID, amount,
-	).Scan(&after)
-	return before, after, err
+	).Scan(&balance)
+	return balance, err
 }
 
 func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func(context.Context, pgx.Tx) error, logger *slog.Logger) error {
@@ -383,10 +391,8 @@ func (b *Bank) openAccount(w http.ResponseWriter, r *http.Request) {
 
 func (b *Bank) topUp(w http.ResponseWriter, r *http.Request) {
 	a := account{VisitorID: r.PathValue("visitorID")}
-	err := b.db.QueryRow(r.Context(),
-		`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1 RETURNING balance`,
-		a.VisitorID, b.topUpAmount,
-	).Scan(&a.Balance)
+	var err error
+	a.Balance, err = increaseBalance(r.Context(), b.db, a.VisitorID, b.topUpAmount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		web.WriteError(w, http.StatusNotFound, "account not found", b.logger)
 		return

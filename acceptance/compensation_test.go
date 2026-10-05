@@ -15,7 +15,7 @@ func TestCreditRejectionEndsRefunded(t *testing.T) {
 	assertBalancePair(t, entry(t, refunded.History, "credit_rejected"), 0, 0)
 	assertBalancePair(t, entry(t, refunded.History, "refund_committed"), 75, 100)
 	assertNoBalancePair(t, refunded.History, "debit_committed", "credit_rejected", "refund_committed")
-	assertOutcome(t, refunded, `{
+	assertOutcomeSummary(t, refunded, `{
 		"balances": {"bank_a": {"before": 100, "after": 100}, "bank_b": {"before": 0, "after": 0, "involved": true}},
 		"commands": {"debit": {"attempts": 1, "effects": 1}, "credit": {"attempts": 1, "effects": 0}, "refund": {"attempts": 1, "effects": 1}},
 		"duplicates_suppressed": 0,
@@ -41,7 +41,7 @@ func TestRefundRedeliveryRefundsOnce(t *testing.T) {
 	requested, refund := entry(t, history, "refund_requested"), entry(t, history, "refund_committed")
 	assertBalancePair(t, refund, 75, 100)
 	assertNoBalancePair(t, history, "debit_committed", "credit_rejected", "refund_committed")
-	assertOutcome(t, refunded, `{
+	assertOutcomeSummary(t, refunded, `{
 		"balances": {"bank_a": {"before": 100, "after": 100}, "bank_b": {"before": 0, "after": 0, "involved": true}},
 		"commands": {"debit": {"attempts": 1, "effects": 1}, "credit": {"attempts": 1, "effects": 0}, "refund": {"attempts": 2, "effects": 1}},
 		"duplicates_suppressed": 1,

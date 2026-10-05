@@ -39,7 +39,7 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 	assertBalancePair(t, debit, 100, 75)
 	assertBalancePair(t, credit, 0, 25)
 	assertNoBalancePair(t, completed.History, "debit_committed", "credit_committed")
-	assertOutcome(t, completed, completedOutcome)
+	assertOutcomeSummary(t, completed, completedOutcomeSummary)
 	messageIDs := map[string]string{
 		"DebitFunds":    requested.IssuedMessageID,
 		"FundsDebited":  debit.MessageID,
@@ -84,7 +84,7 @@ type transfer struct {
 	History         []historyEntry `json:"history"`
 
 	VisualisationReady bool            `json:"visualisation_ready"`
-	Outcome            json.RawMessage `json:"outcome"`
+	OutcomeSummary     json.RawMessage `json:"outcome"`
 }
 
 type historyEntry struct {
@@ -117,25 +117,25 @@ func assertNoBalancePair(t *testing.T, history []historyEntry, except ...string)
 	}
 }
 
-const completedOutcome = `{
+const completedOutcomeSummary = `{
 	"balances": {"bank_a": {"before": 100, "after": 75}, "bank_b": {"before": 0, "after": 25, "involved": true}},
 	"commands": {"debit": {"attempts": 1, "effects": 1}, "credit": {"attempts": 1, "effects": 1}, "refund": null},
 	"duplicates_suppressed": 0,
 	"duplicate_effects": 0
 }`
 
-func assertOutcome(t *testing.T, tr transfer, want string) {
+func assertOutcomeSummary(t *testing.T, tr transfer, want string) {
 	t.Helper()
 	var got, expected any
-	if err := json.Unmarshal(tr.Outcome, &got); err != nil {
-		t.Errorf("outcome %q: %v", tr.Outcome, err)
+	if err := json.Unmarshal(tr.OutcomeSummary, &got); err != nil {
+		t.Errorf("outcome %q: %v", tr.OutcomeSummary, err)
 		return
 	}
 	if err := json.Unmarshal([]byte(want), &expected); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, expected) {
-		t.Errorf("outcome = %s, want %s", tr.Outcome, want)
+		t.Errorf("outcome = %s, want %s", tr.OutcomeSummary, want)
 	}
 }
 
@@ -172,8 +172,8 @@ func (d *visitorClient) transfer(t *testing.T, id string) transfer {
 	if err := json.Unmarshal(body, &current); err != nil {
 		t.Fatalf("decode transfer %q: %v", body, err)
 	}
-	if !current.VisualisationReady && current.Outcome != nil {
-		t.Fatalf("transfer %s has an outcome before it is ready: %s", id, current.Outcome)
+	if !current.VisualisationReady && current.OutcomeSummary != nil {
+		t.Fatalf("transfer %s has an outcome summary before it is ready: %s", id, current.OutcomeSummary)
 	}
 	return current
 }
