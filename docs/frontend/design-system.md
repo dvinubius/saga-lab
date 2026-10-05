@@ -100,7 +100,8 @@ in caps by CSS — see adaptation 10.
 inner or outer. No gradients, textures or background imagery. Separation is
 1px hairlines (`#E6E6E6` light / `#2C2C2C` dark, non-text only) and flat
 neutral fills. Cards are a neutral fill (`--surface-card`) with no border and
-no shadow — the two balance cards, and a transfer's In depth section, which
+no shadow — the two balance cards (on the home page the Bank A card also
+holds the **+100 credits** button under its figure), and a transfer's In depth section, which
 holds the links that leave the page for raw evidence (**View as JSON →** and
 **Explore the trace in Grafana →**, both of which open in a new tab). A section on a
 card keeps its own label and gap and takes the card's 16px × 18px padding.
@@ -138,7 +139,10 @@ text on dark (Paper on Ember Light is too faint). Its hover is
 `#E49F64` on dark. *Departure from hooklook,* which predates the upstream dark
 hover and goes to Paper instead. Secondary: body text in a 1px hairline
 outline that goes to body text on hover — **← Back** on the transfer page,
-directly under the balances, whose arrow points the way it goes. Quiet link:
+directly under the balances, whose arrow points the way it goes, and
+**+100 credits** in the home page's Bank A card, disabled while a transfer is
+pending (the pending note under the transfer form says why). A disabled
+secondary keeps its hairline on hover. Quiet link:
 body text over a 1px accent bottom border; inline it takes a trailing `→`
 (**Follow pending transfer →**), in the footer a leading
 one (**→ dinubarbu.com**), as in hooklook. Never underline a button. A
@@ -322,7 +326,8 @@ because `ⓘ` is outside the vendored font subsets.
     native radio marks the selection on its own, so the accent never carries
     it alone. A rejected value or a refused submission is explained under
     the control in Brick, sans at `--text-small` — the text says what is
-    wrong; the color only marks it. A disabled field or radio choice, like a
+    wrong; the color only marks it. A top-up refused while a transfer is
+    pending is explained under **+100 credits**, inside the Bank A card. A disabled field or radio choice, like a
     disabled button, drops to `--disabled-opacity`.
 
 14. **Statuses are words, not colors.** The brand has one accent and no status
