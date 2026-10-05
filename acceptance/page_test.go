@@ -49,7 +49,7 @@ func TestRefreshingTheTransferPageNeverResubmits(t *testing.T) {
 	demo.assertBalances(t, 75, 25)
 }
 
-func (d *demonstration) awaitPage(t *testing.T, path, status string) []byte {
+func (d *visitorClient) awaitPage(t *testing.T, path, status string) []byte {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {

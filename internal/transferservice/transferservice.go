@@ -77,7 +77,7 @@ func Reset(ctx context.Context, settings service.Settings) error {
 	}
 	defer db.Close()
 	return pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS transfer_history, transfers`); err != nil {
+		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS transfer_history, transfers, visitors`); err != nil {
 			return fmt.Errorf("drop transfers: %w", err)
 		}
 		if _, err := tx.Exec(ctx, schema); err != nil {
@@ -143,9 +143,11 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/transfers", s.getTransfers)
 	mux.HandleFunc("POST /api/transfers", s.postTransfer)
 	mux.HandleFunc("GET /api/transfers/{transferID}", s.getTransfer)
-	mux.Handle("GET /readyz", web.Readiness(s.ready, s.logger))
-	mux.Handle("GET /static/", staticFiles())
-	return mux
+	root := http.NewServeMux()
+	root.Handle("GET /readyz", web.Readiness(s.ready, s.logger))
+	root.Handle("GET /static/", staticFiles())
+	root.Handle("/", s.visitors(mux))
+	return root
 }
 
 func staticFiles() http.Handler {
@@ -177,11 +179,11 @@ type balances struct {
 }
 
 func (s *Service) balances(ctx context.Context) (balances, error) {
-	bankA, err := s.bankA.balance(ctx, visitor.PreparedID)
+	bankA, err := s.bankA.balance(ctx, visitor.ID(ctx))
 	if err != nil {
 		return balances{}, err
 	}
-	bankB, err := s.bankB.balance(ctx, visitor.PreparedID)
+	bankB, err := s.bankB.balance(ctx, visitor.ID(ctx))
 	if err != nil {
 		return balances{}, err
 	}

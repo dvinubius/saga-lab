@@ -30,8 +30,8 @@ const (
 )
 
 var (
-	bankAConfig = bank.Config{PreparedBalance: 100, Role: bank.Source}
-	bankBConfig = bank.Config{PreparedBalance: 0, Role: bank.Destination}
+	bankAConfig = bank.Config{OpeningBalance: 100, Role: bank.Source}
+	bankBConfig = bank.Config{OpeningBalance: 0, Role: bank.Destination}
 )
 
 type inProcessDemonstration struct {

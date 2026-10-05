@@ -57,7 +57,7 @@ func TestDebitRedeliveryRejectsAnUnaffordableDebit(t *testing.T) {
 	}
 }
 
-func (d *demonstration) awaitReadiness(t *testing.T, id, status string) transfer {
+func (d *visitorClient) awaitReadiness(t *testing.T, id, status string) transfer {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {

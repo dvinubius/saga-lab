@@ -112,7 +112,7 @@ func containsAll(s string, parts ...string) bool {
 	return true
 }
 
-func (d *demonstration) transfers(t *testing.T) []transfer {
+func (d *visitorClient) transfers(t *testing.T) []transfer {
 	t.Helper()
 	var list struct {
 		Transfers []transfer `json:"transfers"`
