@@ -18,13 +18,16 @@ type historyRow struct {
 
 func historyRows(history []historyEntry) []historyRow {
 	topics := messageTopics(history)
-	debitAckLost := slices.ContainsFunc(history, func(e historyEntry) bool {
-		return e.Observation == nackRequested && topics[e.CausationID] == messaging.DebitFundsTopic
-	})
+	ackLost := map[string]bool{}
+	for _, e := range history {
+		if e.Observation == nackRequested {
+			ackLost[topics[e.CausationID]] = true
+		}
+	}
 	attempts := map[string][]string{}
 	rows := make([]historyRow, len(history))
 	for i, e := range history {
-		rows[i] = historyRow{historyEntry: e, Lane: slices.Index(lanes, e.Service), Cause: topics[e.CausationID], About: about(e, debitAckLost)}
+		rows[i] = historyRow{historyEntry: e, Lane: slices.Index(lanes, e.Service), Cause: topics[e.CausationID], About: about(e, ackLost)}
 		if e.AttemptID == "" {
 			continue
 		}
@@ -38,12 +41,16 @@ func historyRows(history []historyEntry) []historyRow {
 	return rows
 }
 
-func about(e historyEntry, debitAckLost bool) string {
+func about(e historyEntry, ackLost map[string]bool) string {
 	switch {
 	case e.Observation == nackRequested:
 		return "We’re simulating the effects of a crash by requesting a redelivery (a Nack), and the broker delivers the message again."
-	case e.Step == creditRequested && debitAckLost:
+	case e.Step == creditRequested && ackLost[messaging.DebitFundsTopic]:
 		return "The debit command, although unacknowledged in order to trigger redelivery, was successful in terms of the commit to Bank A's outbox. The relay then published the result (message to Transfer Service), allowing the flow to continue."
+	case e.Step == refundCommitted:
+		return "The refund is a new operation at Bank A that restores the source balance, not a rollback of Bank A's debit."
+	case e.Step == transferRefunded && ackLost[messaging.RefundFundsTopic]:
+		return "Bank A's FundsRefunded went out through its outbox although the acknowledgement of the refund command was lost, so the flow continued."
 	}
 	return ""
 }
@@ -62,6 +69,12 @@ func messageTopics(history []historyEntry) map[string]string {
 			topics[e.MessageID] = messaging.DebitRejectedTopic
 		case creditCommitted:
 			topics[e.MessageID] = messaging.FundsCreditedTopic
+		case creditRejected:
+			topics[e.MessageID] = messaging.CreditRejectedTopic
+		case refundRequested:
+			topics[e.IssuedMessageID] = messaging.RefundFundsTopic
+		case refundCommitted:
+			topics[e.MessageID] = messaging.FundsRefundedTopic
 		}
 	}
 	return topics

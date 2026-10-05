@@ -320,14 +320,16 @@ because `ⓘ` is outside the vendored font subsets.
     A row that leads somewhere is a whole-row link whose hover is
     `--surface-shade`, applied instantly.
 
-13. **The transfer form is three rows**, 12px apart, each at `--row-height`
-    (36px): the control label (`.fact`) and the field, then the radio choice,
-    both left-aligned, then the primary button, aligned to the right edge of
-    the content column. A field is mono at
+13. **The transfer form is three parts**, 12px apart: the control label
+    (`.fact`) and the field at `--row-height` (36px), then the radio choice,
+    both left-aligned, then the primary button at `--row-height`, aligned to
+    the right edge of the content column. A field is mono at
     `--text-mono-meta` on the page surface with a hairline border. A radio
-    choice (the scenario: Happy path, Debit redelivery) is a borderless
-    fieldset whose visually hidden legend names it; each option is a `.fact`
-    label after its native radio. The selected radio's dot is the accent,
+    choice (the scenario: Happy path, Debit redelivery, Credit rejection &
+    refund, Credit rejection & refund redelivery) is a borderless fieldset
+    whose visually hidden legend names it; its options stack one per line,
+    8px apart, because their labels don't fit one line of the content
+    column. Each option is a `.fact` label after its native radio. The selected radio's dot is the accent,
     through `accent-color`; the filled native radio marks the selection on its
     own, so the accent never carries it alone. A rejected value, or a submission refused because
     another transfer is pending, is explained under the row in Brick, sans
@@ -346,7 +348,7 @@ because `ⓘ` is outside the vendored font subsets.
     labels in the History table. "couldn’t acknowledge after commit"
     (`NackRequested`) is Brick (`--danger`) and is followed by the info mark,
     whose popover explains that the lost acknowledgement is simulated by
-    requesting a redelivery; "repeat recognised; nothing
+    requesting a redelivery; "redelivery rejected; nothing
     applied" (`DuplicateSuppressed`) is Teal at weight 500. The styles belong
     to the observation, not the bank, so a Bank B `DuplicateSuppressed` looks
     the same. Both keep their words and their `// ` prefix, which takes the

@@ -26,7 +26,8 @@ respecting general project constraints.
 
 Don't comment code, except where it does something extermely unusual.
 
-When done with implementing a single ticket, do not commit until approved.
+When done with implementing a single ticket (`/implement`), do not commit changes until approved. 
+`/implement-spec` is not subject to this restriction. 
 
 Frontend should assume a width of >=1280px to be available.
 
