@@ -67,15 +67,14 @@ light-theme / dark-theme pair, like the accent:
 | | Light | Dark | Role here |
 | --- | --- | --- | --- |
 | Ember | `#A8500F` | `#DE8A42` | brand, the primary action, quiet-link rules |
-| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; its first use is the `DuplicateSuppressed` label in the History table (rule 14) |
+| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; a state's hue (rule 14) |
 | Violet | `#6B5D91` | `#AFA3CF` | secondary data and syntax color — nothing spends it yet |
-| Brick | `#A03028` | `#E0756A` | `--danger`: the message under the transfer form for a rejected amount or an overlapping submission, and the `NackRequested` label in the History table (rule 14) |
+| Brick | `#A03028` | `#E0756A` | `--danger`: the message under the transfer form for a rejected amount or an overlapping submission; a failed state's hue (rule 14) |
 
 Stone, Ink and Paper carry the overwhelming majority of the interface. Teal
 and Violet are for syntax on code surfaces and for data marks (a chart, a
 timeline), and are declared so that the first of those does not have to
-invent them. The one exception is the observation labels in the History
-table, recorded under rule 14.
+invent them. The one exception is a state that needs a hue (rule 14).
 
 **Accent dosage** is binding: at most ~2% of any composition, never on running
 text, never the sole carrier of a UI state. Several accent elements may share
@@ -90,9 +89,9 @@ label too.
 Mono (everything technical: IDs, amounts in lists, service names, timestamps,
 labels; 400/500 only). The mono tokens are already sized at 0.93× nominal.
 Space Grotesk has no true italic — emphasis is weight or accent, never
-synthesized slant. Headings are 500 at −0.022em. Sentence case everywhere;
-section labels are set in caps by CSS — see adaptation 10 — and the History
-table's processing observations are lowercase — see rule 14.
+synthesized slant. Headings are 500 at −0.022em. Sentence case everywhere,
+except the machine's own asides, which are lowercase; section labels are set
+in caps by CSS — see adaptation 10.
 
 **Shape.** 2px corners on controls and surfaces (adaptation 5). No shadows,
 inner or outer. No gradients, textures or background imagery. Separation is
@@ -233,22 +232,12 @@ because `ⓘ` is outside the vendored font subsets.
 
    | Tier | Light | Dark | Used for |
    | --- | --- | --- | --- |
-   | `--text-body` | Ink, 17.6:1 | Paper, 17.6:1 | the wordmarks, titles, section labels, balance figures, the name column of a row, a History entry's detail line, the label of an entry without one |
-   | `--text-dim` | `#3D3D3D`, 10.4:1 | `#B5B5B5`, 9.0:1 | prose, control labels, units, statuses, fact values, table values, the History table's observed time |
-   | `--text-muted` | Stone, 4.9:1 | Muted on Dark, 6.6:1 | the theme switch at rest, the footer credit, placeholders, a History entry's label under its detail line, the info mark at rest, a float's edge |
+   | `--text-body` | Ink, 17.6:1 | Paper, 17.6:1 | the wordmarks, titles, section labels, balance figures, the name column of a row |
+   | `--text-dim` | `#3D3D3D`, 10.4:1 | `#B5B5B5`, 9.0:1 | prose, control labels, units, statuses, fact values, table values |
+   | `--text-muted` | Stone, 4.9:1 | Muted on Dark, 6.6:1 | the theme switch at rest, the footer credit, placeholders, the info mark at rest, a float's edge |
 
    **A label outranks what sits beside it:** "Bank A" is body, its "credits"
    is dim; a fact's name is body, its value dim.
-
-   In the History table an entry's detail line — the message it answers — is
-   what the row is about: it is body, the entry's label under it is muted,
-   and the observed time beside them is dim, although it leads the row. An
-   entry without a detail line ("Transfer requested") shows its label in
-   body.
-
-   *Departure from hooklook:* hooklook sets timestamps muted, as incidental.
-   Here the observed time is what orders the History table, so it stays one
-   tier up, in dim.
 
 7. **Floating layers** — popovers, menus, dialogs — take hooklook's
    treatment: `--surface-float` as their fill (a step off the page on dark;
@@ -305,7 +294,6 @@ because `ⓘ` is outside the vendored font subsets.
     | `.fact` | mono, `--text-mono-meta`, dim | a control label, a unit beside a figure |
     | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's intro, the History explanation |
     | `.dim` | dim, nothing else | a value inside a row that is already mono |
-    | `.history .meta` | own line, body, the table's mono size | a History entry's detail line, above its label: command, attempt number from the second attempt on |
     | `.sr-only` | visually hidden | text for screen readers only |
 
     hooklook has two more, to take over unchanged when they are first
@@ -324,19 +312,7 @@ because `ⓘ` is outside the vendored font subsets.
     column headings are `.caps` at `--text-mono-micro`.
 
     The History table is the one table wider than the content column: 1000px
-    with fixed layout, inside the 1180px frame. Its columns are **Observed
-    (UTC)**, **Transfer Service**, and **Bank A** and **Bank B**, which
-    split the rest equally. Each row is one history entry, ordered
-    by observed time, with the entry in the column of the service that
-    reported it and the other service cells empty. A cell's first line names
-    the message the entry answers, then, for a bank handling attempt after
-    the first, `attempt <n>`; under it, muted, is the entry's label. A
-    processing observation's label does not name the bank, since the column
-    does. An entry that answers no message shows only its label, in body. The attempt ID is not shown; it is the
-    cell's `title`. A row from the same handling attempt as the row directly
-    above continues it: no hairline and no cell padding between the two,
-    and no detail line of its own; its label stays muted. A note under the table explains the
-    columns and the order and says recorded times are left out.
+    with fixed layout, inside the 1180px frame.
 
     A row that leads somewhere is a whole-row link whose hover is
     `--surface-shade`, applied instantly.
@@ -361,18 +337,8 @@ because `ⓘ` is outside the vendored font subsets.
 14. **Statuses are words, not colors.** The brand has one accent and no status
     palette. A transfer's status and its history steps take no hue:
     "Completed" and "Waiting for Bank A to debit" differ in words alone, and
-    so do the Evidence row's "Being collected" and "Complete". If a
-    state ever needs a hue, it keeps its text label, and the decision is
-    recorded here first.
+    so do the Evidence row's "Being collected" and "Complete".
 
-    *The one exception, a recorded departure:* the two processing-observation
-    labels in the History table. "couldn’t acknowledge after commit"
-    (`NackRequested`) is Brick (`--danger`) and is followed by the info mark,
-    whose popover explains that the lost acknowledgement is simulated by
-    requesting a redelivery; "redelivery rejected; nothing
-    applied" (`DuplicateSuppressed`) is Teal at weight 500. The styles belong
-    to the observation, not the bank, so a Bank B `DuplicateSuppressed` looks
-    the same. Both keep their words, so the hue is never the only signal.
-    Both are lowercase rather than sentence case: they are the machine's
-    asides, not steps. The accent was tried for `DuplicateSuppressed` and
-    sat too close to Brick on the light theme, hence Teal.
+    A state that does need a hue takes Brick for a failure and Teal
+    otherwise, and keeps its words, so the hue is never the only signal. Not
+    the accent: it sits too close to Brick on the light theme.
