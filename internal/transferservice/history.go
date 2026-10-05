@@ -22,6 +22,9 @@ type historyRow struct {
 	Label      string
 	Continues  bool
 	Balance    string
+	PlayedAt   time.Time
+	Dwell      time.Duration
+	Gap        string
 }
 
 func historyRows(history []historyEntry) []historyRow {
@@ -94,6 +97,32 @@ func balanceChange(e historyEntry) string {
 		return fmt.Sprint(*e.BalanceAfter)
 	}
 	return fmt.Sprintf("%d → %d", *e.BalanceBefore, *e.BalanceAfter)
+}
+
+const (
+	minDwell = 700 * time.Millisecond
+	maxDwell = 4 * time.Second
+)
+
+func playback(rows []historyRow) []historyRow {
+	for i := range rows {
+		rows[i].PlayedAt = rows[i].ObservedAt
+		if rows[i].Observation == deliveryWaiting && i > 0 {
+			rows[i].PlayedAt = rows[i-1].ObservedAt
+		}
+	}
+	for i := range rows {
+		rows[i].Dwell = minDwell
+		for _, next := range rows[i+1:] {
+			if !next.PlayedAt.IsZero() {
+				gap := next.PlayedAt.Sub(rows[i].PlayedAt)
+				rows[i].Dwell = min(max(gap, minDwell), maxDwell)
+				rows[i].Gap = fmt.Sprintf("%+.3f s", gap.Seconds())
+				break
+			}
+		}
+	}
+	return rows
 }
 
 func about(e historyEntry, ackLost map[string]bool) string {
