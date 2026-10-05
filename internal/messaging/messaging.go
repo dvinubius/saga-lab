@@ -20,11 +20,27 @@ const (
 	DebitRejectedTopic = "DebitRejected"
 	CreditFundsTopic   = "CreditFunds"
 	FundsCreditedTopic = "FundsCredited"
+
+	ProcessingObservedTopic = "ProcessingObserved"
 )
 
 const (
-	causationIDKey = "causation_id"
-	transferIDKey  = "transfer_id"
+	TransferService = "Transfer Service"
+	BankA           = "Bank A"
+	BankB           = "Bank B"
+)
+
+const DebitRedelivery = "debit_redelivery"
+
+const (
+	NackRequested       = "NackRequested"
+	DuplicateSuppressed = "DuplicateSuppressed"
+)
+
+const (
+	causationIDKey       = "causation_id"
+	transferIDKey        = "transfer_id"
+	attemptIDMetadataKey = "attempt_id"
 )
 
 type AccountOperation struct {
@@ -38,7 +54,10 @@ type OperationCommitted struct {
 	ObservedAt time.Time `json:"observed_at"`
 }
 
-type DebitFunds AccountOperation
+type DebitFunds struct {
+	AccountOperation
+	Scenario string `json:"scenario"`
+}
 
 type FundsDebited OperationCommitted
 
@@ -51,6 +70,14 @@ type DebitRejected struct {
 type CreditFunds AccountOperation
 
 type FundsCredited OperationCommitted
+
+type ProcessingObserved struct {
+	TransferID  string    `json:"transfer_id"`
+	Observation string    `json:"observation"`
+	Service     string    `json:"service"`
+	AttemptID   string    `json:"attempt_id"`
+	ObservedAt  time.Time `json:"observed_at"`
+}
 
 func New(ctx context.Context, transferID string, payload any, causationID string) (*message.Message, error) {
 	body, err := json.Marshal(payload)
@@ -70,6 +97,10 @@ func CausationID(msg *message.Message) string {
 	return msg.Metadata.Get(causationIDKey)
 }
 
+func ProducerAttemptID(msg *message.Message) string {
+	return msg.Metadata.Get(attemptIDMetadataKey)
+}
+
 func Decode(msg *message.Message, payload any) error {
 	if err := json.Unmarshal(msg.Payload, payload); err != nil {
 		return fmt.Errorf("decode %T from message %s: %w", payload, msg.UUID, err)
@@ -78,7 +109,6 @@ func Decode(msg *message.Message, payload any) error {
 }
 
 type Broker struct {
-	Publisher     message.Publisher
 	Subscriber    *amqp.Subscriber
 	Router        *message.Router
 	amqpPublisher *amqp.Publisher
@@ -100,7 +130,7 @@ func Connect(url string, logger *slog.Logger, publishedTopics ...string) (*Broke
 		publisher.Close()
 		return nil, fmt.Errorf("connect subscriber: %w", err)
 	}
-	b := &Broker{Publisher: tracingPublisher{publisher}, Subscriber: subscriber, amqpPublisher: publisher}
+	b := &Broker{Subscriber: subscriber, amqpPublisher: publisher}
 	for _, topic := range publishedTopics {
 		if err := subscriber.SubscribeInitialize(topic); err != nil {
 			b.Close()

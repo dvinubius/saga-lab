@@ -49,24 +49,26 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 		return err
 	}
 	defer db.Close()
+	s, err := Open(ctx, db, config, settings.Logger)
+	if err != nil {
+		return err
+	}
 	broker, err := messaging.Connect(settings.AMQPURL, settings.Logger, messaging.DebitFundsTopic, messaging.CreditFundsTopic)
 	if err != nil {
 		return err
 	}
 	defer broker.Close()
-	s, err := Open(ctx, db, broker, config, settings.Logger)
-	if err != nil {
-		return err
-	}
+	s.attachBroker(broker)
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return broker.Run(ctx) })
+	g.Go(func() error { return broker.RunRelay(ctx, db, settings.Logger) })
 	g.Go(func() error { return web.Serve(ctx, settings.Listener, s.Handler(), web.Public, settings.Logger) })
 	return g.Wait()
 }
 
 func Reset(ctx context.Context, settings service.Settings) error {
-	if err := messaging.Purge(settings.AMQPURL, messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.FundsCreditedTopic); err != nil {
+	if err := messaging.Purge(settings.AMQPURL, messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.FundsCreditedTopic, messaging.ProcessingObservedTopic); err != nil {
 		return err
 	}
 	db, err := postgres.Connect(ctx, settings.DatabaseURL)
@@ -81,7 +83,7 @@ func Reset(ctx context.Context, settings service.Settings) error {
 		if _, err := tx.Exec(ctx, schema); err != nil {
 			return fmt.Errorf("apply schema: %w", err)
 		}
-		return nil
+		return messaging.Outbox.Recreate(ctx, tx)
 	})
 }
 
@@ -94,21 +96,26 @@ type Service struct {
 	logger     *slog.Logger
 }
 
-func Open(ctx context.Context, db *pgxpool.Pool, broker *messaging.Broker, config Config, logger *slog.Logger) (*Service, error) {
+func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Logger) (*Service, error) {
 	if _, err := db.Exec(ctx, schema); err != nil {
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
-	s := &Service{
+	if err := messaging.Outbox.Create(ctx, db); err != nil {
+		return nil, err
+	}
+	return &Service{
 		db:         db,
-		broker:     broker,
-		bankA:      newBankClient(bankAName, config.BankAURL),
-		bankB:      newBankClient(bankBName, config.BankBURL),
+		bankA:      newBankClient(messaging.BankA, config.BankAURL),
+		bankB:      newBankClient(messaging.BankB, config.BankBURL),
 		grafanaURL: strings.TrimSuffix(config.GrafanaURL, "/"),
 		logger:     logger,
-	}
-	broker.Router.AddHandler("funds-debited",
+	}, nil
+}
+
+func (s *Service) attachBroker(broker *messaging.Broker) {
+	s.broker = broker
+	broker.Router.AddConsumerHandler("funds-debited",
 		messaging.FundsDebitedTopic, broker.Subscriber,
-		messaging.CreditFundsTopic, broker.Publisher,
 		s.fundsDebited)
 	broker.Router.AddConsumerHandler("debit-rejected",
 		messaging.DebitRejectedTopic, broker.Subscriber,
@@ -116,7 +123,9 @@ func Open(ctx context.Context, db *pgxpool.Pool, broker *messaging.Broker, confi
 	broker.Router.AddConsumerHandler("funds-credited",
 		messaging.FundsCreditedTopic, broker.Subscriber,
 		s.fundsCredited)
-	return s, nil
+	broker.Router.AddConsumerHandler("processing-observed",
+		messaging.ProcessingObservedTopic, broker.Subscriber,
+		s.processingObserved)
 }
 
 func (s *Service) Handler() http.Handler {
@@ -144,8 +153,10 @@ func staticFiles() http.Handler {
 }
 
 func (s *Service) ready(ctx context.Context) error {
-	if err := s.broker.Ready(); err != nil {
-		return err
+	if s.broker != nil {
+		if err := s.broker.Ready(); err != nil {
+			return err
+		}
 	}
 	return s.db.Ping(ctx)
 }
@@ -188,12 +199,13 @@ func (s *Service) getTransfers(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, http.StatusInternalServerError, "transfers unavailable", s.logger)
 		return
 	}
-	web.WriteJSON(w, http.StatusOK, map[string][]transfer{"transfers": transfers}, s.logger)
+	web.WriteJSON(w, http.StatusOK, map[string][]transferSummary{"transfers": transfers}, s.logger)
 }
 
 func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Amount json.RawMessage `json:"amount"`
+		Amount   json.RawMessage `json:"amount"`
+		Scenario *string         `json:"scenario"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 	if err := decoder.Decode(&request); err != nil || !errors.Is(decoder.Decode(new(json.RawMessage)), io.EOF) {
@@ -205,7 +217,14 @@ func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, http.StatusBadRequest, err.Error(), s.logger)
 		return
 	}
-	t, err := s.submit(r.Context(), amount)
+	chosen := happyPath
+	if request.Scenario != nil {
+		if chosen, err = parseScenario(*request.Scenario); err != nil {
+			web.WriteError(w, http.StatusBadRequest, err.Error(), s.logger)
+			return
+		}
+	}
+	t, err := s.submit(r.Context(), amount, chosen)
 	if pending, ok := errors.AsType[pendingTransferError](err); ok {
 		web.WriteJSON(w, http.StatusConflict, map[string]string{
 			"error":               "another transfer is still pending; submit again once it has finished",
@@ -237,17 +256,22 @@ func (s *Service) getTransfer(w http.ResponseWriter, r *http.Request) {
 }
 
 type homePage struct {
-	Balances  balances
-	Transfers []transfer
-	PendingID string
-	Amount    string
-	Error     string
-	Overlap   bool
+	Balances      balances
+	Transfers     []transferSummary
+	PendingID     string
+	Amount        string
+	Scenario      scenario
+	Scenarios     []scenario
+	Error         string
+	ScenarioError string
+	Overlap       bool
 }
 
 type transferPage struct {
 	Balances balances
 	Transfer transfer
+	Lanes    []string
+	History  []historyRow
 	TraceURL string
 }
 
@@ -267,22 +291,35 @@ func (s *Service) renderHome(w http.ResponseWriter, r *http.Request, status int,
 		http.Error(w, "Transfers are temporarily unavailable.", http.StatusInternalServerError)
 		return
 	}
-	if i := slices.IndexFunc(page.Transfers, func(t transfer) bool { return t.Status.Pending() }); i >= 0 && page.PendingID == "" {
+	if i := slices.IndexFunc(page.Transfers, func(t transferSummary) bool { return t.Status.Pending() }); i >= 0 && page.PendingID == "" {
 		page.PendingID = page.Transfers[i].ID
+	}
+	page.Scenarios = scenarios
+	if page.Scenario == "" {
+		page.Scenario = happyPath
 	}
 	s.render(w, status, "home", page)
 }
 
 func (s *Service) postTransferForm(w http.ResponseWriter, r *http.Request) {
 	text := strings.TrimSpace(r.PostFormValue("amount"))
-	amount, err := parseAmount(text)
+	slug := string(happyPath)
+	if r.PostForm.Has("scenario") {
+		slug = r.PostForm.Get("scenario")
+	}
+	chosen, err := parseScenario(slug)
 	if err != nil {
-		s.renderHome(w, r, http.StatusBadRequest, homePage{Amount: text, Error: err.Error()})
+		s.renderHome(w, r, http.StatusBadRequest, homePage{Amount: text, ScenarioError: err.Error()})
 		return
 	}
-	t, err := s.submit(r.Context(), amount)
+	amount, err := parseAmount(text)
+	if err != nil {
+		s.renderHome(w, r, http.StatusBadRequest, homePage{Amount: text, Scenario: chosen, Error: err.Error()})
+		return
+	}
+	t, err := s.submit(r.Context(), amount, chosen)
 	if pending, ok := errors.AsType[pendingTransferError](err); ok {
-		s.renderHome(w, r, http.StatusConflict, homePage{PendingID: pending.PendingID, Amount: text, Overlap: true})
+		s.renderHome(w, r, http.StatusConflict, homePage{PendingID: pending.PendingID, Amount: text, Scenario: chosen, Overlap: true})
 		return
 	}
 	if err != nil {
@@ -310,7 +347,7 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Balances are temporarily unavailable.", http.StatusBadGateway)
 		return
 	}
-	page := transferPage{Balances: b, Transfer: t}
+	page := transferPage{Balances: b, Transfer: t, Lanes: lanes, History: historyRows(t.History)}
 	if t.TraceID != "" {
 		page.TraceURL = s.traceURL(t.TraceID)
 	}

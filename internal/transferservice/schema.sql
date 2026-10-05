@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS transfers (
 
 ALTER TABLE transfers ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
 ALTER TABLE transfers ADD COLUMN IF NOT EXISTS trace_id TEXT;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS scenario TEXT NOT NULL DEFAULT 'happy_path';
 
 CREATE INDEX IF NOT EXISTS transfers_by_visitor ON transfers (visitor_id, requested_at);
 
@@ -22,6 +23,12 @@ CREATE TABLE IF NOT EXISTS transfer_history (
     causation_id TEXT,
     issued_message_id TEXT
 );
+
+ALTER TABLE transfer_history ALTER COLUMN step DROP NOT NULL;
+ALTER TABLE transfer_history ADD COLUMN IF NOT EXISTS observation TEXT CHECK (num_nonnulls(step, observation) = 1);
+ALTER TABLE transfer_history ADD COLUMN IF NOT EXISTS attempt_id TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS transfer_history_by_message ON transfer_history (message_id);
 
 CREATE INDEX IF NOT EXISTS transfer_history_by_transfer ON transfer_history (transfer_id, entry_id);
 
