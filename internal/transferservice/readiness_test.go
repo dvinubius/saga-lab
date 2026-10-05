@@ -40,6 +40,7 @@ func TestVisualisationReadiness(t *testing.T) {
 		{"Bank B unavailable completed missing confirmation", bankBUnavailable, completed, []historyEntry{{Observation: observation("DeliveryResumed")}}, false},
 		{"Bank B unavailable completed missing resumption", bankBUnavailable, completed, []historyEntry{{Observation: creditAccepted}}, false},
 		{"Bank B unavailable completed without pause", bankBUnavailable, completed, []historyEntry{{Observation: creditAccepted}, {Observation: observation("DeliveryResumed")}}, true},
+		{"Bank B unavailable awaiting admission", bankBUnavailable, status("awaiting_admission"), []historyEntry{requestedStep}, false},
 		{"Bank B unavailable pending with confirmation", bankBUnavailable, creditPending, []historyEntry{requestedStep, debitStep, {Observation: creditAccepted}}, false},
 		{"happy path pending", happyPath, creditPending, steps[:2], false},
 		{"credit rejection refunded", creditRejection, refunded, []historyEntry{requestedStep, debitStep, {Step: creditRequested}, {Step: creditRejected}, {Step: refundRequested}, {Step: refundCommitted}, {Step: transferRefunded}}, true},
@@ -68,5 +69,12 @@ func TestVisualisationReadiness(t *testing.T) {
 				t.Errorf("visualisationReady = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAwaitingAdmissionIsPendingAndExplainsTheWait(t *testing.T) {
+	current := status("awaiting_admission")
+	if !current.Pending() || current.Label() != "Another visitor is trying this demo. Yours will start automatically when it's your turn." {
+		t.Fatalf("awaiting admission: pending %v, label %q", current.Pending(), current.Label())
 	}
 }
