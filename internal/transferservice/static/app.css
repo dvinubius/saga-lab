@@ -272,6 +272,8 @@ button,.btn,a{transition:var(--hover-transition);}
 .history [data-observation="DuplicateSuppressed"] .label{color:var(--teal);font-weight:500;}
 .history [data-observation="DeliveryWaiting"] .label{color:var(--danger);}
 .history [data-observation="DeliveryResumed"] .label{color:var(--teal);}
+.outcome .table{table-layout:fixed;}
+.outcome .table th:first-child{width:178px;}
 .about{
   display:inline-flex;
   margin-left:6px;
