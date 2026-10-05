@@ -80,9 +80,9 @@ table, recorded under rule 14.
 **Accent dosage** is binding: at most ~2% of any composition, never on running
 text, never the sole carrier of a UI state. Several accent elements may share
 a view as long as none competes for the eye. Here the accent is spent on the
-**Transfer** button, the rule under a quiet link (**Follow pending transfer →**,
-the links in a transfer's In depth section, **→ dinubarbu.com**) and the
-brackets of the footer wordmark. A state that uses it always carries a text
+**Transfer** button, the dot of the selected scenario radio, the rule under a
+quiet link (**Follow pending transfer →**, the links in a transfer's In depth
+section, **→ dinubarbu.com**) and the brackets of the footer wordmark. A state that uses it always carries a text
 label too.
 
 **Type.** Space Grotesk (headings, body, the wordmarks; 400/500/700) and Azeret
@@ -187,7 +187,8 @@ the GitHub mark in the footer, drawn inline in the template in
    inside it is a single column of `--content-width` (600px), left-aligned
    under the wordmark. Only the History table is wider (rule 12): it runs
    past the column to the right, inside the frame. Sections sit 40px apart; the items in a section 14px
-   apart.
+   apart. On the home page a hairline, centred in that gap, divides the
+   transfer form from the Transfers list.
 
 3. **The product wordmark is type alone.** "Saga Lab" in Space Grotesk 500
    at 24px with the wordmark's −0.018em tracking, in body text. It wears no
@@ -213,16 +214,19 @@ the GitHub mark in the footer, drawn inline in the template in
 
    | Tier | Light | Dark | Used for |
    | --- | --- | --- | --- |
-   | `--text-body` | Ink, 17.6:1 | Paper, 17.6:1 | the wordmarks, titles, section labels, balance figures, the name column of a row |
-   | `--text-dim` | `#3D3D3D`, 10.4:1 | `#B5B5B5`, 9.0:1 | prose, control labels, units, statuses, fact values, table values |
+   | `--text-body` | Ink, 17.6:1 | Paper, 17.6:1 | the wordmarks, titles, section labels, balance figures, the name column of a row, a History entry's label |
+   | `--text-dim` | `#3D3D3D`, 10.4:1 | `#B5B5B5`, 9.0:1 | prose, control labels, units, statuses, fact values, table values, the History table's observed time |
    | `--text-muted` | Stone, 4.9:1 | Muted on Dark, 6.6:1 | the theme switch at rest, the footer credit, placeholders, `//` asides, the detail line under a history entry |
 
    **A label outranks what sits beside it:** "Bank A" is body, its "credits"
    is dim; a fact's name is body, its value dim.
 
+   In the History table the entry's label is the label: it is body, and the
+   observed time beside it is dim, although it leads the row.
+
    *Departure from hooklook:* hooklook sets timestamps muted, as incidental.
-   Here the observed time is what orders the History table, so it leads each
-   row in body text, like the name column of any other row.
+   Here the observed time is what orders the History table, so it stays one
+   tier up, in dim.
 
 7. **Floating layers** — popovers, menus, dialogs — do not exist yet. When
    one appears it takes hooklook's treatment: `--surface-float` as its fill
@@ -307,14 +311,16 @@ the GitHub mark in the footer, drawn inline in the template in
     A row that leads somewhere is a whole-row link whose hover is
     `--surface-shade`, applied instantly.
 
-13. **Forms are one row.** The control label (`.fact`), the field, any
-    radio choice and the primary button sit on one line at `--row-height`
-    (36px). A field is mono at `--text-mono-meta` on the page surface with a
-    hairline border. A radio choice (the scenario: Happy path, Debit
-    redelivery) is a borderless fieldset whose visually hidden legend names
-    it; each option is a `.fact` label after its native radio, tinted in
-    body text with `accent-color` — not the accent, which would then carry
-    the selection alone. A rejected value, or a submission refused because
+13. **The transfer form is three rows**, 12px apart, each at `--row-height`
+    (36px): the control label (`.fact`) and the field, then the radio choice,
+    both left-aligned, then the primary button, aligned to the right edge of
+    the content column. A field is mono at
+    `--text-mono-meta` on the page surface with a hairline border. A radio
+    choice (the scenario: Happy path, Debit redelivery) is a borderless
+    fieldset whose visually hidden legend names it; each option is a `.fact`
+    label after its native radio. The selected radio's dot is the accent,
+    through `accent-color`; the filled native radio marks the selection on its
+    own, so the accent never carries it alone. A rejected value, or a submission refused because
     another transfer is pending, is explained under the row in Brick, sans
     at `--text-small` — the text says what is wrong; the color only marks
     it. A disabled field or radio choice, like a disabled button, drops to
