@@ -147,7 +147,10 @@ Credit rejection & refund redelivery. The selected radio uses the accent dot;
 its text uses the same fact-label style as the other options. `CreditAccepted`
 is an observation in the Transfer Service lane labelled “the broker confirmed
 the credit command”; it takes no state hue and does not imply queue-insertion
-time.
+time. `DeliveryResumed` and `DeliveryPaused` are observations in Bank B's
+lane, without a state hue. Resumption displays the wait from the broker's
+confirmation and has an info note explaining that the command waited in
+RabbitMQ with no consumer while Bank B continued serving other transfers.
 
 **Focus.** The brand defines no focus style. Not the accent — a focus ring is
 a state the accent would then carry alone. `:focus-visible` is a 2px outline
