@@ -254,6 +254,7 @@ button,.btn,a{transition:var(--hover-transition);}
 .history .meta{display:block;color:var(--text-muted);}
 .history [data-observation="NackRequested"] .label{color:var(--danger);}
 .history [data-observation="DuplicateSuppressed"] .label{color:var(--teal);font-weight:500;}
+.history [data-observation] .comment{color:inherit;}
 .about{
   display:inline-flex;
   margin-left:6px;
