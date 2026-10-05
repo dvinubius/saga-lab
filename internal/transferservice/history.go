@@ -71,6 +71,8 @@ func messageTopics(history []historyEntry) map[string]string {
 			topics[e.MessageID] = messaging.CreditRejectedTopic
 		case refundRequested:
 			topics[e.IssuedMessageID] = messaging.RefundFundsTopic
+		case refundCommitted:
+			topics[e.MessageID] = messaging.FundsRefundedTopic
 		}
 	}
 	return topics

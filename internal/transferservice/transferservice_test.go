@@ -60,9 +60,16 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 	debited := func(id string) *message.Message {
 		return event(t, id, messaging.FundsDebited{TransferID: id, ObservedAt: time.Now()})
 	}
+	creditRejected := func(id string) *message.Message {
+		return event(t, id, messaging.CreditRejected{TransferID: id, Reason: "Credit refused by Bank B", ObservedAt: time.Now()})
+	}
+	type prior struct {
+		handle handler
+		event  func(id string) *message.Message
+	}
 	tests := []struct {
 		name      string
-		before    []handler
+		before    []prior
 		handle    handler
 		duplicate func(id string) *message.Message
 		want      state
@@ -83,7 +90,7 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 		},
 		{
 			name:   "FundsCredited",
-			before: []handler{transferservice.FundsDebited},
+			before: []prior{{transferservice.FundsDebited, debited}},
 			handle: transferservice.FundsCredited,
 			duplicate: func(id string) *message.Message {
 				return event(t, id, messaging.FundsCredited{TransferID: id, ObservedAt: time.Now()})
@@ -91,13 +98,20 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 			want: state{Status: "completed", Steps: []string{"requested", "debit_committed", "credit_requested", "credit_committed", "finished"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic}},
 		},
 		{
-			name:   "CreditRejected",
-			before: []handler{transferservice.FundsDebited},
-			handle: transferservice.CreditRejected,
+			name:      "CreditRejected",
+			before:    []prior{{transferservice.FundsDebited, debited}},
+			handle:    transferservice.CreditRejected,
+			duplicate: creditRejected,
+			want:      state{Status: "refund_pending", Steps: []string{"requested", "debit_committed", "credit_requested", "credit_rejected", "refund_requested"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic, messaging.RefundFundsTopic}},
+		},
+		{
+			name:   "FundsRefunded",
+			before: []prior{{transferservice.FundsDebited, debited}, {transferservice.CreditRejected, creditRejected}},
+			handle: transferservice.FundsRefunded,
 			duplicate: func(id string) *message.Message {
-				return event(t, id, messaging.CreditRejected{TransferID: id, Reason: "Credit refused by Bank B", ObservedAt: time.Now()})
+				return event(t, id, messaging.FundsRefunded{TransferID: id, ObservedAt: time.Now()})
 			},
-			want: state{Status: "refund_pending", Steps: []string{"requested", "debit_committed", "credit_requested", "credit_rejected", "refund_requested"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic, messaging.RefundFundsTopic}},
+			want: state{Status: "refunded", Steps: []string{"requested", "debit_committed", "credit_requested", "credit_rejected", "refund_requested", "refund_committed", "transfer_refunded"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic, messaging.RefundFundsTopic}},
 		},
 	}
 	for _, test := range tests {
@@ -110,7 +124,7 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 			}
 			id := submit(t, s)
 			for _, before := range test.before {
-				if err := before(s, debited(id)); err != nil {
+				if err := before.handle(s, before.event(id)); err != nil {
 					t.Fatalf("prepare transfer: %v", err)
 				}
 			}

@@ -22,6 +22,7 @@ const (
 	FundsCreditedTopic  = "FundsCredited"
 	CreditRejectedTopic = "CreditRejected"
 	RefundFundsTopic    = "RefundFunds"
+	FundsRefundedTopic  = "FundsRefunded"
 
 	ProcessingObservedTopic = "ProcessingObserved"
 )
@@ -83,6 +84,8 @@ type FundsCredited OperationCommitted
 type CreditRejected OperationRejected
 
 type RefundFunds ScenarioOperation
+
+type FundsRefunded OperationCommitted
 
 type ProcessingObserved struct {
 	TransferID  string    `json:"transfer_id"`
