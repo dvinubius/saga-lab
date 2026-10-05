@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/dvinubius/saga-lab/internal/messaging"
 	"github.com/dvinubius/saga-lab/internal/postgres"
@@ -40,6 +41,7 @@ type Config struct {
 	BankAURL   string
 	BankBURL   string
 	GrafanaURL string
+	ResumeWait time.Duration
 }
 
 func Run(ctx context.Context, settings service.Settings, config Config) error {
@@ -53,7 +55,7 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 	if err != nil {
 		return err
 	}
-	broker, err := messaging.Connect(settings.AMQPURL, settings.Logger, messaging.DebitFundsTopic, messaging.CreditFundsTopic, messaging.RefundFundsTopic)
+	broker, err := messaging.Connect(settings.AMQPURL, settings.Logger, messaging.DebitFundsTopic, messaging.CreditFundsTopic, messaging.CreditFundsDedicatedTopic, messaging.RefundFundsTopic, messaging.ResumeDeliveryTopic)
 	if err != nil {
 		return err
 	}
@@ -63,6 +65,7 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return broker.Run(ctx) })
 	g.Go(func() error { return broker.RunRelay(ctx, db, settings.Logger) })
+	g.Go(func() error { return s.runResumeSchedule(ctx) })
 	g.Go(func() error { return web.Serve(ctx, settings.Listener, s.Handler(), web.Public, settings.Logger) })
 	return g.Wait()
 }
@@ -77,7 +80,7 @@ func Reset(ctx context.Context, settings service.Settings) error {
 	}
 	defer db.Close()
 	return pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS transfer_history, transfers`); err != nil {
+		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS demonstration_slot, transfer_history, transfers, visitors`); err != nil {
 			return fmt.Errorf("drop transfers: %w", err)
 		}
 		if _, err := tx.Exec(ctx, schema); err != nil {
@@ -94,9 +97,13 @@ type Service struct {
 	bankB      bankClient
 	grafanaURL string
 	logger     *slog.Logger
+	resumeWait time.Duration
 }
 
 func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Logger) (*Service, error) {
+	if config.ResumeWait <= 0 {
+		return nil, errors.New("Bank B resume wait must be positive")
+	}
 	if _, err := db.Exec(ctx, schema); err != nil {
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
@@ -109,11 +116,13 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 		bankB:      newBankClient(messaging.BankB, config.BankBURL),
 		grafanaURL: strings.TrimSuffix(config.GrafanaURL, "/"),
 		logger:     logger,
+		resumeWait: config.ResumeWait,
 	}, nil
 }
 
 func (s *Service) attachBroker(broker *messaging.Broker) {
 	s.broker = broker
+	broker.OnConfirmed(messaging.CreditFundsDedicatedTopic, s.creditConfirmed)
 	broker.Router.AddConsumerHandler("funds-debited",
 		messaging.FundsDebitedTopic, broker.Subscriber,
 		s.fundsDebited)
@@ -143,9 +152,11 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/transfers", s.getTransfers)
 	mux.HandleFunc("POST /api/transfers", s.postTransfer)
 	mux.HandleFunc("GET /api/transfers/{transferID}", s.getTransfer)
-	mux.Handle("GET /readyz", web.Readiness(s.ready, s.logger))
-	mux.Handle("GET /static/", staticFiles())
-	return mux
+	root := http.NewServeMux()
+	root.Handle("GET /readyz", web.Readiness(s.ready, s.logger))
+	root.Handle("GET /static/", staticFiles())
+	root.Handle("/", s.visitors(mux))
+	return root
 }
 
 func staticFiles() http.Handler {
@@ -177,11 +188,11 @@ type balances struct {
 }
 
 func (s *Service) balances(ctx context.Context) (balances, error) {
-	bankA, err := s.bankA.balance(ctx, visitor.PreparedID)
+	bankA, err := s.bankA.balance(ctx, visitor.ID(ctx))
 	if err != nil {
 		return balances{}, err
 	}
-	bankB, err := s.bankB.balance(ctx, visitor.PreparedID)
+	bankB, err := s.bankB.balance(ctx, visitor.ID(ctx))
 	if err != nil {
 		return balances{}, err
 	}

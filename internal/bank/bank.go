@@ -13,7 +13,6 @@ import (
 	"github.com/dvinubius/saga-lab/internal/messaging"
 	"github.com/dvinubius/saga-lab/internal/postgres"
 	"github.com/dvinubius/saga-lab/internal/service"
-	"github.com/dvinubius/saga-lab/internal/visitor"
 	"github.com/dvinubius/saga-lab/internal/web"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -43,20 +42,23 @@ var (
 		[]command{{messaging.DebitFundsTopic, (*Bank).debitFunds}, {messaging.RefundFundsTopic, (*Bank).refundFunds}},
 		[]string{messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.FundsRefundedTopic, messaging.ProcessingObservedTopic}}
 	Destination = Role{messaging.BankB,
-		[]command{{messaging.CreditFundsTopic, (*Bank).creditFunds}},
+		[]command{{messaging.CreditFundsTopic, (*Bank).creditFunds}, {messaging.ResumeDeliveryTopic, (*Bank).resumeDelivery}},
 		[]string{messaging.FundsCreditedTopic, messaging.CreditRejectedTopic, messaging.ProcessingObservedTopic}}
 )
 
 type Config struct {
-	PreparedBalance int64
-	Role            Role
+	OpeningBalance    int64
+	Role              Role
+	DedicatedConsumer DedicatedConsumer
 }
 
 type Bank struct {
-	db     *pgxpool.Pool
-	role   Role
-	broker *messaging.Broker
-	logger *slog.Logger
+	db             *pgxpool.Pool
+	openingBalance int64
+	role           Role
+	broker         *messaging.Broker
+	logger         *slog.Logger
+	dedicated      DedicatedConsumer
 }
 
 func Run(ctx context.Context, settings service.Settings, config Config) error {
@@ -76,8 +78,20 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 	}
 	defer broker.Close()
 	b.attachBroker(broker)
+	var dedicated *amqpConsumer
+	if config.Role.service == messaging.BankB {
+		dedicated, err = openDedicated(settings.AMQPURL)
+		if err != nil {
+			return err
+		}
+		defer dedicated.connection.Close()
+		b.dedicated = dedicated
+	}
 
 	g, ctx := errgroup.WithContext(ctx)
+	if dedicated != nil {
+		g.Go(func() error { dedicated.run(ctx, b); return nil })
+	}
 	g.Go(func() error { return broker.Run(ctx) })
 	g.Go(func() error { return broker.RunRelay(ctx, db, settings.Logger) })
 	g.Go(func() error { return web.Serve(ctx, settings.Listener, b.Handler(), web.Internal, settings.Logger) })
@@ -85,19 +99,22 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 }
 
 func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Logger) (*Bank, error) {
-	if err := provision(ctx, db, config); err != nil {
+	if err := applySchema(ctx, db); err != nil {
 		return nil, err
 	}
 	if err := messaging.InboxAndOutbox.Create(ctx, db); err != nil {
 		return nil, err
 	}
-	return &Bank{db: db, role: config.Role, logger: logger}, nil
+	return &Bank{db: db, role: config.Role, openingBalance: config.OpeningBalance, logger: logger, dedicated: config.DedicatedConsumer}, nil
 }
 
 func Reset(ctx context.Context, settings service.Settings, config Config) error {
 	var commandTopics []string
 	for _, c := range config.Role.commands {
 		commandTopics = append(commandTopics, c.topic)
+	}
+	if config.Role.service == messaging.BankB {
+		commandTopics = append(commandTopics, messaging.CreditFundsDedicatedTopic)
 	}
 	if err := messaging.Purge(settings.AMQPURL, commandTopics...); err != nil {
 		return err
@@ -114,7 +131,7 @@ func Reset(ctx context.Context, settings service.Settings, config Config) error 
 		if err := messaging.InboxAndOutbox.Recreate(ctx, tx); err != nil {
 			return err
 		}
-		return provision(ctx, tx, config)
+		return applySchema(ctx, tx)
 	})
 }
 
@@ -122,15 +139,9 @@ type execer interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
 
-func provision(ctx context.Context, db execer, config Config) error {
+func applySchema(ctx context.Context, db execer) error {
 	if _, err := db.Exec(ctx, schema); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
-	}
-	if _, err := db.Exec(ctx,
-		`INSERT INTO accounts (visitor_id, balance) VALUES ($1, $2) ON CONFLICT (visitor_id) DO NOTHING`,
-		visitor.PreparedID, config.PreparedBalance,
-	); err != nil {
-		return fmt.Errorf("provision prepared account: %w", err)
 	}
 	return nil
 }
@@ -138,6 +149,7 @@ func provision(ctx context.Context, db execer, config Config) error {
 func (b *Bank) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /accounts/{visitorID}", b.getAccount)
+	mux.HandleFunc("PUT /accounts/{visitorID}", b.openAccount)
 	mux.Handle("GET /readyz", web.Readiness(b.ready, b.logger))
 	return mux
 }
@@ -290,7 +302,7 @@ func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func
 		}
 		return effect(ctx, tx)
 	})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, pgx.ErrNoRows) && topic != messaging.ResumeDeliveryTopic {
 		logger.Warn("command not applied: account missing", "command", topic, "transfer_id", transferID, "message_id", msg.UUID)
 		return nil
 	}
@@ -339,4 +351,13 @@ func (b *Bank) getAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	web.WriteJSON(w, http.StatusOK, a, b.logger)
+}
+
+func (b *Bank) openAccount(w http.ResponseWriter, r *http.Request) {
+	if _, err := b.db.Exec(r.Context(), `INSERT INTO accounts (visitor_id, balance) VALUES ($1, $2) ON CONFLICT (visitor_id) DO NOTHING`, r.PathValue("visitorID"), b.openingBalance); err != nil {
+		b.logger.Error("open account", "error", err)
+		web.WriteError(w, http.StatusInternalServerError, "account unavailable", b.logger)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

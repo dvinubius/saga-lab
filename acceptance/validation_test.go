@@ -81,7 +81,7 @@ func TestUnknownScenariosAreRejectedBeforeAnyTransfer(t *testing.T) {
 			var problem struct {
 				Error string `json:"error"`
 			}
-			if err := json.Unmarshal(r.body, &problem); err != nil || !containsAll(problem.Error, "happy_path", "debit_redelivery", "credit_rejection", "refund_redelivery") {
+			if err := json.Unmarshal(r.body, &problem); err != nil || !containsAll(problem.Error, "happy_path", "debit_redelivery", "credit_rejection", "bank_b_unavailable", "refund_redelivery") {
 				t.Errorf("body %q does not list the accepted scenarios", r.body)
 			}
 		})
@@ -112,7 +112,7 @@ func containsAll(s string, parts ...string) bool {
 	return true
 }
 
-func (d *demonstration) transfers(t *testing.T) []transfer {
+func (d *visitorClient) transfers(t *testing.T) []transfer {
 	t.Helper()
 	var list struct {
 		Transfers []transfer `json:"transfers"`
