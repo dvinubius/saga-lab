@@ -60,6 +60,8 @@ These decisions refine milestone 3. Everything in the milestone 3 entry above is
 
 ## Milestone 4 — Agreed scope
 
+Build specification: [GitHub issue #48 — Bank B unavailable: isolated consumer unavailability and serialized admission](https://github.com/dvinubius/saga-lab/issues/48).
+
 These decisions refine milestone 4. Everything in the milestone 4 entry above is in scope.
 
 - **Visitors:** a minimal cookie-associated visitor replaces the prepared visitor, so that different visitors can contend for admission. A request without a visitor cookie receives an opaque random ID. The first time the Transfer Service sees a visitor, it opens both accounts idempotently over the banks' internal HTTP: 100 credits at Bank A, zero at Bank B. Balances, the transfer list, the pending-transfer restriction and transfer lookups are scoped to the visitor; another visitor's transfer is not found. The JSON API uses the same cookie. Generated bank names and top-ups remain in milestone 5.
