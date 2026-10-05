@@ -14,21 +14,24 @@ import (
 	"github.com/dvinubius/saga-lab/internal/visitor"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
 
 type status string
 
 const (
-	debitPending  status = "debit_pending"
-	creditPending status = "credit_pending"
-	refundPending status = "refund_pending"
-	completed     status = "completed"
-	rejected      status = "rejected"
-	refunded      status = "refunded"
+	awaitingAdmission status = "awaiting_admission"
+	debitPending      status = "debit_pending"
+	creditPending     status = "credit_pending"
+	refundPending     status = "refund_pending"
+	completed         status = "completed"
+	rejected          status = "rejected"
+	refunded          status = "refunded"
 )
 
-var pendingStatuses = []status{debitPending, creditPending, refundPending}
+var pendingStatuses = []status{awaitingAdmission, debitPending, creditPending, refundPending}
 
 func (s status) Pending() bool {
 	return slices.Contains(pendingStatuses, s)
@@ -36,6 +39,8 @@ func (s status) Pending() bool {
 
 func (s status) Label() string {
 	switch s {
+	case awaitingAdmission:
+		return "Another visitor is trying this demo. Yours will start automatically when it's your turn."
 	case debitPending:
 		return "Waiting for Bank A to debit"
 	case creditPending:
@@ -109,6 +114,7 @@ func (s step) LabelTail() string {
 type observation string
 
 const (
+	admitted            observation = "Admitted"
 	nackRequested       observation = messaging.NackRequested
 	duplicateSuppressed observation = messaging.DuplicateSuppressed
 	creditAccepted      observation = messaging.CreditAccepted
@@ -118,6 +124,8 @@ const (
 
 func (o observation) Label() string {
 	switch o {
+	case admitted:
+		return "admitted"
 	case nackRequested:
 		return "couldn’t acknowledge after commit"
 	case creditAccepted:
@@ -204,25 +212,57 @@ func (s *Service) submit(ctx context.Context, amount int64, chosen scenario) (tr
 }
 
 func (s *Service) admit(ctx context.Context, t transfer, debit *message.Message) (bool, error) {
-	admitted := false
+	insertedTransfer := false
+	queued := false
+	traceContext := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, traceContext)
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		if t.Scenario == bankBUnavailable {
+			holder, err := lockSlot(ctx, tx)
+			if err != nil {
+				return err
+			}
+			var waiting bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM transfers WHERE status = $1)`, awaitingAdmission).Scan(&waiting); err != nil {
+				return err
+			}
+			if holder != "" || waiting {
+				t.Status = awaitingAdmission
+				queued = true
+			}
+		}
 		inserted, err := tx.Exec(ctx,
-			`INSERT INTO transfers (transfer_id, visitor_id, amount, scenario, status, requested_at, trace_id) VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''))
-			 ON CONFLICT (visitor_id) WHERE status IN ('debit_pending', 'credit_pending', 'refund_pending') DO NOTHING`,
-			t.ID, visitor.ID(ctx), t.Amount, t.Scenario, t.Status, t.RequestedAt, t.TraceID,
+			`INSERT INTO transfers (transfer_id, visitor_id, amount, scenario, status, requested_at, trace_id, trace_context) VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), $8)
+			 ON CONFLICT (visitor_id) WHERE status IN ('awaiting_admission', 'debit_pending', 'credit_pending', 'refund_pending') DO NOTHING`,
+			t.ID, visitor.ID(ctx), t.Amount, t.Scenario, t.Status, t.RequestedAt, t.TraceID, traceContext,
 		)
 		if err != nil || inserted.RowsAffected() == 0 {
 			return err
 		}
-		admitted = true
+		insertedTransfer = true
+		issuedID := debit.UUID
+		if queued {
+			issuedID = ""
+		}
+		if t.Scenario == bankBUnavailable && !queued {
+			if _, err := tx.Exec(ctx, `UPDATE demonstration_slot SET holder_transfer_id = $1`, t.ID); err != nil {
+				return err
+			}
+		}
 		if err := record(ctx, tx, t.ID, historyEntry{
-			Step: requested, Service: messaging.TransferService, ObservedAt: t.RequestedAt, IssuedMessageID: debit.UUID,
+			Step: requested, Service: messaging.TransferService, ObservedAt: t.RequestedAt, IssuedMessageID: issuedID,
 		}); err != nil {
 			return err
 		}
+		if queued {
+			return nil
+		}
 		return messaging.Enqueue(ctx, tx, messaging.DebitFundsTopic, debit)
 	})
-	return admitted, err
+	if err == nil && insertedTransfer && queued {
+		s.logger.Info("transfer queued for admission", "transfer_id", t.ID)
+	}
+	return insertedTransfer, err
 }
 
 func (s *Service) pendingTransferID(ctx context.Context) (string, error) {
@@ -307,6 +347,9 @@ func (s *Service) debitRejected(msg *message.Message) error {
 	ctx := msg.Context()
 	current := ""
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		if _, err := lockSlot(ctx, tx); err != nil {
+			return err
+		}
 		updated, err := tx.Exec(ctx,
 			`UPDATE transfers SET status = $2, rejection_reason = $4 WHERE transfer_id = $1 AND status = $3`,
 			event.TransferID, rejected, debitPending, event.Reason,
@@ -324,9 +367,12 @@ func (s *Service) debitRejected(msg *message.Message) error {
 		}); err != nil {
 			return err
 		}
-		return record(ctx, tx, event.TransferID, historyEntry{
+		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: transferRejected, Service: messaging.TransferService, ObservedAt: time.Now(), CausationID: msg.UUID,
-		})
+		}); err != nil {
+			return err
+		}
+		return s.releaseSlot(ctx, tx, event.TransferID)
 	})
 	return endTransition(err, messaging.DebitRejectedTopic, event.TransferID, current, msg, logger)
 }
@@ -341,6 +387,9 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 	ctx := msg.Context()
 	current := ""
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		if _, err := lockSlot(ctx, tx); err != nil {
+			return err
+		}
 		updated, err := tx.Exec(ctx,
 			`UPDATE transfers SET status = $2 WHERE transfer_id = $1 AND status = $3`,
 			event.TransferID, completed, creditPending,
@@ -358,9 +407,12 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 		}); err != nil {
 			return err
 		}
-		return record(ctx, tx, event.TransferID, historyEntry{
+		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: finished, Service: messaging.TransferService, ObservedAt: time.Now(), CausationID: msg.UUID,
-		})
+		}); err != nil {
+			return err
+		}
+		return s.releaseSlot(ctx, tx, event.TransferID)
 	})
 	return endTransition(err, messaging.FundsCreditedTopic, event.TransferID, current, msg, logger)
 }
@@ -450,10 +502,21 @@ func (s *Service) processingObserved(msg *message.Message) error {
 	}
 	ctx := msg.Context()
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-		return record(ctx, tx, event.TransferID, historyEntry{
+		if event.Observation == messaging.DeliveryPaused {
+			if _, err := lockSlot(ctx, tx); err != nil {
+				return err
+			}
+		}
+		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Observation: observation(event.Observation), Service: event.Service, ObservedAt: event.ObservedAt, AttemptID: event.AttemptID,
 			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
-		})
+		}); err != nil {
+			return err
+		}
+		if event.Observation == messaging.DeliveryPaused {
+			return s.releaseSlot(ctx, tx, event.TransferID)
+		}
+		return nil
 	})
 	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == foreignKeyViolation {
 		logger.Info("ignore observation for unknown transfer", "observation", event.Observation, "transfer_id", event.TransferID, "message_id", msg.UUID)

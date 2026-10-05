@@ -23,8 +23,11 @@ type historyRow struct {
 func historyRows(history []historyEntry) []historyRow {
 	topics := messageTopics(history)
 	ackLost := map[string]bool{}
-	var confirmedAt time.Time
+	var confirmedAt, requestedAt time.Time
 	for _, e := range history {
+		if e.Step == requested {
+			requestedAt = e.ObservedAt
+		}
 		if e.Observation == creditAccepted {
 			confirmedAt = e.ObservedAt
 		}
@@ -36,6 +39,9 @@ func historyRows(history []historyEntry) []historyRow {
 	rows := make([]historyRow, len(history))
 	for i, e := range history {
 		rows[i] = historyRow{historyEntry: e, Lane: slices.Index(lanes, e.Service), Cause: topics[e.CausationID], About: about(e, ackLost), Label: e.Observation.Label()}
+		if e.Observation == admitted && !requestedAt.IsZero() {
+			rows[i].Label = fmt.Sprintf("admitted after waiting %.1f s for another visitor’s demo", e.ObservedAt.Sub(requestedAt).Seconds())
+		}
 		if e.Observation == deliveryResumed && !confirmedAt.IsZero() {
 			rows[i].Label = fmt.Sprintf("delivery resumed after %.1f s waiting in the queue", e.ObservedAt.Sub(confirmedAt).Seconds())
 		}
@@ -72,6 +78,9 @@ func about(e historyEntry, ackLost map[string]bool) string {
 func messageTopics(history []historyEntry) map[string]string {
 	topics := map[string]string{}
 	for _, e := range history {
+		if e.Observation == admitted {
+			topics[e.IssuedMessageID] = messaging.DebitFundsTopic
+		}
 		switch e.Step {
 		case requested:
 			topics[e.IssuedMessageID] = messaging.DebitFundsTopic
@@ -91,5 +100,6 @@ func messageTopics(history []historyEntry) map[string]string {
 			topics[e.MessageID] = messaging.FundsRefundedTopic
 		}
 	}
+	delete(topics, "")
 	return topics
 }

@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS transfers (
 
 ALTER TABLE transfers ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
 ALTER TABLE transfers ADD COLUMN IF NOT EXISTS trace_id TEXT;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS trace_context JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE transfers ADD COLUMN IF NOT EXISTS credit_confirmed_at TIMESTAMPTZ;
 ALTER TABLE transfers ADD COLUMN IF NOT EXISTS resume_at TIMESTAMPTZ;
 ALTER TABLE transfers ADD COLUMN IF NOT EXISTS resume_issued BOOLEAN NOT NULL DEFAULT false;
@@ -40,5 +41,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS transfer_history_by_message ON transfer_histor
 CREATE INDEX IF NOT EXISTS transfer_history_by_transfer ON transfer_history (transfer_id, entry_id);
 
 DROP INDEX IF EXISTS one_pending_transfer_per_visitor;
-CREATE UNIQUE INDEX IF NOT EXISTS pending_transfer_restriction ON transfers (visitor_id)
-    WHERE status IN ('debit_pending', 'credit_pending', 'refund_pending');
+DROP INDEX IF EXISTS pending_transfer_restriction;
+CREATE UNIQUE INDEX pending_transfer_restriction ON transfers (visitor_id)
+    WHERE status IN ('awaiting_admission', 'debit_pending', 'credit_pending', 'refund_pending');
+
+CREATE TABLE IF NOT EXISTS demonstration_slot (
+    singleton BOOLEAN PRIMARY KEY DEFAULT true CHECK (singleton),
+    holder_transfer_id TEXT REFERENCES transfers (transfer_id)
+);
+
+INSERT INTO demonstration_slot (singleton) VALUES (true) ON CONFLICT DO NOTHING;
