@@ -44,6 +44,8 @@ func about(e historyEntry, debitAckLost bool) string {
 		return "We’re simulating the effects of a crash by requesting a redelivery (a Nack), and the broker delivers the message again."
 	case e.Step == creditRequested && debitAckLost:
 		return "The debit command, although unacknowledged in order to trigger redelivery, was successful in terms of the commit to Bank A's outbox. The relay then published the result (message to Transfer Service), allowing the flow to continue."
+	case e.Step == refundRequested:
+		return "The refund is a new operation at Bank A that restores the source balance, not a rollback of Bank A's debit."
 	}
 	return ""
 }
@@ -62,6 +64,10 @@ func messageTopics(history []historyEntry) map[string]string {
 			topics[e.MessageID] = messaging.DebitRejectedTopic
 		case creditCommitted:
 			topics[e.MessageID] = messaging.FundsCreditedTopic
+		case creditRejected:
+			topics[e.MessageID] = messaging.CreditRejectedTopic
+		case refundRequested:
+			topics[e.IssuedMessageID] = messaging.RefundFundsTopic
 		}
 	}
 	return topics

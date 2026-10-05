@@ -38,7 +38,7 @@ var (
 	Source = Role{messaging.BankA, messaging.DebitFundsTopic,
 		[]string{messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.ProcessingObservedTopic}, (*Bank).debitFunds}
 	Destination = Role{messaging.BankB, messaging.CreditFundsTopic,
-		[]string{messaging.FundsCreditedTopic, messaging.ProcessingObservedTopic}, (*Bank).creditFunds}
+		[]string{messaging.FundsCreditedTopic, messaging.CreditRejectedTopic, messaging.ProcessingObservedTopic}, (*Bank).creditFunds}
 )
 
 type Config struct {
@@ -205,7 +205,14 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 		logger.Error("discard credit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
 		return nil
 	}
-	return b.apply(msg, messaging.CreditFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
+	rejected := false
+	err := b.apply(msg, messaging.CreditFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
+		if command.Scenario == messaging.CreditRejection {
+			rejected = true
+			return enqueue(tx, command.TransferID, messaging.CreditRejectedTopic, messaging.CreditRejected{
+				TransferID: command.TransferID, Reason: "Credit refused by Bank B", ObservedAt: time.Now(),
+			}, msg)
+		}
 		credited, err := tx.Exec(ctx,
 			`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1`,
 			command.VisitorID, command.Amount,
@@ -218,6 +225,10 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 		}
 		return enqueue(tx, command.TransferID, messaging.FundsCreditedTopic, messaging.FundsCredited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 	}, logger)
+	if err == nil && rejected {
+		logger.Info("credit rejected as the scenario requires", "transfer_id", command.TransferID, "message_id", msg.UUID)
+	}
+	return err
 }
 
 func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func(context.Context, pgx.Tx) error, logger *slog.Logger) error {

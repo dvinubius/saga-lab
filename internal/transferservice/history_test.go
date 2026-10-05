@@ -32,6 +32,28 @@ func TestHistoryRowsNameTheCauseAndNumberAttemptsPerCommand(t *testing.T) {
 	}
 }
 
+func TestCreditRejectionConfirmedAlwaysExplainsTheRefund(t *testing.T) {
+	history := []historyEntry{
+		{Step: requested, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
+		{Step: creditRequested, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
+		{Step: creditRejected, AttemptID: "attempt-b1", MessageID: "credit-rejected", CausationID: "credit-funds"},
+		{Step: refundRequested, CausationID: "credit-rejected", IssuedMessageID: "refund-funds"},
+	}
+
+	rows := historyRows(history)
+
+	if got, want := []string{rows[3].Cause, rows[4].Cause}, []string{"CreditFunds", "CreditRejected"}; !slices.Equal(got, want) {
+		t.Errorf("causes = %q, want %q", got, want)
+	}
+	if rows[3].Attempt != 1 {
+		t.Errorf("credit_rejected attempt = %d, want 1", rows[3].Attempt)
+	}
+	if rows[4].About == "" {
+		t.Error("refund_requested has no note, want one explaining the refund")
+	}
+}
+
 func TestCreditRequestedIsExplainedOnlyAfterALostDebitAcknowledgement(t *testing.T) {
 	happy := []historyEntry{
 		{Step: requested, IssuedMessageID: "debit-funds"},
