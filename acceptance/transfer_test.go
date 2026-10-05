@@ -19,8 +19,19 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 	if completed.Amount != 25 {
 		t.Errorf("amount = %d, want 25", completed.Amount)
 	}
+	if completed.Scenario != "happy_path" {
+		t.Errorf("scenario = %q, want happy_path", completed.Scenario)
+	}
 	assertSteps(t, completed.History, "requested", "debit_committed", "credit_committed", "finished")
 	assertServices(t, completed.History, "Transfer Service", "Bank A", "Bank B", "Transfer Service")
+	if !completed.VisualisationReady {
+		t.Error("visualisation_ready = false, want true")
+	}
+	for _, entry := range completed.History {
+		if entry.Observation != "" {
+			t.Errorf("history has observation %s, want none on the happy path", entry.Observation)
+		}
+	}
 
 	requested, debit, credit, done := completed.History[0], completed.History[1], completed.History[2], completed.History[3]
 	messageIDs := map[string]string{
@@ -57,15 +68,20 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 type transfer struct {
 	TransferID      string         `json:"transfer_id"`
 	Amount          int64          `json:"amount"`
+	Scenario        string         `json:"scenario"`
 	Status          string         `json:"status"`
 	RejectionReason string         `json:"rejection_reason"`
 	TraceID         string         `json:"trace_id"`
 	History         []historyEntry `json:"history"`
+
+	VisualisationReady bool `json:"visualisation_ready"`
 }
 
 type historyEntry struct {
 	Step            string    `json:"step"`
+	Observation     string    `json:"observation"`
 	Service         string    `json:"service"`
+	AttemptID       string    `json:"attempt_id"`
 	ObservedAt      time.Time `json:"observed_at"`
 	RecordedAt      time.Time `json:"recorded_at"`
 	MessageID       string    `json:"message_id"`
@@ -119,9 +135,11 @@ func (d *demonstration) awaitTransfer(t *testing.T, id, status string) transfer 
 
 func assertSteps(t *testing.T, history []historyEntry, want ...string) {
 	t.Helper()
-	got := make([]string, len(history))
-	for i, entry := range history {
-		got[i] = entry.Step
+	var got []string
+	for _, entry := range history {
+		if entry.Step != "" {
+			got = append(got, entry.Step)
+		}
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("history steps = %q, want %q", got, want)

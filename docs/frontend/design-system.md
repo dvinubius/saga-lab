@@ -46,8 +46,8 @@ back/forward cache. Going back from a transfer to the home page shows the
 current balances and Transfers list; the amount field is not restored.
 
 Fonts are served with a year-long immutable cache; CSS and JS are not cached.
-A pending transfer page, and the home page while a transfer is pending, reload
-themselves once a second, and fonts fetched again on every reload would flash.
+A transfer page whose evidence is not yet complete, and the home page while a
+transfer is pending, reload themselves once a second, and fonts fetched again on every reload would flash.
 Changing a font file therefore means renaming it.
 
 ## The binding rules
@@ -67,21 +67,22 @@ light-theme / dark-theme pair, like the accent:
 | | Light | Dark | Role here |
 | --- | --- | --- | --- |
 | Ember | `#A8500F` | `#DE8A42` | brand, the primary action, quiet-link rules |
-| Teal | `#087581` | `#5BC8D0` | primary data and syntax color — nothing spends it yet |
+| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; its first use is the `DuplicateSuppressed` label in the History table (rule 14) |
 | Violet | `#6B5D91` | `#AFA3CF` | secondary data and syntax color — nothing spends it yet |
-| Brick | `#A03028` | `#E0756A` | `--danger`: the message under the transfer form for a rejected amount or an overlapping submission |
+| Brick | `#A03028` | `#E0756A` | `--danger`: the message under the transfer form for a rejected amount or an overlapping submission, and the `NackRequested` label in the History table (rule 14) |
 
 Stone, Ink and Paper carry the overwhelming majority of the interface. Teal
 and Violet are for syntax on code surfaces and for data marks (a chart, a
 timeline), and are declared so that the first of those does not have to
-invent them.
+invent them. The one exception is the observation labels in the History
+table, recorded under rule 14.
 
 **Accent dosage** is binding: at most ~2% of any composition, never on running
 text, never the sole carrier of a UI state. Several accent elements may share
 a view as long as none competes for the eye. Here the accent is spent on the
-**Transfer** button, the rule under a quiet link (**Follow pending transfer →**,
-the links in a transfer's In depth section, **→ dinubarbu.com**) and the
-brackets of the footer wordmark. A state that uses it always carries a text
+**Transfer** button, the dot of the selected scenario radio, the rule under a
+quiet link (**Follow pending transfer →**, the links in a transfer's In depth
+section, **→ dinubarbu.com**) and the brackets of the footer wordmark. A state that uses it always carries a text
 label too.
 
 **Type.** Space Grotesk (headings, body, the wordmarks; 400/500/700) and Azeret
@@ -89,15 +90,16 @@ Mono (everything technical: IDs, amounts in lists, service names, timestamps,
 labels; 400/500 only). The mono tokens are already sized at 0.93× nominal.
 Space Grotesk has no true italic — emphasis is weight or accent, never
 synthesized slant. Headings are 500 at −0.022em. Sentence case everywhere;
-section labels are set in caps by CSS — see adaptation 10.
+section labels are set in caps by CSS — see adaptation 10 — and the History
+table's `//` asides are lowercase — see rule 14.
 
 **Shape.** 2px corners on controls and surfaces (adaptation 5). No shadows,
 inner or outer. No gradients, textures or background imagery. Separation is
 1px hairlines (`#E6E6E6` light / `#2C2C2C` dark, non-text only) and flat
 neutral fills. Cards are a neutral fill (`--surface-card`) with no border and
 no shadow — the two balance cards, and a transfer's In depth section, which
-holds the links that leave the page for raw evidence (**View as JSON →**,
-**Explore the trace in Grafana →**, which opens in a new tab). A section on a
+holds the links that leave the page for raw evidence (**View as JSON →** and
+**Explore the trace in Grafana →**, both of which open in a new tab). A section on a
 card keeps its own label and gap and takes the card's 16px × 18px padding.
 
 **Code and terminal surfaces** follow the theme — hooklook's departure from
@@ -125,6 +127,9 @@ background, border — ease over 150ms (`--transition-state` from the brand,
 spent through `--hover-transition`). List rows change instantly. A pending
 transfer says what it is waiting for in words ("Waiting for Bank A to
 debit"), and the page reloads itself until it is done; there is no spinner.
+Once the transfer has ended, its **Evidence** row, under Status, says
+"Being collected" until the history holds everything the scenario needs, then
+"Complete"; the page keeps reloading until then, however long that takes.
 While a transfer is pending the home page disables the transfer form, says why
 in a `.note`, links the pending transfer with a quiet link on its own line
 (**Follow pending transfer →**), and reloads itself the same way —
@@ -151,9 +156,11 @@ outline to the muted grey.
 **Glyphs.** The brand has no icon system and no emoji: Unicode does icon duty —
 `↳` `·` `→` `←` `×` `✓` `//` `[ ]`, all of which ship in the vendored font
 subsets. `×` and `✓` are a valence pair, used together, never as a lone
-decorative tick. The only drawn icons are the theme switch's sun and moon and
-the GitHub mark in the footer, drawn inline in the template in
-`currentColor`.
+decorative tick. The only drawn icons are the theme switch's sun and moon, the
+GitHub mark in the footer, and the info mark after a History entry that has an
+explanation (a circled "i", 14px, muted at rest and body on hover or focus),
+all drawn inline in the template in `currentColor`. The info mark is drawn
+because `ⓘ` is outside the vendored font subsets.
 
 ## Adaptations for this app
 
@@ -180,9 +187,11 @@ the GitHub mark in the footer, drawn inline in the template in
    whole.
 
    The frame is `--shell-width` (1180px) wide, as in hooklook. The content
-   inside it is a single column of `--content-width` (760px), left-aligned
-   under the wordmark. Sections sit 40px apart; the items in a section 14px
-   apart.
+   inside it is a single column of `--content-width` (600px), left-aligned
+   under the wordmark. Only the History table is wider (rule 12): it runs
+   past the column to the right, inside the frame. Sections sit 40px apart; the items in a section 14px
+   apart. On the home page a hairline, centred in that gap, divides the
+   transfer form from the Transfers list.
 
 3. **The product wordmark is type alone.** "Saga Lab" in Space Grotesk 500
    at 24px with the wordmark's −0.018em tracking, in body text. It wears no
@@ -208,24 +217,33 @@ the GitHub mark in the footer, drawn inline in the template in
 
    | Tier | Light | Dark | Used for |
    | --- | --- | --- | --- |
-   | `--text-body` | Ink, 17.6:1 | Paper, 17.6:1 | the wordmarks, titles, section labels, balance figures, the name column of a row |
-   | `--text-dim` | `#3D3D3D`, 10.4:1 | `#B5B5B5`, 9.0:1 | prose, control labels, units, statuses, fact values, table values |
-   | `--text-muted` | Stone, 4.9:1 | Muted on Dark, 6.6:1 | the theme switch at rest, the footer credit, placeholders, `//` asides |
+   | `--text-body` | Ink, 17.6:1 | Paper, 17.6:1 | the wordmarks, titles, section labels, balance figures, the name column of a row, a History entry's label |
+   | `--text-dim` | `#3D3D3D`, 10.4:1 | `#B5B5B5`, 9.0:1 | prose, control labels, units, statuses, fact values, table values, the History table's observed time |
+   | `--text-muted` | Stone, 4.9:1 | Muted on Dark, 6.6:1 | the theme switch at rest, the footer credit, placeholders, `//` asides, the detail line under a history entry, the info mark at rest, a float's edge |
 
    **A label outranks what sits beside it:** "Bank A" is body, its "credits"
    is dim; a fact's name is body, its value dim.
 
-   *Departure from hooklook:* hooklook sets timestamps muted, as incidental.
-   Here the observed and recorded times are what the History table exists to
-   show, so they take the dim tier with the rest of the table's values.
+   In the History table the entry's label is the label: it is body, and the
+   observed time beside it is dim, although it leads the row.
 
-7. **Floating layers** — popovers, menus, dialogs — do not exist yet. When
-   one appears it takes hooklook's treatment: `--surface-float` as its fill
-   (a step off the page on dark; the page itself on light, where there is no
-   room), a Stone edge on light and Muted on Dark on dark, and
-   `--float-hairline` redefined as `--hairline` for its subtree. A fill
-   inside a float mixes from `--surface-float` toward `--text-body`. A modal
-   keeps a hairline rather than a Stone edge. The tokens are declared.
+   *Departure from hooklook:* hooklook sets timestamps muted, as incidental.
+   Here the observed time is what orders the History table, so it stays one
+   tier up, in dim.
+
+7. **Floating layers** — popovers, menus, dialogs — take hooklook's
+   treatment: `--surface-float` as their fill (a step off the page on dark;
+   the page itself on light, where there is no room), a Stone edge on light
+   and Muted on Dark on dark, and `--float-hairline` redefined as `--hairline`
+   for their subtree. A fill inside a float mixes from `--surface-float`
+   toward `--text-body`. A modal keeps a hairline rather than a Stone edge.
+
+   The first is the explanation behind a History entry's info mark (`.float`):
+   a native popover, opened by clicking the mark and closed by clicking
+   elsewhere or Esc, at most 360px wide, holding prose set like a `.note`. It
+   is anchored under the mark where the browser supports anchor positioning,
+   and centred in the viewport where it does not. A page that is still
+   reloading itself closes it on the next reload.
 
 8. **A fill steps off its own ground, not off the page.** `--surface-shade` is
    a fill whose ground is the page — the hover of a row in the Transfers list.
@@ -268,33 +286,71 @@ the GitHub mark in the footer, drawn inline in the template in
     | `.fact` | mono, `--text-mono-meta`, dim | a control label, a unit beside a figure |
     | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's intro, the History explanation |
     | `.dim` | dim, nothing else | a value inside a row that is already mono |
+    | `.comment` | mono, `--text-mono-meta`, muted, 0.01em | the machine's own `//` asides: the prefix of a processing observation in the History table, which takes its label's hue instead (rule 14) |
+    | `.history .meta` | own line, muted, the table's mono size | the detail line under a History entry: command, attempt number, short attempt ID |
     | `.sr-only` | visually hidden | text for screen readers only |
 
-    hooklook has two more, to take over unchanged when they are first needed:
-    `.comment` (mono, `--text-mono-meta`, muted, 0.01em — the machine's own
-    `//` asides) and `.micro` (mono, `--text-mono-micro`, size only). Text
+    `.comment` is hooklook's, taken over unchanged. hooklook has one more, to
+    take over unchanged when it is first needed: `.micro` (mono,
+    `--text-mono-micro`, size only). Text
     doing the same job in two places gets a role here rather than a second
     declaration.
 
 12. **Lists and tables are rows parted by hairlines.** One item per row, a
     hairline above the first and under each, square, mono at
     `--text-mono-meta` with code leading, 6px × 12px padding — hooklook's
-    request headers, generalised. A two-column list (the Transfers list, a
-    transfer's facts) has a 160px name column. Names are body, values dim;
-    column headings are `.caps` at `--text-mono-micro`. A row that leads
-    somewhere is a whole-row link whose hover is `--surface-shade`, applied
-    instantly.
+    request headers, generalised. A two-column list (a transfer's facts) has
+    a 160px name column. The Transfers list has three columns — amount,
+    scenario, status — the first two 160px wide. Names are body, values dim;
+    column headings are `.caps` at `--text-mono-micro`.
 
-13. **Forms are one row.** The control label (`.fact`), the field and the
-    primary button sit on one line at `--row-height` (36px). A field is mono
-    at `--text-mono-meta` on the page surface with a hairline border. A
-    rejected value, or a submission refused because another transfer is
-    pending, is explained under the row in Brick, sans at `--text-small` —
-    the text says what is wrong; the color only marks it. A disabled field,
-    like a disabled button, drops to `--disabled-opacity`.
+    The History table is the one table wider than the content column: 1000px
+    with fixed layout, inside the 1180px frame. Its columns are **Observed
+    (UTC)** (124px), **Transfer Service** (200px), and **Bank A** and **Bank
+    B**, which split the rest equally. Each row is one history entry, ordered
+    by observed time, with the entry in the column of the service that
+    reported it and the other service cells empty. A cell's first line is the
+    entry's label; a processing observation's label starts with a `// `
+    (`.comment`, in the label's hue) and does not name the bank, since the column does. Under it,
+    one muted line names the message the entry answers, then, for a bank
+    handling attempt, `attempt <n> · <first 8 characters of the attempt ID>`,
+    with the full ID in a `title`. A note under the table explains the
+    columns and the order and says recorded times are left out.
+
+    A row that leads somewhere is a whole-row link whose hover is
+    `--surface-shade`, applied instantly.
+
+13. **The transfer form is three rows**, 12px apart, each at `--row-height`
+    (36px): the control label (`.fact`) and the field, then the radio choice,
+    both left-aligned, then the primary button, aligned to the right edge of
+    the content column. A field is mono at
+    `--text-mono-meta` on the page surface with a hairline border. A radio
+    choice (the scenario: Happy path, Debit redelivery) is a borderless
+    fieldset whose visually hidden legend names it; each option is a `.fact`
+    label after its native radio. The selected radio's dot is the accent,
+    through `accent-color`; the filled native radio marks the selection on its
+    own, so the accent never carries it alone. A rejected value, or a submission refused because
+    another transfer is pending, is explained under the row in Brick, sans
+    at `--text-small` — the text says what is wrong; the color only marks
+    it. A disabled field or radio choice, like a disabled button, drops to
+    `--disabled-opacity`.
 
 14. **Statuses are words, not colors.** The brand has one accent and no status
     palette. A transfer's status and its history steps take no hue:
-    "Completed" and "Waiting for Bank A to debit" differ in words alone. If a
+    "Completed" and "Waiting for Bank A to debit" differ in words alone, and
+    so do the Evidence row's "Being collected" and "Complete". If a
     state ever needs a hue, it keeps its text label, and the decision is
     recorded here first.
+
+    *The one exception, a recorded departure:* the two processing-observation
+    labels in the History table. "couldn’t acknowledge after commit"
+    (`NackRequested`) is Brick (`--danger`) and is followed by the info mark,
+    whose popover explains that the lost acknowledgement is simulated by
+    requesting a redelivery; "repeat recognised; nothing
+    applied" (`DuplicateSuppressed`) is Teal at weight 500. The styles belong
+    to the observation, not the bank, so a Bank B `DuplicateSuppressed` looks
+    the same. Both keep their words and their `// ` prefix, which takes the
+    label's hue rather than muted, so the hue is
+    never the only signal. Like the machine's other `//` asides, both are
+    lowercase rather than sentence case. The accent was tried for `DuplicateSuppressed` and
+    sat too close to Brick on the light theme, hence Teal.

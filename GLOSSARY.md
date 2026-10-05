@@ -57,6 +57,10 @@ _Avoid_: Milestone, event
 **Issued message**:
 The command a step sends to a bank, such as the debit instruction sent when a transfer is requested. The bank's reply names the issued message as its cause, which links consecutive steps.
 
+**Delivery**:
+One handover of a message by the broker to the receiving service. A redelivery hands over the same message again, so its deliveries share the message's identity and are told apart by their handling attempts.
+_Avoid_: Message (for a second delivery)
+
 **Duplicate delivery**:
 A delivery of a message the receiving service has already processed, whatever the cause: redelivery after a failed acknowledgement, or a repeated publication of the same outgoing message. It is acknowledged without repeating any business effect.
 _Avoid_: Retry
@@ -66,8 +70,12 @@ One processing of one delivery of a message by the receiving service. A message 
 _Avoid_: Retry, delivery
 
 **Redelivery**:
-The broker delivering a message again because the receiving service declined to acknowledge it. It is one cause of a duplicate delivery.
+The broker delivering a message again because the receiving service did not acknowledge it. It is one cause of a duplicate delivery.
 _Avoid_: Retry, republish
+
+**Lost acknowledgement (simulated)**:
+The fault the redelivery scenarios demonstrate: the receiving service commits its work, but its acknowledgement never reaches the broker, as after a crash right after the commit. The demonstration stands in for the crash by requesting a redelivery.
+_Avoid_: Publish failure, failure after commit
 
 **Processing observation**:
 A recorded fact about one handling attempt, such as a requested redelivery or a suppressed duplicate. It belongs to a transfer's execution history but never advances the transfer.
