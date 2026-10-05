@@ -82,7 +82,8 @@ text, never the sole carrier of a UI state. Several accent elements may share
 a view as long as none competes for the eye. Here the accent is spent on the
 **Transfer** button, the dot of the selected scenario radio, the rule under a
 quiet link (**Follow pending transfer →**, the links in a transfer's In depth
-section, **→ dinubarbu.com**) and the brackets of the footer wordmark. A state that uses it always carries a text
+section, **→ dinubarbu.com**), the hub of the product mark and the
+brackets of the footer wordmark. A state that uses it always carries a text
 label too.
 
 **Type.** Space Grotesk (headings, body, the wordmarks; 400/500/700) and Azeret
@@ -156,7 +157,7 @@ outline to the muted grey.
 **Glyphs.** The brand has no icon system and no emoji: Unicode does icon duty —
 `↳` `·` `→` `←` `×` `✓` `//` `[ ]`, all of which ship in the vendored font
 subsets. `×` and `✓` are a valence pair, used together, never as a lone
-decorative tick. The only drawn icons are the theme switch's sun and moon, the
+decorative tick. Apart from the product mark (adaptation 3), the only drawn icons are the theme switch's sun and moon, the
 GitHub mark in the footer, and the info mark after a History entry that has an
 explanation (a circled "i", 14px, muted at rest and body on hover or focus),
 all drawn inline in the template in `currentColor`. The info mark is drawn
@@ -193,12 +194,27 @@ because `ⓘ` is outside the vendored font subsets.
    apart. On the home page a hairline, centred in that gap, divides the
    transfer form from the Transfers list.
 
-3. **The product wordmark is type alone.** "Saga Lab" in Space Grotesk 500
-   at 24px with the wordmark's −0.018em tracking, in body text. It wears no
-   brackets — those belong to the personal wordmark in the footer — and no
-   glyph, because there is no product mark yet; upstream's rule is that where
-   no mark exists, the name is set in type. It is the page's `h1` and links
-   home. A product glyph, hooklook-style, is open.
+3. **The product wordmark carries a mark**, hooklook-style. "Saga Lab" in
+   Space Grotesk 500 at 24px with the wordmark's −0.018em tracking, in body
+   text, after the mark. It wears no brackets — those belong to the personal
+   wordmark in the footer. It is the page's `h1` and links home.
+
+   The mark is a pair of nodes on a looping path around a hub: two rounded
+   squares on the diagonal, top-right and bottom-left, joined anticlockwise by
+   an arrow over the top into the bottom-left node and one under the bottom
+   back into the top-right node, with a dot between them. It is drawn inline
+   in the template on a 24-unit grid, stroke 2 with round caps and joins:
+
+   - nodes 7 × 7, corner radius 1.75, at `(15.5,1.5)` and `(1.5,15.5)`
+   - top arrow `M12.5 5H9a4 4 0 0 0-4 4v3`, head `M7 10l-2 2-2-2`
+   - bottom arrow: the top one turned 180° about `(12,12)`
+   - hub: a filled dot of radius 2 at `(12,12)`
+   - viewBox `0.5 0.5 23 23` — square and centred on the strokes
+
+   Nodes and arrows are body text; the hub is the accent.
+   As in hooklook, the mark is 1.15em square, baseline-aligned, 0.38em before
+   the name, and pushed down by half its height less 0.343em, which puts its
+   centre on the middle of the name's ink.
 
 4. **An expanded palette and theme-aware code surfaces**, both described
    above.
