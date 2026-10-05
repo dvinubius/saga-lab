@@ -22,7 +22,7 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 	requested, rejection, ended := rejected.History[0], rejected.History[1], rejected.History[2]
 	assertBalancePair(t, rejection, 100, 100)
 	assertNoBalancePair(t, rejected.History, "debit_rejected")
-	assertOutcome(t, rejected, `{
+	assertOutcomeSummary(t, rejected, `{
 		"balances": {"bank_a": {"before": 100, "after": 100}, "bank_b": {"before": null, "after": null, "involved": false}},
 		"commands": {"debit": {"attempts": 1, "effects": 0}, "credit": null, "refund": null},
 		"duplicates_suppressed": 0,
@@ -58,7 +58,7 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 		"debit":  {"Debit", "1", "0"},
 		"credit": {"Credit", "—", "—"},
 	} {
-		if got := pageOutcome(page, row); !slices.Equal(got, want) {
+		if got := pageOutcomeSummary(page, row); !slices.Equal(got, want) {
 			t.Errorf("page outcome %s = %q, want %q", row, got, want)
 		}
 	}

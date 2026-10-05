@@ -70,14 +70,14 @@ light-theme / dark-theme pair, like the accent:
 | | Light | Dark | Role here |
 | --- | --- | --- | --- |
 | Ember | `#A8500F` | `#DE8A42` | brand, the primary action, quiet-link rules |
-| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; a state's hue, a scenario's avoided issue (rule 14); the playback diagram's travelled path (adaptation 15) |
+| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; a state's hue, a scenario's avoided issue (adaptation 14); the playback diagram's travelled path (adaptation 15) |
 | Violet | `#6B5D91` | `#AFA3CF` | secondary data and syntax color — nothing spends it yet |
-| Brick | `#A03028` | `#E0756A` | `--danger`: a rejected value or refused submission (rule 13); a failed state's hue, a scenario's simulated fault (rule 14), Bank B's "no consumer" in the playback diagram (adaptation 15) |
+| Brick | `#A03028` | `#E0756A` | `--danger`: a rejected value or refused submission (adaptation 13); a failed state's hue, a scenario's simulated fault (adaptation 14), Bank B's "no consumer" in the playback diagram (adaptation 15) |
 
 Stone, Ink and Paper carry the overwhelming majority of the interface. Teal
 and Violet are for syntax on code surfaces and for data marks (a chart, a
 timeline), and are declared so that the first of those does not have to
-invent them. The one exception is a state that needs a hue (rule 14).
+invent them. The one exception is a state that needs a hue (adaptation 14).
 
 **Accent dosage** is binding: at most ~2% of any composition, never on running
 text, never the sole carrier of a UI state. Several accent elements may share
@@ -101,7 +101,8 @@ inner or outer. No gradients, textures or background imagery. Separation is
 1px hairlines (`#E6E6E6` light / `#2C2C2C` dark, non-text only) and flat
 neutral fills. Cards are a neutral fill (`--surface-card`) with no border and
 no shadow — the two balance cards (on the home page the Bank A card also
-holds the **+100 credits** button under its figure), and a transfer's In depth section, which
+holds the **+100 credits** button under its figure), a transfer's playback
+panel (adaptation 15), and its In depth section, which
 holds the links that leave the page for raw evidence (**View as JSON →** and
 **Explore the trace in Grafana →**, both of which open in a new tab). A section on a
 card keeps its own label and gap and takes the card's 16px × 18px padding.
@@ -318,7 +319,7 @@ because `ⓘ` is outside the vendored font subsets.
     The figure is a value beside a label, so it is dim (`.dim`), and it takes
     no hue: a refund restoring the source reads in its numbers alone.
 
-    The **Outcome** summary, between the playback panel (rule 15) and
+    The **Outcome** summary, between the playback panel (adaptation 15) and
     History once a transfer is ready, is two tables and a fact list in one section, the same for
     every scenario: Account / Before / After for Bank A and Bank B, Command /
     Handling attempts / Committed effects for debit, credit and refund, then
@@ -384,7 +385,7 @@ because `ⓘ` is outside the vendored font subsets.
 
     History stays the complete record and follows the panel: the current row
     takes `--surface-shade`, rows not yet played drop to `--disabled-opacity`
-    (like a disabled control, rule 13), and played rows look normal. Every row
+    (like a disabled control, adaptation 13), and played rows look normal. Every row
     is played at the end. Two rows of one attempt still read as one: the
     shading and dimming apply per row and leave their joint unchanged.
 

@@ -165,8 +165,8 @@ type transfer struct {
 	TraceID         string         `json:"trace_id,omitempty"`
 	History         []historyEntry `json:"history,omitempty"`
 
-	VisualisationReady bool     `json:"visualisation_ready"`
-	Outcome            *outcome `json:"outcome,omitempty"`
+	VisualisationReady bool            `json:"visualisation_ready"`
+	OutcomeSummary     *outcomeSummary `json:"outcome,omitempty"`
 }
 
 type historyEntry struct {
@@ -604,8 +604,8 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	})
 	t.VisualisationReady = visualisationReady(t.Scenario, t.Status, t.History)
 	if t.VisualisationReady {
-		o := deriveOutcome(t.History)
-		t.Outcome = &o
+		s := summariseOutcome(t.History)
+		t.OutcomeSummary = &s
 	}
 	return t, err
 }

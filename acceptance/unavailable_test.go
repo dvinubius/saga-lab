@@ -67,7 +67,7 @@ func TestBankBUnavailableCompletesAfterWaitingWithoutAConsumer(t *testing.T) {
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	assertOutcome(t, completed, completedOutcome)
+	assertOutcomeSummary(t, completed, completedOutcomeSummary)
 	demo.assertDedicatedQueue(t, 0)
 }
 

@@ -7,7 +7,7 @@ import (
 
 func balance(n int64) *int64 { return &n }
 
-func TestOutcomeSummarisesBalancesAndCommands(t *testing.T) {
+func TestOutcomeSummarySummarisesBalancesAndCommands(t *testing.T) {
 	history := []historyEntry{
 		{Step: requested, IssuedMessageID: "debit-funds"},
 		{Step: debitCommitted, AttemptID: "a1", MessageID: "funds-debited", CausationID: "debit-funds", BalanceBefore: balance(100), BalanceAfter: balance(75)},
@@ -16,7 +16,7 @@ func TestOutcomeSummarisesBalancesAndCommands(t *testing.T) {
 		{Step: finished, CausationID: "funds-credited"},
 	}
 
-	assertOutcome(t, deriveOutcome(history), `{
+	assertOutcomeSummary(t, summariseOutcome(history), `{
 		"balances": {"bank_a": {"before": 100, "after": 75}, "bank_b": {"before": 0, "after": 25, "involved": true}},
 		"commands": {"debit": {"attempts": 1, "effects": 1}, "credit": {"attempts": 1, "effects": 1}, "refund": null},
 		"duplicates_suppressed": 0,
@@ -24,7 +24,7 @@ func TestOutcomeSummarisesBalancesAndCommands(t *testing.T) {
 	}`)
 }
 
-func TestOutcomeLeavesMissingBalancePairsNull(t *testing.T) {
+func TestOutcomeSummaryLeavesMissingBalancePairsNull(t *testing.T) {
 	history := []historyEntry{
 		{Step: requested, IssuedMessageID: "debit-funds"},
 		{Step: debitCommitted, AttemptID: "a1", MessageID: "funds-debited", CausationID: "debit-funds"},
@@ -33,7 +33,7 @@ func TestOutcomeLeavesMissingBalancePairsNull(t *testing.T) {
 		{Step: finished, CausationID: "funds-credited"},
 	}
 
-	assertOutcome(t, deriveOutcome(history), `{
+	assertOutcomeSummary(t, summariseOutcome(history), `{
 		"balances": {"bank_a": {"before": null, "after": null}, "bank_b": {"before": null, "after": null, "involved": true}},
 		"commands": {"debit": {"attempts": 1, "effects": 1}, "credit": {"attempts": 1, "effects": 1}, "refund": null},
 		"duplicates_suppressed": 0,
@@ -41,14 +41,14 @@ func TestOutcomeLeavesMissingBalancePairsNull(t *testing.T) {
 	}`)
 }
 
-func TestOutcomeMarksBankBNotInvolvedAfterADebitRejection(t *testing.T) {
+func TestOutcomeSummaryMarksBankBNotInvolvedAfterADebitRejection(t *testing.T) {
 	history := []historyEntry{
 		{Step: requested, IssuedMessageID: "debit-funds"},
 		{Step: debitRejected, AttemptID: "a1", MessageID: "debit-rejected", CausationID: "debit-funds", BalanceBefore: balance(100), BalanceAfter: balance(100)},
 		{Step: transferRejected, CausationID: "debit-rejected"},
 	}
 
-	assertOutcome(t, deriveOutcome(history), `{
+	assertOutcomeSummary(t, summariseOutcome(history), `{
 		"balances": {"bank_a": {"before": 100, "after": 100}, "bank_b": {"before": null, "after": null, "involved": false}},
 		"commands": {"debit": {"attempts": 1, "effects": 0}, "credit": null, "refund": null},
 		"duplicates_suppressed": 0,
@@ -56,7 +56,7 @@ func TestOutcomeMarksBankBNotInvolvedAfterADebitRejection(t *testing.T) {
 	}`)
 }
 
-func TestOutcomeCountsARedeliveredDebitAsTwoAttemptsAndOneEffect(t *testing.T) {
+func TestOutcomeSummaryCountsARedeliveredDebitAsTwoAttemptsAndOneEffect(t *testing.T) {
 	history := []historyEntry{
 		{Step: requested, IssuedMessageID: "debit-funds"},
 		{Step: debitCommitted, AttemptID: "a1", MessageID: "funds-debited", CausationID: "debit-funds", BalanceBefore: balance(100), BalanceAfter: balance(75)},
@@ -69,7 +69,7 @@ func TestOutcomeCountsARedeliveredDebitAsTwoAttemptsAndOneEffect(t *testing.T) {
 		{Step: finished, CausationID: "funds-credited"},
 	}
 
-	assertOutcome(t, deriveOutcome(history), `{
+	assertOutcomeSummary(t, summariseOutcome(history), `{
 		"balances": {"bank_a": {"before": 100, "after": 75}, "bank_b": {"before": 0, "after": 25, "involved": true}},
 		"commands": {"debit": {"attempts": 2, "effects": 1}, "credit": {"attempts": 1, "effects": 1}, "refund": null},
 		"duplicates_suppressed": 1,
@@ -77,7 +77,7 @@ func TestOutcomeCountsARedeliveredDebitAsTwoAttemptsAndOneEffect(t *testing.T) {
 	}`)
 }
 
-func TestOutcomeTakesBankAAfterFromARedeliveredRefund(t *testing.T) {
+func TestOutcomeSummaryTakesBankAAfterFromARedeliveredRefund(t *testing.T) {
 	history := []historyEntry{
 		{Step: requested, IssuedMessageID: "debit-funds"},
 		{Step: debitCommitted, AttemptID: "a1", MessageID: "funds-debited", CausationID: "debit-funds", BalanceBefore: balance(100), BalanceAfter: balance(75)},
@@ -90,7 +90,7 @@ func TestOutcomeTakesBankAAfterFromARedeliveredRefund(t *testing.T) {
 		{Step: transferRefunded, CausationID: "funds-refunded"},
 	}
 
-	assertOutcome(t, deriveOutcome(history), `{
+	assertOutcomeSummary(t, summariseOutcome(history), `{
 		"balances": {"bank_a": {"before": 100, "after": 100}, "bank_b": {"before": 0, "after": 0, "involved": true}},
 		"commands": {"debit": {"attempts": 1, "effects": 1}, "credit": {"attempts": 1, "effects": 0}, "refund": {"attempts": 2, "effects": 1}},
 		"duplicates_suppressed": 1,
@@ -98,7 +98,7 @@ func TestOutcomeTakesBankAAfterFromARedeliveredRefund(t *testing.T) {
 	}`)
 }
 
-func TestOutcomeCountsASecondCommittedEffectAsADuplicateEffect(t *testing.T) {
+func TestOutcomeSummaryCountsASecondCommittedEffectAsADuplicateEffect(t *testing.T) {
 	history := []historyEntry{
 		{Step: requested, IssuedMessageID: "debit-funds"},
 		{Step: debitCommitted, AttemptID: "a1", MessageID: "funds-debited", CausationID: "debit-funds", BalanceBefore: balance(100), BalanceAfter: balance(75)},
@@ -108,7 +108,7 @@ func TestOutcomeCountsASecondCommittedEffectAsADuplicateEffect(t *testing.T) {
 		{Step: finished, CausationID: "funds-credited"},
 	}
 
-	assertOutcome(t, deriveOutcome(history), `{
+	assertOutcomeSummary(t, summariseOutcome(history), `{
 		"balances": {"bank_a": {"before": 100, "after": 50}, "bank_b": {"before": 0, "after": 25, "involved": true}},
 		"commands": {"debit": {"attempts": 2, "effects": 2}, "credit": {"attempts": 1, "effects": 1}, "refund": null},
 		"duplicates_suppressed": 0,
@@ -116,7 +116,26 @@ func TestOutcomeCountsASecondCommittedEffectAsADuplicateEffect(t *testing.T) {
 	}`)
 }
 
-func assertOutcome(t *testing.T, got outcome, want string) {
+func TestOutcomeSummaryCountsAttemptIDsSeparatelyPerCommand(t *testing.T) {
+	history := []historyEntry{
+		{Step: requested, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, AttemptID: "a1", MessageID: "funds-debited", CausationID: "debit-funds", BalanceBefore: balance(100), BalanceAfter: balance(75)},
+		{Step: creditRequested, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
+		{Step: creditRejected, AttemptID: "b1", MessageID: "credit-rejected", CausationID: "credit-funds", BalanceBefore: balance(0), BalanceAfter: balance(0)},
+		{Step: refundRequested, CausationID: "credit-rejected", IssuedMessageID: "refund-funds"},
+		{Step: refundCommitted, AttemptID: "a1", MessageID: "funds-refunded", CausationID: "refund-funds", BalanceBefore: balance(75), BalanceAfter: balance(100)},
+		{Step: transferRefunded, CausationID: "funds-refunded"},
+	}
+
+	assertOutcomeSummary(t, summariseOutcome(history), `{
+		"balances": {"bank_a": {"before": 100, "after": 100}, "bank_b": {"before": 0, "after": 0, "involved": true}},
+		"commands": {"debit": {"attempts": 1, "effects": 1}, "credit": {"attempts": 1, "effects": 0}, "refund": {"attempts": 1, "effects": 1}},
+		"duplicates_suppressed": 0,
+		"duplicate_effects": 0
+	}`)
+}
+
+func assertOutcomeSummary(t *testing.T, got outcomeSummary, want string) {
 	t.Helper()
 	var gotJSON, wantJSON any
 	encoded, err := json.Marshal(got)
@@ -132,6 +151,6 @@ func assertOutcome(t *testing.T, got outcome, want string) {
 	gotText, _ := json.Marshal(gotJSON)
 	wantText, _ := json.Marshal(wantJSON)
 	if string(gotText) != string(wantText) {
-		t.Errorf("outcome = %s\nwant      %s", gotText, wantText)
+		t.Errorf("outcome summary = %s\nwant              %s", gotText, wantText)
 	}
 }
