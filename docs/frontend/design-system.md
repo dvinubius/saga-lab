@@ -286,7 +286,7 @@ because `ⓘ` is outside the vendored font subsets.
     | `.fact` | mono, `--text-mono-meta`, dim | a control label, a unit beside a figure |
     | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's intro, the History explanation |
     | `.dim` | dim, nothing else | a value inside a row that is already mono |
-    | `.comment` | mono, `--text-mono-meta`, muted, 0.01em | the machine's own `//` asides: the prefix of a processing observation in the History table |
+    | `.comment` | mono, `--text-mono-meta`, muted, 0.01em | the machine's own `//` asides: the prefix of a processing observation in the History table, which takes its label's hue instead (rule 14) |
     | `.history .meta` | own line, muted, the table's mono size | the detail line under a History entry: command, attempt number, short attempt ID |
     | `.sr-only` | visually hidden | text for screen readers only |
 
@@ -310,8 +310,8 @@ because `ⓘ` is outside the vendored font subsets.
     B**, which split the rest equally. Each row is one history entry, ordered
     by observed time, with the entry in the column of the service that
     reported it and the other service cells empty. A cell's first line is the
-    entry's label; a processing observation's label starts with a muted `// `
-    (`.comment`) and does not name the bank, since the column does. Under it,
+    entry's label; a processing observation's label starts with a `// `
+    (`.comment`, in the label's hue) and does not name the bank, since the column does. Under it,
     one muted line names the message the entry answers, then, for a bank
     handling attempt, `attempt <n> · <first 8 characters of the attempt ID>`,
     with the full ID in a `title`. A note under the table explains the
@@ -349,7 +349,8 @@ because `ⓘ` is outside the vendored font subsets.
     requesting a redelivery; "repeat recognised; nothing
     applied" (`DuplicateSuppressed`) is Teal at weight 500. The styles belong
     to the observation, not the bank, so a Bank B `DuplicateSuppressed` looks
-    the same. Both keep their words and their `// ` prefix, so the hue is
+    the same. Both keep their words and their `// ` prefix, which takes the
+    label's hue rather than muted, so the hue is
     never the only signal. Like the machine's other `//` asides, both are
     lowercase rather than sentence case. The accent was tried for `DuplicateSuppressed` and
     sat too close to Brick on the light theme, hence Teal.
