@@ -397,29 +397,35 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 }
 
 func visualisationReady(chosen scenario, current status, history []historyEntry) bool {
-	if current == rejected || (current == completed && chosen != debitRedelivery) {
+	switch {
+	case current == rejected:
 		return true
-	}
-	if current != completed {
+	case current != completed:
 		return false
+	case chosen == debitRedelivery:
+		return redeliveryEvidenced(history, messaging.DebitFundsTopic, debitCommitted)
 	}
+	return true
+}
+
+func redeliveryEvidenced(history []historyEntry, command string, committedBy step) bool {
 	topics := messageTopics(history)
-	debitAttempt := ""
+	committingAttempt := ""
 	for _, e := range history {
-		if e.Step == debitCommitted {
-			debitAttempt = e.AttemptID
+		if e.Step == committedBy {
+			committingAttempt = e.AttemptID
 		}
 	}
 	nacked, suppressed := false, false
 	for _, e := range history {
-		if topics[e.CausationID] != messaging.DebitFundsTopic || e.AttemptID == "" {
+		if topics[e.CausationID] != command || e.AttemptID == "" {
 			continue
 		}
 		switch e.Observation {
 		case nackRequested:
-			nacked = nacked || e.AttemptID == debitAttempt
+			nacked = nacked || e.AttemptID == committingAttempt
 		case duplicateSuppressed:
-			suppressed = suppressed || e.AttemptID != debitAttempt
+			suppressed = suppressed || e.AttemptID != committingAttempt
 		}
 	}
 	return nacked && suppressed
