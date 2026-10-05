@@ -32,13 +32,14 @@ func TestHistoryRowsNameTheCauseAndNumberAttemptsPerCommand(t *testing.T) {
 	}
 }
 
-func TestCreditRejectionConfirmedAlwaysExplainsTheRefund(t *testing.T) {
+func TestBankACommittedTheRefundAlwaysExplainsTheRefund(t *testing.T) {
 	history := []historyEntry{
 		{Step: requested, IssuedMessageID: "debit-funds"},
 		{Step: debitCommitted, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
 		{Step: creditRequested, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
 		{Step: creditRejected, AttemptID: "attempt-b1", MessageID: "credit-rejected", CausationID: "credit-funds"},
 		{Step: refundRequested, CausationID: "credit-rejected", IssuedMessageID: "refund-funds"},
+		{Step: refundCommitted, AttemptID: "attempt-a2", MessageID: "funds-refunded", CausationID: "refund-funds"},
 	}
 
 	rows := historyRows(history)
@@ -49,8 +50,11 @@ func TestCreditRejectionConfirmedAlwaysExplainsTheRefund(t *testing.T) {
 	if rows[3].Attempt != 1 {
 		t.Errorf("credit_rejected attempt = %d, want 1", rows[3].Attempt)
 	}
-	if rows[4].About == "" {
-		t.Error("refund_requested has no note, want one explaining the refund")
+	if rows[4].About != "" {
+		t.Error("refund_requested has a note, want the refund explained on refund_committed")
+	}
+	if rows[5].About == "" {
+		t.Error("refund_committed has no note, want one explaining the refund")
 	}
 }
 
