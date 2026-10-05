@@ -9,7 +9,7 @@ A person using the demonstration, associated with one account at each bank.
 _Avoid_: Tenant
 
 **Bank**:
-One of the two shared institutions, Bank A or Bank B, that owns its accounts and their balances. A visitor-specific display name does not create another bank.
+One of the two shared institutions, Bank A or Bank B, that owns its accounts and their balances.
 _Avoid_: Virtual bank, per-visitor bank
 
 **Account**:
@@ -18,11 +18,15 @@ A visitor’s holding of fictional credits at one bank. Each visitor owns one ac
 **Credit**:
 The indivisible fictional unit of value used in the demonstration; amounts are whole numbers and have no real monetary value.
 
+**Top-up**:
+An addition of a fixed number of fictional credits to a visitor's Bank A account, outside any transfer. It is not part of a Saga and leaves no execution history.
+_Avoid_: Deposit
+
 **Transfer**:
 An attempt to move a chosen amount of credits from a visitor’s Bank A account to that visitor’s Bank B account, coordinated through independent local operations. It exists from submission and begins with its debit, which may first wait for admission.
 
 **Pending-transfer restriction**:
-A visitor has at most one transfer pending at a time; a submission made while one is pending starts nothing and names the pending transfer. It is not request deduplication: a repeated submission after the pending transfer has ended starts a new transfer.
+A visitor has at most one transfer pending at a time; a submission made while one is pending starts nothing and names the pending transfer, and a top-up made then is refused. It is not request deduplication: a repeated submission after the pending transfer has ended starts a new transfer.
 _Avoid_: Idempotency, deduplication
 
 **Debit**:
@@ -44,6 +48,13 @@ _Avoid_: Rollback
 
 **Business outcome**:
 The transfer’s result, distinct from whether all evidence needed to explain that result has been collected.
+
+**Outcome summary**:
+A transfer's concluding account: its business outcome, each account's balance before and after it as reported by its bank, and, per command, the handling attempts and committed business effects.
+
+**Duplicate effect**:
+A business effect committed more than once for the same command. The demonstration counts them to show there are none.
+_Avoid_: Duplicate delivery (a delivery can be duplicate without a duplicate effect)
 
 **Scenario**:
 One of the five predefined demonstrations, specifying the intended execution conditions and the behavior to explain. It is selected before a transfer starts and stays fixed for that transfer.
