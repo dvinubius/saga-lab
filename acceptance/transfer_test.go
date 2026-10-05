@@ -92,7 +92,7 @@ type historyEntry struct {
 	IssuedMessageID string    `json:"issued_message_id"`
 }
 
-func (d *demonstration) submitTransfer(t *testing.T, body string) transfer {
+func (d *visitorClient) submitTransfer(t *testing.T, body string) transfer {
 	t.Helper()
 	r := d.post(t, "/api/transfers", "application/json", body)
 	if r.status != http.StatusAccepted {
@@ -111,7 +111,7 @@ func (d *demonstration) submitTransfer(t *testing.T, body string) transfer {
 	return accepted
 }
 
-func (d *demonstration) transfer(t *testing.T, id string) transfer {
+func (d *visitorClient) transfer(t *testing.T, id string) transfer {
 	t.Helper()
 	body := d.get(t, "/api/transfers/"+id)
 	var current transfer
@@ -121,7 +121,7 @@ func (d *demonstration) transfer(t *testing.T, id string) transfer {
 	return current
 }
 
-func (d *demonstration) awaitTransfer(t *testing.T, id, status string) transfer {
+func (d *visitorClient) awaitTransfer(t *testing.T, id, status string) transfer {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {

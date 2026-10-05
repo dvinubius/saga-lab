@@ -169,7 +169,7 @@ func (s *Service) submit(ctx context.Context, amount int64, chosen scenario) (tr
 	if span := trace.SpanContextFromContext(ctx); span.IsValid() {
 		t.TraceID = span.TraceID().String()
 	}
-	debit, err := messaging.New(ctx, t.ID, messaging.DebitFunds{TransferID: t.ID, VisitorID: visitor.PreparedID, Amount: amount, Scenario: string(chosen)}, "")
+	debit, err := messaging.New(ctx, t.ID, messaging.DebitFunds{TransferID: t.ID, VisitorID: visitor.ID(ctx), Amount: amount, Scenario: string(chosen)}, "")
 	if err != nil {
 		return transfer{}, err
 	}
@@ -199,7 +199,7 @@ func (s *Service) admit(ctx context.Context, t transfer, debit *message.Message)
 		inserted, err := tx.Exec(ctx,
 			`INSERT INTO transfers (transfer_id, visitor_id, amount, scenario, status, requested_at, trace_id) VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''))
 			 ON CONFLICT (visitor_id) WHERE status IN ('debit_pending', 'credit_pending', 'refund_pending') DO NOTHING`,
-			t.ID, visitor.PreparedID, t.Amount, t.Scenario, t.Status, t.RequestedAt, t.TraceID,
+			t.ID, visitor.ID(ctx), t.Amount, t.Scenario, t.Status, t.RequestedAt, t.TraceID,
 		)
 		if err != nil || inserted.RowsAffected() == 0 {
 			return err
@@ -219,7 +219,7 @@ func (s *Service) pendingTransferID(ctx context.Context) (string, error) {
 	var id string
 	err := s.db.QueryRow(ctx,
 		`SELECT transfer_id FROM transfers WHERE visitor_id = $1 AND status = ANY($2)`,
-		visitor.PreparedID, pendingStatuses,
+		visitor.ID(ctx), pendingStatuses,
 	).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
@@ -470,7 +470,7 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	t := transfer{transferSummary: transferSummary{ID: id}}
 	err := s.db.QueryRow(ctx,
 		`SELECT amount, scenario, status, COALESCE(rejection_reason, ''), COALESCE(trace_id, ''), requested_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
-		id, visitor.PreparedID,
+		id, visitor.ID(ctx),
 	).Scan(&t.Amount, &t.Scenario, &t.Status, &t.RejectionReason, &t.TraceID, &t.RequestedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return transfer{}, errTransferNotFound
@@ -536,7 +536,7 @@ func redeliveryEvidenced(history []historyEntry, command string, committedBy ste
 func (s *Service) list(ctx context.Context) ([]transferSummary, error) {
 	rows, err := s.db.Query(ctx,
 		`SELECT transfer_id, amount, scenario, status, requested_at FROM transfers WHERE visitor_id = $1 ORDER BY requested_at DESC`,
-		visitor.PreparedID,
+		visitor.ID(ctx),
 	)
 	if err != nil {
 		return nil, err

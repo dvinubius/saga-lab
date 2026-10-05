@@ -3,7 +3,10 @@ package transferservice_test
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
+	"github.com/dvinubius/saga-lab/internal/visitor"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +26,7 @@ import (
 func TestEventsForUnknownTransferAreIgnoredWithoutBroker(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	var logs bytes.Buffer
-	s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.NewJSONHandler(&logs, nil)))
+	s, err := transferservice.Open(context.Background(), db, bankConfig(t), slog.New(slog.NewJSONHandler(&logs, nil)))
 	if err != nil {
 		t.Fatalf("open transfer service: %v", err)
 	}
@@ -43,7 +46,7 @@ func TestEventsForUnknownTransferAreIgnoredWithoutBroker(t *testing.T) {
 	}
 
 	response := httptest.NewRecorder()
-	s.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/transfers", nil))
+	s.Handler().ServeHTTP(response, testRequest(http.MethodGet, "/api/transfers", nil))
 	var body struct {
 		Transfers []json.RawMessage `json:"transfers"`
 	}
@@ -118,7 +121,7 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			db := pgtest.NewDatabase(t)
 			var logs bytes.Buffer
-			s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.NewJSONHandler(&logs, nil)))
+			s, err := transferservice.Open(context.Background(), db, bankConfig(t), slog.New(slog.NewJSONHandler(&logs, nil)))
 			if err != nil {
 				t.Fatalf("open transfer service: %v", err)
 			}
@@ -150,7 +153,7 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 
 func TestDuplicateObservationIsRecordedOnce(t *testing.T) {
 	db := pgtest.NewDatabase(t)
-	s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.DiscardHandler))
+	s, err := transferservice.Open(context.Background(), db, bankConfig(t), slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("open transfer service: %v", err)
 	}
@@ -186,7 +189,7 @@ func TestDuplicateObservationIsRecordedOnce(t *testing.T) {
 
 func TestHistoryIsOrderedByObservationTime(t *testing.T) {
 	db := pgtest.NewDatabase(t)
-	s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.DiscardHandler))
+	s, err := transferservice.Open(context.Background(), db, bankConfig(t), slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("open transfer service: %v", err)
 	}
@@ -214,7 +217,7 @@ func TestHistoryIsOrderedByObservationTime(t *testing.T) {
 func TestObservationForUnknownTransferIsIgnored(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	var logs bytes.Buffer
-	s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.NewJSONHandler(&logs, nil)))
+	s, err := transferservice.Open(context.Background(), db, bankConfig(t), slog.New(slog.NewJSONHandler(&logs, nil)))
 	if err != nil {
 		t.Fatalf("open transfer service: %v", err)
 	}
@@ -238,7 +241,7 @@ func TestObservationForUnknownTransferIsIgnored(t *testing.T) {
 func TestFundsDebitedCommitsNothingWhenEnqueueFails(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
-	s, err := transferservice.Open(ctx, db, transferservice.Config{}, slog.New(slog.NewTextHandler(t.Output(), nil)))
+	s, err := transferservice.Open(ctx, db, bankConfig(t), slog.New(slog.NewTextHandler(t.Output(), nil)))
 	if err != nil {
 		t.Fatalf("open transfer service: %v", err)
 	}
@@ -276,7 +279,7 @@ func TestFundsDebitedCommitsNothingWhenEnqueueFails(t *testing.T) {
 func TestCreditRejectedCommitsNothingWhenEnqueueFails(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
-	s, err := transferservice.Open(ctx, db, transferservice.Config{}, slog.New(slog.NewTextHandler(t.Output(), nil)))
+	s, err := transferservice.Open(ctx, db, bankConfig(t), slog.New(slog.NewTextHandler(t.Output(), nil)))
 	if err != nil {
 		t.Fatalf("open transfer service: %v", err)
 	}
@@ -321,7 +324,7 @@ func TestCreditRejectedCommitsNothingWhenEnqueueFails(t *testing.T) {
 
 func TestRefundPendingTransferHoldsSubmission(t *testing.T) {
 	db := pgtest.NewDatabase(t)
-	s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.DiscardHandler))
+	s, err := transferservice.Open(context.Background(), db, bankConfig(t), slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("open transfer service: %v", err)
 	}
@@ -334,7 +337,7 @@ func TestRefundPendingTransferHoldsSubmission(t *testing.T) {
 	}
 
 	response := httptest.NewRecorder()
-	s.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/transfers", strings.NewReader(`{"amount": 10}`)))
+	s.Handler().ServeHTTP(response, testRequest(http.MethodPost, "/api/transfers", strings.NewReader(`{"amount": 10}`)))
 	var problem struct {
 		PendingTransferID string `json:"pending_transfer_id"`
 	}
@@ -349,7 +352,7 @@ func TestRefundPendingTransferHoldsSubmission(t *testing.T) {
 func submit(t *testing.T, s *transferservice.Service) string {
 	t.Helper()
 	response := httptest.NewRecorder()
-	s.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/transfers", strings.NewReader(`{"amount": 25}`)))
+	s.Handler().ServeHTTP(response, testRequest(http.MethodPost, "/api/transfers", strings.NewReader(`{"amount": 25}`)))
 	var submitted struct {
 		ID string `json:"transfer_id"`
 	}
@@ -378,7 +381,7 @@ type transferJSON struct {
 func transfer(t *testing.T, s *transferservice.Service, id string) transferJSON {
 	t.Helper()
 	response := httptest.NewRecorder()
-	s.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/transfers/"+id, nil))
+	s.Handler().ServeHTTP(response, testRequest(http.MethodGet, "/api/transfers/"+id, nil))
 	var got transferJSON
 	if err := json.NewDecoder(response.Body).Decode(&got); err != nil || response.Code != http.StatusOK {
 		t.Fatalf("GET /api/transfers/%s: status %d, decode error %v", id, response.Code, err)
@@ -444,4 +447,82 @@ func event(t *testing.T, transferID string, payload any) *message.Message {
 		t.Fatalf("new event: %v", err)
 	}
 	return msg
+}
+
+func bankConfig(t *testing.T) transferservice.Config {
+	t.Helper()
+	banks := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || !strings.HasPrefix(r.URL.Path, "/accounts/") {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(banks.Close)
+	return transferservice.Config{BankAURL: banks.URL, BankBURL: banks.URL}
+}
+
+func testRequest(method, path string, body io.Reader) *http.Request {
+	r := httptest.NewRequest(method, path, body)
+	r.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: "test-visitor"})
+	return r
+}
+
+func TestNewVisitorRetriesUnavailableAccountOpening(t *testing.T) {
+	for _, path := range []string{"/api/transfers", "/"} {
+		t.Run(path, func(t *testing.T) {
+			db := pgtest.NewDatabase(t)
+			available := false
+			banks := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !available {
+					http.Error(w, "bank unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				if r.Method == http.MethodPut {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, `{"balance":100}`)
+			}))
+			defer banks.Close()
+			config := bankConfig(t)
+			config.BankBURL = banks.URL
+			s, err := transferservice.Open(context.Background(), db, config, slog.New(slog.DiscardHandler))
+			if err != nil {
+				t.Fatal(err)
+			}
+			failed := httptest.NewRecorder()
+			s.Handler().ServeHTTP(failed, httptest.NewRequest(http.MethodGet, path, nil))
+			if failed.Code != http.StatusBadGateway {
+				t.Fatalf("unavailable opening: status %d, body %q", failed.Code, failed.Body)
+			}
+			cookies := failed.Result().Cookies()
+			if len(cookies) != 1 {
+				t.Fatalf("visitor cookies = %v, want one", cookies)
+			}
+			cookie := cookies[0]
+			id, err := hex.DecodeString(cookie.Value)
+			if err != nil || len(id) != 32 {
+				t.Fatalf("visitor ID %q is not an opaque 32-byte random ID", cookie.Value)
+			}
+			if cookie.Name != visitor.CookieName || !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" || cookie.MaxAge < 30*24*60*60 {
+				t.Fatalf("visitor cookie attributes = %+v", cookie)
+			}
+			available = true
+			retry := httptest.NewRequest(http.MethodGet, "/api/transfers", nil)
+			retry.AddCookie(cookie)
+			succeeded := httptest.NewRecorder()
+			s.Handler().ServeHTTP(succeeded, retry)
+			if succeeded.Code != http.StatusOK {
+				t.Fatalf("retry opening: status %d, body %q", succeeded.Code, succeeded.Body)
+			}
+			available = false
+			returning := httptest.NewRecorder()
+			s.Handler().ServeHTTP(returning, retry)
+			if returning.Code != http.StatusOK {
+				t.Fatalf("known visitor needs no reopening: status %d, body %q", returning.Code, returning.Body)
+			}
+		})
+	}
 }
