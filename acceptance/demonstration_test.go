@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"strings"
 	"testing"
 	"time"
@@ -14,17 +15,32 @@ import (
 
 type demonstration struct {
 	baseURL string
+	*visitorClient
+}
+
+type visitorClient struct {
+	baseURL string
 	client  *http.Client
 }
 
+func newVisitorClient(baseURL string) *visitorClient {
+	jar, _ := cookiejar.New(nil)
+	return &visitorClient{baseURL: baseURL, client: &http.Client{
+		Timeout:       5 * time.Second,
+		Jar:           jar,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}
+}
+
+func (d *demonstration) visitor(t *testing.T) *visitorClient {
+	t.Helper()
+	v := newVisitorClient(d.baseURL)
+	v.get(t, "/api/balances")
+	return v
+}
+
 func newDemonstration(baseURL string) demonstration {
-	return demonstration{
-		baseURL: baseURL,
-		client: &http.Client{
-			Timeout:       5 * time.Second,
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		},
-	}
+	return demonstration{baseURL: baseURL, visitorClient: newVisitorClient(baseURL)}
 }
 
 type response struct {
@@ -33,7 +49,7 @@ type response struct {
 	body     []byte
 }
 
-func (d *demonstration) get(t *testing.T, path string) []byte {
+func (d *visitorClient) get(t *testing.T, path string) []byte {
 	t.Helper()
 	r := d.request(t, http.MethodGet, path, "", "")
 	if r.status != http.StatusOK {
@@ -42,12 +58,12 @@ func (d *demonstration) get(t *testing.T, path string) []byte {
 	return r.body
 }
 
-func (d *demonstration) post(t *testing.T, path, contentType, body string) response {
+func (d *visitorClient) post(t *testing.T, path, contentType, body string) response {
 	t.Helper()
 	return d.request(t, http.MethodPost, path, contentType, body)
 }
 
-func (d *demonstration) request(t *testing.T, method, path, contentType, body string) response {
+func (d *visitorClient) request(t *testing.T, method, path, contentType, body string) response {
 	t.Helper()
 	r, err := d.do(method, path, contentType, body)
 	if err != nil {
@@ -56,7 +72,7 @@ func (d *demonstration) request(t *testing.T, method, path, contentType, body st
 	return r
 }
 
-func (d *demonstration) do(method, path, contentType, body string) (response, error) {
+func (d *visitorClient) do(method, path, contentType, body string) (response, error) {
 	request, err := http.NewRequest(method, d.baseURL+path, strings.NewReader(body))
 	if err != nil {
 		return response{}, fmt.Errorf("%s %s: %w", method, path, err)

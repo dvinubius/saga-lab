@@ -13,7 +13,6 @@ import (
 	"github.com/dvinubius/saga-lab/internal/messaging"
 	"github.com/dvinubius/saga-lab/internal/postgres"
 	"github.com/dvinubius/saga-lab/internal/service"
-	"github.com/dvinubius/saga-lab/internal/visitor"
 	"github.com/dvinubius/saga-lab/internal/web"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -48,15 +47,16 @@ var (
 )
 
 type Config struct {
-	PreparedBalance int64
-	Role            Role
+	OpeningBalance int64
+	Role           Role
 }
 
 type Bank struct {
-	db     *pgxpool.Pool
-	role   Role
-	broker *messaging.Broker
-	logger *slog.Logger
+	db             *pgxpool.Pool
+	openingBalance int64
+	role           Role
+	broker         *messaging.Broker
+	logger         *slog.Logger
 }
 
 func Run(ctx context.Context, settings service.Settings, config Config) error {
@@ -85,13 +85,13 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 }
 
 func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Logger) (*Bank, error) {
-	if err := provision(ctx, db, config); err != nil {
+	if err := applySchema(ctx, db); err != nil {
 		return nil, err
 	}
 	if err := messaging.InboxAndOutbox.Create(ctx, db); err != nil {
 		return nil, err
 	}
-	return &Bank{db: db, role: config.Role, logger: logger}, nil
+	return &Bank{db: db, role: config.Role, openingBalance: config.OpeningBalance, logger: logger}, nil
 }
 
 func Reset(ctx context.Context, settings service.Settings, config Config) error {
@@ -114,7 +114,7 @@ func Reset(ctx context.Context, settings service.Settings, config Config) error 
 		if err := messaging.InboxAndOutbox.Recreate(ctx, tx); err != nil {
 			return err
 		}
-		return provision(ctx, tx, config)
+		return applySchema(ctx, tx)
 	})
 }
 
@@ -122,15 +122,9 @@ type execer interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
 
-func provision(ctx context.Context, db execer, config Config) error {
+func applySchema(ctx context.Context, db execer) error {
 	if _, err := db.Exec(ctx, schema); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
-	}
-	if _, err := db.Exec(ctx,
-		`INSERT INTO accounts (visitor_id, balance) VALUES ($1, $2) ON CONFLICT (visitor_id) DO NOTHING`,
-		visitor.PreparedID, config.PreparedBalance,
-	); err != nil {
-		return fmt.Errorf("provision prepared account: %w", err)
 	}
 	return nil
 }
@@ -138,6 +132,7 @@ func provision(ctx context.Context, db execer, config Config) error {
 func (b *Bank) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /accounts/{visitorID}", b.getAccount)
+	mux.HandleFunc("PUT /accounts/{visitorID}", b.openAccount)
 	mux.Handle("GET /readyz", web.Readiness(b.ready, b.logger))
 	return mux
 }
@@ -339,4 +334,13 @@ func (b *Bank) getAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	web.WriteJSON(w, http.StatusOK, a, b.logger)
+}
+
+func (b *Bank) openAccount(w http.ResponseWriter, r *http.Request) {
+	if _, err := b.db.Exec(r.Context(), `INSERT INTO accounts (visitor_id, balance) VALUES ($1, $2) ON CONFLICT (visitor_id) DO NOTHING`, r.PathValue("visitorID"), b.openingBalance); err != nil {
+		b.logger.Error("open account", "error", err)
+		web.WriteError(w, http.StatusInternalServerError, "account unavailable", b.logger)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

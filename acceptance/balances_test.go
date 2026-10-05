@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestPreparedVisitorSeesInitialBalances(t *testing.T) {
+func TestNewVisitorSeesInitialBalances(t *testing.T) {
 	t.Parallel()
 	demo := startDemonstration(t)
 
@@ -21,7 +21,7 @@ func TestPreparedVisitorSeesInitialBalances(t *testing.T) {
 	})
 }
 
-func (d *demonstration) assertBalances(t *testing.T, bankA, bankB int64) {
+func (d *visitorClient) assertBalances(t *testing.T, bankA, bankB int64) {
 	t.Helper()
 	var balances struct {
 		BankA struct {
