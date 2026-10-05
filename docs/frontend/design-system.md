@@ -1,6 +1,6 @@
 # Visual style
 
-The pages of sagas are built in the **Dinu Barbu** brand system. This file is
+Saga Lab's pages are built in the **Dinu Barbu** brand system. This file is
 the authority for how that system is used here: for this app's UI, **this file
 wins** over the upstream system, and departures are written down here rather
 than smuggled into the markup or the CSS. A UI change that contradicts this
@@ -15,8 +15,8 @@ and should stay recognisably the same everywhere.
 
 **Where this file comes from:** hooklook, the webhook inspector
 (`/Users/dinu/work/AGENTIC-LEARNING/Go/webhook-inspector/.agents/design-system.md`).
-Its adaptations were worked out for a data-rich product UI, and sagas takes
-them over wherever they apply. Where sagas departs from hooklook, this file
+Its adaptations were worked out for a data-rich product UI, and Saga Lab takes
+them over wherever they apply. Where Saga Lab departs from hooklook, this file
 says so.
 
 ## Where it lives
@@ -34,7 +34,7 @@ embedded into the Transfer Service binary and served under `/static/`:
 | `fresh.js` | Reloads a page the browser restores from its back/forward cache. |
 | `fonts/` | The four subset `.woff2` files built by the design system's `build-webfonts.py`, with the two OFL licences. |
 | `favicon.svg` | The product mark on an Ink tile — dark in both themes, because a browser tab is not part of the page. |
-| `sagas-logo-row.png` | The 1920 × 1080 link preview for `og:image` and `twitter:image`: the mark beside the wordmark, on Ink. |
+| `saga-lab-logo-row.png` | The 1920 × 1080 link preview for `og:image` and `twitter:image`: the mark beside the wordmark, on Ink. |
 
 The raw brand *values* in `brand.css` stay in step with upstream — Ink, Paper,
 Ember and the typefaces are the brand itself. Values this app adds live in
@@ -164,7 +164,7 @@ because `ⓘ` is outside the vendored font subsets.
    the semantic aliases under both explicit theme attributes, and the page
    always carries one: the server renders `data-theme="dark"`, and
    `theme.js`, loaded blocking in the head, switches to light before the first
-   paint when `sagas.theme` in `localStorage` says so. That ordering
+   paint when `saga-lab.theme` in `localStorage` says so. That ordering
    matters here more than in hooklook: a pending transfer page reloads every
    second, and a page that painted dark first would flicker on each reload.
    Raw palette values are unchanged.
@@ -176,7 +176,7 @@ because `ⓘ` is outside the vendored font subsets.
    to the source — and the quiet `→ dinubarbu.com` link on the right.
 
    *Departure from hooklook:* hooklook's frame is exactly one viewport high
-   and its workspace scrolls inside it. The pages of sagas are documents, so the
+   and its workspace scrolls inside it. Saga Lab's pages are documents, so the
    frame is *at least* one viewport high: the footer sits at the bottom of a
    short page and below the content of a long one, and the page scrolls as a
    whole.
@@ -187,12 +187,10 @@ because `ⓘ` is outside the vendored font subsets.
    apart. Where two sections need a firmer break, a hairline centred in the
    gap divides them.
 
-3. **The product wordmark carries a mark**, hooklook-style. "SAGAS" in
+3. **The product wordmark carries a mark**, hooklook-style. "Saga Lab" in
    Space Grotesk 500 at 24px with the wordmark's −0.018em tracking, in body
-   text, after the mark. The template says "sagas" and CSS sets it in caps,
-   so a screen reader reads a word rather than letters; the name in running
-   text and titles stays lowercase. It wears no brackets — those belong to
-   the personal wordmark in the footer. It is the page's `h1` and links home.
+   text, after the mark. It wears no brackets — those belong to the personal
+   wordmark in the footer. It is the page's `h1` and links home.
 
    The mark is a pair of nodes on a looping path around a hub: two rounded
    squares on the diagonal, top-right and bottom-left, joined anticlockwise by

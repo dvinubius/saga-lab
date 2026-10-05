@@ -2,7 +2,7 @@
 
 Build specification: [GitHub issue #1 — One observable transfer end to end](https://github.com/dvinubius/saga-lab/issues/1).
 
-These decisions refine milestone 1 in [Milestones](../sagas-04-milestones.md); the later milestones retain the rest of the V1 target.
+These decisions refine milestone 1 in [Milestones](../saga-lab-04-milestones.md); the later milestones retain the rest of the V1 target.
 
 - **Starting state:** one prepared demonstration visitor with one account per bank; Bank A starts with 100 credits and Bank B with zero. Repeat transfers are possible while funds remain. Provide a development reset command. Cookie-based visitor provisioning and top-ups remain in milestone 5.
 - **Amounts and rejection:** use positive whole-number credits. Reject malformed, fractional, zero, and negative amounts before starting a Saga. Bank A authoritatively rejects insufficient funds without changing either balance; record the rejection and end the transfer without credit or refund. This is ordinary business handling, not a sixth public scenario.

@@ -2,7 +2,7 @@ package visitor
 
 import "context"
 
-const CookieName = "sagas_visitor"
+const CookieName = "saga_lab_visitor"
 
 type contextKey struct{}
 

@@ -2,7 +2,7 @@
 
 Build specification: [GitHub issue #30 — Repeated debit delivery without repeated effects](https://github.com/dvinubius/saga-lab/issues/30), synthesized from the wayfinder map [#8](https://github.com/dvinubius/saga-lab/issues/8).
 
-These decisions refine milestone 2. Everything in the milestone 2 entry in [Milestones](../sagas-04-milestones.md) is in scope.
+These decisions refine milestone 2. Everything in the milestone 2 entry in [Milestones](../saga-lab-04-milestones.md) is in scope.
 
 - **Scenarios:** the visitor chooses Happy path (default) or Debit redelivery on the existing home form. The scenario is fixed for the transfer and carried to Bank A in `DebitFunds`. Under debit redelivery, Bank A commits the debit, then fails once before acknowledging. The broker redelivers the command and Bank A recognises the repeat. The transfer completes with the happy path's balances. Insufficient funds still ends in an ordinary debit rejection, with no injected fault.
 - **Durable progression:** every local state change commits atomically with its outgoing message through a per-service transactional outbox in all three services, including the initial `DebitFunds`. A publish failure after commit never strands a transfer. This is guaranteed by construction; crash/restart tests stay deferred.
