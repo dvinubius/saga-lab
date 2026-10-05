@@ -8,6 +8,7 @@
   const back = panel.querySelector('[data-control="back"]');
   const play = panel.querySelector('[data-control="play"]');
   const forward = panel.querySelector('[data-control="forward"]');
+  const diagram = panel.querySelector(".diagram");
   let position = 0;
   let timer = null;
 
@@ -20,6 +21,15 @@
     note.textContent = about ? about.textContent : "";
     time.textContent = row.dataset.observedAt;
     gap.textContent = row.dataset.gap ? `${row.dataset.gap} to the next entry` : "last entry";
+    const path = row.dataset.path ? row.dataset.path.split(" ") : [];
+    diagram.querySelectorAll("[data-node]").forEach((node) => node.toggleAttribute("data-lit", path.includes(node.dataset.node)));
+    diagram.querySelectorAll("[data-edge]").forEach((edge) => delete edge.dataset.lit);
+    path.slice(1).forEach((to, index) => {
+      const from = path[index];
+      const forward = diagram.querySelector(`[data-edge="${from} ${to}"]`);
+      (forward || diagram.querySelector(`[data-edge="${to} ${from}"]`)).dataset.lit = forward ? "forward" : "backward";
+    });
+    diagram.toggleAttribute("data-no-consumer", "noConsumer" in row.dataset);
   };
 
   const render = () => {

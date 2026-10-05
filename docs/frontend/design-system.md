@@ -32,7 +32,7 @@ embedded into the Transfer Service binary and served under `/static/`:
 | `app.css` | Values this app needs and the brand does not have, the shared text roles, and every component style. |
 | `theme.js` | The theme switch. |
 | `fresh.js` | Reloads a page the browser restores from its back/forward cache. |
-| `playback.js` | Steps a ready transfer page's playback panel through its History rows (adaptation 15). |
+| `playback.js` | Steps a ready transfer page's playback panel through its History rows and lights each row's path in the diagram (adaptation 15). |
 | `fonts/` | The four subset `.woff2` files built by the design system's `build-webfonts.py`, with the two OFL licences. |
 | `favicon.svg` | The product mark on an Ink tile — dark in both themes, because a browser tab is not part of the page. |
 | `saga-lab-logo-row.png` | The 1920 × 1080 link preview for `og:image` and `twitter:image`: the mark beside the wordmark, on Ink. |
@@ -70,9 +70,9 @@ light-theme / dark-theme pair, like the accent:
 | | Light | Dark | Role here |
 | --- | --- | --- | --- |
 | Ember | `#A8500F` | `#DE8A42` | brand, the primary action, quiet-link rules |
-| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; a state's hue, a scenario's avoided issue (rule 14) |
+| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; a state's hue, a scenario's avoided issue (rule 14); the playback diagram's travelled path (adaptation 15) |
 | Violet | `#6B5D91` | `#AFA3CF` | secondary data and syntax color — nothing spends it yet |
-| Brick | `#A03028` | `#E0756A` | `--danger`: a rejected value or refused submission (rule 13); a failed state's hue, a scenario's simulated fault (rule 14) |
+| Brick | `#A03028` | `#E0756A` | `--danger`: a rejected value or refused submission (rule 13); a failed state's hue, a scenario's simulated fault (rule 14), Bank B's "no consumer" in the playback diagram (adaptation 15) |
 
 Stone, Ink and Paper carry the overwhelming majority of the interface. Teal
 and Violet are for syntax on code surfaces and for data marks (a chart, a
@@ -153,7 +153,7 @@ outline to the muted grey.
 **Glyphs.** The brand has no icon system and no emoji: Unicode does icon duty —
 `↳` `·` `→` `←` `×` `✓` `//` `[ ]`, all of which ship in the vendored font
 subsets. `×` and `✓` are a valence pair, used together, never as a lone
-decorative tick. Apart from the product mark (adaptation 3), the only drawn icons are the theme switch's sun and moon, the
+decorative tick. Apart from the product mark (adaptation 3) and the playback diagram (adaptation 15), the only drawn icons are the theme switch's sun and moon, the
 GitHub mark in the footer, and the info mark after a History entry that has an
 explanation (a circled "i", 14px, muted at rest and body on hover or focus),
 all drawn inline in the template in `currentColor`. The info mark is drawn
@@ -350,6 +350,7 @@ because `ⓘ` is outside the vendored font subsets.
     above History and plays the transfer once from the start, on every load
     of the page. It is a card like In depth, labelled PLAYBACK, and holds:
 
+    - the participant diagram, described below;
     - the current entry's real timestamp in UTC and its real gap to the next
       entry ("+4.980 s to the next entry", or "last entry"), as a `.fact`;
     - the current entry as History shows it — cause, attempt, title, label
@@ -373,3 +374,29 @@ because `ⓘ` is outside the vendored font subsets.
 
     While the replay is not ready there is no panel; the page reloads every
     second and shows the live History.
+
+    **The participant diagram** is drawn inline in the template as SVG at
+    the panel's full width: four nodes — Transfer Service, Broker, Bank A
+    and Bank B — as 1px outlined boxes with 2px corners, like a surface, and
+    their names in mono at `--text-mono-meta`, and three edges joining the
+    Broker to each of the others. Every message passes through the Broker,
+    so the Transfer Service sits on its left and the banks are stacked on
+    its right. For the current entry it lights the path the entry's message
+    travelled, which the server computes per row: sender → Broker →
+    receiver for a Saga step; Transfer Service → Broker for the requested,
+    admitted and broker-confirmed entries; the bank → Broker for a lost
+    acknowledgement; Broker → the bank for a suppressed redelivery; Broker →
+    Bank B for delivery resuming.
+
+    - Idle nodes and edges are muted.
+    - The nodes on the path are body text.
+    - The travelled edges are Teal at 2px, with an open Teal chevron at the
+      receiving end, drawn like the arrowheads of the product mark. Teal
+      because the path is a data mark; the accent is not spent.
+
+    During the broker wait only the Broker is lit, and Bank B is marked "no
+    consumer" beside its box, in Brick like the waiting entry in History:
+    the words carry it, the hue only marks it. The path is static. It
+    changes instantly with the entry and nothing moves along it, because a
+    travelling mark would suggest that messages take hundreds of
+    milliseconds to cross the network.

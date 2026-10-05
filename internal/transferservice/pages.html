@@ -178,6 +178,17 @@
 
 {{if .VisualisationReady}}<section class="section playback" id="playback">
   <h3 class="caps section-label">Playback</h3>
+  <svg class="diagram" width="564" height="132" viewBox="0 0 564 132" role="img" aria-label="The Transfer Service, the Broker, Bank A and Bank B">
+    <defs><marker id="diagram-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M2 1l5 3-5 3"/></marker></defs>
+    <line data-edge="transfer-service broker" x1="150" y1="66" x2="190" y2="66"/>
+    <line data-edge="broker bank-a" x1="280" y1="66" x2="340" y2="24"/>
+    <line data-edge="broker bank-b" x1="280" y1="66" x2="340" y2="108"/>
+    <g data-node="transfer-service"><rect x="0.5" y="46.5" width="149" height="39" rx="2"/><text x="75" y="66">Transfer Service</text></g>
+    <g data-node="broker"><rect x="190.5" y="46.5" width="89" height="39" rx="2"/><text x="235" y="66">Broker</text></g>
+    <g data-node="bank-a"><rect x="340.5" y="4.5" width="109" height="39" rx="2"/><text x="395" y="24">Bank A</text></g>
+    <g data-node="bank-b"><rect x="340.5" y="88.5" width="109" height="39" rx="2"/><text x="395" y="108">Bank B</text></g>
+    <text class="no-consumer" x="462" y="108">no consumer</text>
+  </svg>
   <p class="fact"><time class="playback-time"></time> UTC · <span class="playback-gap"></span></p>
   <div class="playback-entry"></div>
   <p class="note playback-note"></p>
@@ -194,7 +205,7 @@
   <table class="table history">
     <thead><tr><th class="caps">Observed (UTC)</th>{{range $.Lanes}}<th class="caps">{{.}}</th>{{end}}</tr></thead>
     <tbody>
-    {{range $row := $.History}}<tr{{if .Step}} data-step="{{.Step}}"{{else}} data-observation="{{.Observation}}"{{end}} data-observed-at="{{template "timestamp" .PlayedAt}}" data-dwell="{{.Dwell.Milliseconds}}"{{with .Gap}} data-gap="{{.}}"{{end}}{{if .Continues}} class="continues"{{end}}>
+    {{range $row := $.History}}<tr{{if .Step}} data-step="{{.Step}}"{{else}} data-observation="{{.Observation}}"{{end}} data-observed-at="{{template "timestamp" .PlayedAt}}" data-dwell="{{.Dwell.Milliseconds}}"{{with .Gap}} data-gap="{{.}}"{{end}}{{with .Path}} data-path="{{.}}"{{end}}{{if .NoConsumer}} data-no-consumer{{end}}{{if .Continues}} class="continues"{{end}}>
       <td>{{if not .ObservedAt.IsZero}}{{template "time" .ObservedAt}}{{end}}</td>
       {{range $lane, $_ := $.Lanes}}{{if eq $lane $row.Lane}}<td{{with $row.Tooltip}} title="{{.}}"{{end}}>{{template "history-entry" $row}}</td>{{else}}<td></td>{{end}}{{end}}
     </tr>
