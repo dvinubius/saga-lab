@@ -22,3 +22,4 @@ Each milestone, once refined, has its agreed scope in a separate document that l
 - [Milestone 2](milestones/milestone-2-agreed-scope.md)
 - [Milestone 3](milestones/milestone-3-agreed-scope.md)
 - [Milestone 4](milestones/milestone-4-agreed-scope.md)
+- [Milestone 5](milestones/milestone-5-agreed-scope.md)
