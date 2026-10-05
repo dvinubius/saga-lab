@@ -80,7 +80,7 @@ func Reset(ctx context.Context, settings service.Settings) error {
 	}
 	defer db.Close()
 	return pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS transfer_history, transfers, visitors`); err != nil {
+		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS demonstration_slot, transfer_history, transfers, visitors`); err != nil {
 			return fmt.Errorf("drop transfers: %w", err)
 		}
 		if _, err := tx.Exec(ctx, schema); err != nil {
