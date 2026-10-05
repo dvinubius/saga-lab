@@ -71,7 +71,7 @@ func TestUnknownScenariosAreRejectedBeforeAnyTransfer(t *testing.T) {
 
 	for name, body := range map[string]string{
 		"unknown slug":    `{"amount": 25, "scenario": "chaos"}`,
-		"not yet offered": `{"amount": 25, "scenario": "credit_rejection"}`,
+		"not yet offered": `{"amount": 25, "scenario": "refund_redelivery"}`,
 		"empty":           `{"amount": 25, "scenario": ""}`,
 	} {
 		t.Run("API "+name, func(t *testing.T) {
@@ -82,7 +82,7 @@ func TestUnknownScenariosAreRejectedBeforeAnyTransfer(t *testing.T) {
 			var problem struct {
 				Error string `json:"error"`
 			}
-			if err := json.Unmarshal(r.body, &problem); err != nil || !strings.Contains(problem.Error, "happy_path") || !strings.Contains(problem.Error, "debit_redelivery") {
+			if err := json.Unmarshal(r.body, &problem); err != nil || !containsAll(problem.Error, "happy_path", "debit_redelivery", "credit_rejection") {
 				t.Errorf("body %q does not list the accepted scenarios", r.body)
 			}
 		})
@@ -102,6 +102,15 @@ func TestUnknownScenariosAreRejectedBeforeAnyTransfer(t *testing.T) {
 		t.Errorf("transfers = %+v, want none", transfers)
 	}
 	demo.assertBalances(t, 100, 0)
+}
+
+func containsAll(s string, parts ...string) bool {
+	for _, part := range parts {
+		if !strings.Contains(s, part) {
+			return false
+		}
+	}
+	return true
 }
 
 func (d *demonstration) transfers(t *testing.T) []transfer {

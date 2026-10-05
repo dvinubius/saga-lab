@@ -15,11 +15,13 @@ import (
 )
 
 const (
-	DebitFundsTopic    = "DebitFunds"
-	FundsDebitedTopic  = "FundsDebited"
-	DebitRejectedTopic = "DebitRejected"
-	CreditFundsTopic   = "CreditFunds"
-	FundsCreditedTopic = "FundsCredited"
+	DebitFundsTopic     = "DebitFunds"
+	FundsDebitedTopic   = "FundsDebited"
+	DebitRejectedTopic  = "DebitRejected"
+	CreditFundsTopic    = "CreditFunds"
+	FundsCreditedTopic  = "FundsCredited"
+	CreditRejectedTopic = "CreditRejected"
+	RefundFundsTopic    = "RefundFunds"
 
 	ProcessingObservedTopic = "ProcessingObserved"
 )
@@ -30,7 +32,10 @@ const (
 	BankB           = "Bank B"
 )
 
-const DebitRedelivery = "debit_redelivery"
+const (
+	DebitRedelivery = "debit_redelivery"
+	CreditRejection = "credit_rejection"
+)
 
 const (
 	NackRequested       = "NackRequested"
@@ -54,22 +59,30 @@ type OperationCommitted struct {
 	ObservedAt time.Time `json:"observed_at"`
 }
 
-type DebitFunds struct {
+type ScenarioOperation struct {
 	AccountOperation
 	Scenario string `json:"scenario"`
 }
 
+type DebitFunds ScenarioOperation
+
 type FundsDebited OperationCommitted
 
-type DebitRejected struct {
+type OperationRejected struct {
 	TransferID string    `json:"transfer_id"`
 	Reason     string    `json:"reason"`
 	ObservedAt time.Time `json:"observed_at"`
 }
 
-type CreditFunds AccountOperation
+type DebitRejected OperationRejected
+
+type CreditFunds ScenarioOperation
 
 type FundsCredited OperationCommitted
+
+type CreditRejected OperationRejected
+
+type RefundFunds ScenarioOperation
 
 type ProcessingObserved struct {
 	TransferID  string    `json:"transfer_id"`

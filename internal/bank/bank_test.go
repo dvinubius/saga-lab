@@ -136,6 +136,30 @@ func TestDuplicateCreditAppliesNothing(t *testing.T) {
 	assertObservations(t, db, messaging.DuplicateSuppressed)
 }
 
+func TestDuplicateCreditRejectionAppliesNothing(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	ctx := context.Background()
+	b := open(t, db, bank.Config{PreparedBalance: 0, Role: bank.Destination})
+	command, err := messaging.New(ctx, "transfer", messaging.CreditFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25, Scenario: messaging.CreditRejection}, "")
+	if err != nil {
+		t.Fatalf("new command: %v", err)
+	}
+
+	for range 2 {
+		if err := bank.CreditFunds(b, command); err != nil {
+			t.Fatalf("CreditFunds: %v", err)
+		}
+	}
+
+	if got := balance(t, b, visitor.PreparedID); got != 0 {
+		t.Errorf("balance after rejected credit = %d, want unchanged 0", got)
+	}
+	if got, want := outbox(t, db), []string{messaging.CreditRejectedTopic, messaging.ProcessingObservedTopic}; !reflect.DeepEqual(got, want) {
+		t.Errorf("outbox after duplicate rejected credit = %v, want %v", got, want)
+	}
+	assertObservations(t, db, messaging.DuplicateSuppressed)
+}
+
 func assertObservations(t *testing.T, db *pgxpool.Pool, want ...string) {
 	t.Helper()
 	rows, err := db.Query(context.Background(), `SELECT convert_from(payload, 'UTF8')::jsonb->>'observation' FROM outbox WHERE topic = $1 ORDER BY id`, messaging.ProcessingObservedTopic)

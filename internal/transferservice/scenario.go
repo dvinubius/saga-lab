@@ -12,11 +12,12 @@ type scenario string
 const (
 	happyPath       scenario = "happy_path"
 	debitRedelivery scenario = messaging.DebitRedelivery
+	creditRejection scenario = messaging.CreditRejection
 )
 
-var scenarios = []scenario{happyPath, debitRedelivery}
+var scenarios = []scenario{happyPath, debitRedelivery, creditRejection}
 
-var errUnknownScenario = errors.New("scenario must be one of: happy_path, debit_redelivery")
+var errUnknownScenario = errors.New("scenario must be one of: happy_path, debit_redelivery, credit_rejection")
 
 func (s scenario) Label() string {
 	switch s {
@@ -24,6 +25,8 @@ func (s scenario) Label() string {
 		return "Happy path"
 	case debitRedelivery:
 		return "Debit redelivery"
+	case creditRejection:
+		return "Credit rejection"
 	}
 	return string(s)
 }
