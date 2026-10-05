@@ -1,4 +1,4 @@
-# Saga Lab
+# sagas
 
 Language for a demonstration of orchestrated transfers of fictional credits between two independent banks.
 
@@ -19,7 +19,7 @@ A visitor’s holding of fictional credits at one bank. Each visitor owns one ac
 The indivisible fictional unit of value used in the demonstration; amounts are whole numbers and have no real monetary value.
 
 **Transfer**:
-An attempt to move a chosen amount of credits from a visitor’s Bank A account to that visitor’s Bank B account, coordinated through independent local operations.
+An attempt to move a chosen amount of credits from a visitor’s Bank A account to that visitor’s Bank B account, coordinated through independent local operations. It exists from submission and begins with its debit, which may first wait for admission.
 
 **Pending-transfer restriction**:
 A visitor has at most one transfer pending at a time; a submission made while one is pending starts nothing and names the pending transfer. It is not request deduplication: a repeated submission after the pending transfer has ended starts a new transfer.
@@ -48,8 +48,15 @@ The transfer’s result, distinct from whether all evidence needed to explain th
 **Scenario**:
 One of the five predefined demonstrations, specifying the intended execution conditions and the behavior to explain. It is selected before a transfer starts and stays fixed for that transfer.
 
+**Bank B unavailability**:
+The scenario in which delivery of one transfer's credit command to Bank B pauses for a few seconds while the command waits in the broker. Bank B keeps serving every other transfer.
+_Avoid_: Bank B outage, Bank B crash
+
+**Demonstration slot**:
+The exclusive right, shared by all visitors, to run a Bank B unavailability transfer; one transfer holds it at a time.
+
 **Admission wait**:
-The wait for exclusive use of the scenario-4 demonstration slot, before the transfer begins.
+A submitted transfer's wait for the demonstration slot, before the transfer begins.
 
 **Execution history**:
 The recorded steps and processing observations associated with a transfer.
