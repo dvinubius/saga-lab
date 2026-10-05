@@ -318,6 +318,17 @@ because `ⓘ` is outside the vendored font subsets.
     The figure is a value beside a label, so it is dim (`.dim`), and it takes
     no hue: a refund restoring the source reads in its numbers alone.
 
+    The **Outcome** summary, between the playback panel (rule 15) and
+    History once a transfer is ready, is two tables and a fact list in one section, the same for
+    every scenario: Account / Before / After for Bank A and Bank B, Command /
+    Handling attempts / Committed effects for debit, credit and refund, then
+    the duplicate deliveries suppressed and the duplicate effects. Its tables
+    use a fixed layout with a 178px name column, so their values line up
+    with the fact values below. A value never reported, or a command never
+    issued, is "—"; Bank B after a debit rejection reads "Not involved"
+    across both columns. No count takes a hue: a redelivery stands out by
+    its numbers (2 attempts, 1 effect), not by color.
+
 13. **Form controls.** A field is mono at `--text-mono-meta` on the page
     surface with a hairline border, at `--row-height` (36px), like a button.
     A radio choice is a borderless fieldset whose visually hidden legend

@@ -290,6 +290,9 @@ button,.btn,a{transition:var(--hover-transition);}
 .playback-note:empty{display:none;}
 .playback-controls{display:flex;gap:12px;}
 
+.outcome .table{table-layout:fixed;}
+.outcome .table th:first-child{width:178px;}
+
 .about{
   display:inline-flex;
   margin-left:6px;
