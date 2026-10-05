@@ -88,6 +88,10 @@
   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6.5"/><path d="M8 7v4.5"/><circle cx="8" cy="4.75" r="0.9" fill="currentColor" stroke="none"/></svg>
 </button><div class="float note" id="about-{{$.Step}}{{$.Observation}}{{$.AttemptID}}" popover style="position-anchor: --about-{{$.Step}}{{$.Observation}}{{$.AttemptID}}">{{.}}</div>{{end}}{{end}}
 
+{{define "outcome-value"}}{{with .}}{{.}}{{else}}—{{end}}{{end}}
+
+{{define "outcome-command"}}{{with .}}<td>{{.Attempts}}</td><td>{{.Effects}}</td>{{else}}<td>—</td><td>—</td>{{end}}{{end}}
+
 {{define "history-entry"}}{{if not .Continues}}{{with .Cause}}<span class="meta">{{.}}{{if gt $.Attempt 1}} · attempt {{$.Attempt}}{{end}}{{if $.AboutCause}}{{template "about" $}}{{end}}</span>{{end}}{{end}}{{with .Observation.Title}}<span class="meta">{{.}}</span>{{end}}
 {{if .Step}}<span class="label">{{.Step.Label}}</span>{{with .Balance}}<span class="dim balance"> · {{.}}</span>{{end}}{{template "about" .}}{{with .Step.LabelTail}}<span class="label">{{.}}</span>{{end}}{{else}}<span class="label">{{.Label}}</span>{{if not .AboutCause}}{{template "about" .}}{{end}}{{end}}{{end}}
 
@@ -194,6 +198,29 @@
   </div>
 </section>
 <script src="/static/playback.js" defer></script>{{end}}
+
+{{with .Outcome}}<section class="section outcome" id="outcome">
+  <h3 class="caps section-label">Outcome</h3>
+  <table class="table">
+    <thead><tr><th class="caps">Account</th><th class="caps">Before</th><th class="caps">After</th></tr></thead>
+    <tbody>
+    <tr data-outcome="bank-a"><td>Bank A</td><td>{{template "outcome-value" .Balances.BankA.Before}}</td><td>{{template "outcome-value" .Balances.BankA.After}}</td></tr>
+    <tr data-outcome="bank-b"><td>Bank B</td>{{if .Balances.BankB.Involved}}<td>{{template "outcome-value" .Balances.BankB.Before}}</td><td>{{template "outcome-value" .Balances.BankB.After}}</td>{{else}}<td colspan="2">Not involved</td>{{end}}</tr>
+    </tbody>
+  </table>
+  <table class="table">
+    <thead><tr><th class="caps">Command</th><th class="caps">Handling attempts</th><th class="caps">Committed effects</th></tr></thead>
+    <tbody>
+    <tr data-outcome="debit"><td>Debit</td>{{template "outcome-command" .Commands.Debit}}</tr>
+    <tr data-outcome="credit"><td>Credit</td>{{template "outcome-command" .Commands.Credit}}</tr>
+    <tr data-outcome="refund"><td>Refund</td>{{template "outcome-command" .Commands.Refund}}</tr>
+    </tbody>
+  </table>
+  <dl class="facts">
+    <div data-outcome="duplicates-suppressed"><dt>Duplicate deliveries suppressed</dt><dd>{{.DuplicatesSuppressed}}</dd></div>
+    <div data-outcome="duplicate-effects"><dt>Duplicate effects</dt><dd>{{.DuplicateEffects}}</dd></div>
+  </dl>
+</section>{{end}}
 
 <section class="section">
   <h3 class="caps section-label">History</h3>

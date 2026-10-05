@@ -38,6 +38,20 @@ func TestRefreshingTheTransferPageNeverResubmits(t *testing.T) {
 		}
 	}
 
+	for row, want := range map[string][]string{
+		"bank-a":                {"Bank A", "100", "75"},
+		"bank-b":                {"Bank B", "0", "25"},
+		"debit":                 {"Debit", "1", "1"},
+		"credit":                {"Credit", "1", "1"},
+		"refund":                {"Refund", "—", "—"},
+		"duplicates-suppressed": {"Duplicate deliveries suppressed", "0"},
+		"duplicate-effects":     {"Duplicate effects", "0"},
+	} {
+		if got := pageOutcome(page, row); !slices.Equal(got, want) {
+			t.Errorf("page outcome %s = %q, want %q", row, got, want)
+		}
+	}
+
 	before := demo.transfer(t, id)
 	for range 3 {
 		demo.get(t, transferPage)
@@ -79,6 +93,9 @@ func (d *visitorClient) awaitPageUntil(t *testing.T, path string, done func([]by
 		if polling == (replay == "ready") || playback != (replay == "ready") {
 			t.Fatalf("status %q and replay %q shown with polling = %t, playback = %t", current, replay, polling, playback)
 		}
+		if summarised := regexp.MustCompile(`id="outcome"`).Match(page); summarised != (replay == "ready") {
+			t.Fatalf("status %q and replay %q shown with outcome summary = %t", current, replay, summarised)
+		}
 		if replay == "ready" && !regexp.MustCompile(`<tr data-step="requested" data-observed-at="[^"]+" data-dwell="\d+"`).Match(page) {
 			t.Fatalf("ready page rows carry no playback timing: %s", page)
 		}
@@ -107,6 +124,15 @@ func pageBalanceChange(page []byte, step string) string {
 		return ""
 	}
 	return string(match[1])
+}
+
+func pageOutcome(page []byte, row string) []string {
+	segment := regexp.MustCompile(`data-outcome="` + row + `"(?s:.*?)</(?:tr|div)>`).Find(page)
+	var cells []string
+	for _, match := range regexp.MustCompile(`<(?:td|dt|dd)[^>]*>([^<]*)<`).FindAllSubmatch(segment, -1) {
+		cells = append(cells, string(match[1]))
+	}
+	return cells
 }
 
 func pageSteps(page []byte) []string {
