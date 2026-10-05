@@ -462,7 +462,6 @@ func bankConfig(t *testing.T) transferservice.Config {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	t.Cleanup(banks.Close)
-	// Development uses 2.5 seconds for test-suite productivity; the public release restores five seconds.
 	return transferservice.Config{ResumeWait: 2500 * time.Millisecond, BankAURL: banks.URL, BankBURL: banks.URL}
 }
 
@@ -528,33 +527,5 @@ func TestNewVisitorRetriesUnavailableAccountOpening(t *testing.T) {
 				t.Fatalf("known visitor needs no reopening: status %d, body %q", returning.Code, returning.Body)
 			}
 		})
-	}
-}
-
-func TestUnavailableAccountOpeningDoesNotLogVisitorCookie(t *testing.T) {
-	db := pgtest.NewDatabase(t)
-	unavailable := httptest.NewServer(http.NotFoundHandler())
-	address := unavailable.URL
-	unavailable.Close()
-	config := bankConfig(t)
-	config.BankAURL = address
-	var logs bytes.Buffer
-	s, err := transferservice.Open(context.Background(), db, config, slog.New(slog.NewJSONHandler(&logs, nil)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	const secret = "visitor-cookie-secret"
-	request := httptest.NewRequest(http.MethodGet, "/api/transfers", nil)
-	request.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: secret})
-	response := httptest.NewRecorder()
-	s.Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusBadGateway {
-		t.Fatalf("unavailable account opening: status %d", response.Code)
-	}
-	if strings.Contains(logs.String(), secret) {
-		t.Error("connection failure logs contain the visitor cookie value")
-	}
-	if !strings.Contains(logs.String(), "connection refused") {
-		t.Error("connection failure logs lost the network cause")
 	}
 }

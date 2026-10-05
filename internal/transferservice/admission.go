@@ -17,6 +17,11 @@ func lockSlot(ctx context.Context, tx pgx.Tx) (string, error) {
 	return holder, err
 }
 
+func lockSlotFor(ctx context.Context, tx pgx.Tx, transferID string) error {
+	_, err := tx.Exec(ctx, `SELECT FROM demonstration_slot WHERE EXISTS (SELECT 1 FROM transfers WHERE transfer_id = $1 AND scenario = $2) FOR UPDATE`, transferID, bankBUnavailable)
+	return err
+}
+
 func (s *Service) releaseSlot(ctx context.Context, tx pgx.Tx, transferID string) error {
 	var releasable bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (

@@ -3,15 +3,21 @@ package bank
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/dvinubius/saga-lab/internal/messaging"
 	"github.com/jackc/pgx/v5"
 )
 
-type Delivery interface {
+type DedicatedConsumer interface {
 	Resume(transferID string) error
 	Pause(transferID string) error
+}
+
+type acknowledger interface {
+	Ack(multiple bool) error
+	Nack(multiple, requeue bool) error
 }
 
 func (b *Bank) resumeDelivery(msg *message.Message) error {
@@ -27,10 +33,10 @@ func (b *Bank) resumeDelivery(msg *message.Message) error {
 	}
 	resumed := false
 	err := b.apply(msg, messaging.ResumeDeliveryTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
-		if b.delivery == nil {
-			return errors.New("dedicated delivery is not configured")
+		if b.dedicated == nil {
+			return errors.New("dedicated consumer is not configured")
 		}
-		if err := b.delivery.Resume(command.TransferID); err != nil {
+		if err := b.dedicated.Resume(command.TransferID); err != nil {
 			return err
 		}
 		resumed = true
@@ -45,27 +51,27 @@ func (b *Bank) resumeDelivery(msg *message.Message) error {
 	return err
 }
 
-func (b *Bank) dedicatedCredit(msg *message.Message, resumedTransferID string, ack func() error) (bool, error) {
+func (b *Bank) dedicatedCredit(msg *message.Message, resumedTransferID string, delivery acknowledger) (bool, error) {
 	if err := b.creditFunds(msg); err != nil {
+		if nackErr := delivery.Nack(false, true); nackErr != nil {
+			return true, errors.Join(err, nackErr)
+		}
 		return false, err
 	}
-	if err := ack(); err != nil {
-		return false, err
+	if err := delivery.Ack(false); err != nil {
+		return true, err
 	}
 	var command messaging.CreditFunds
-	if err := messaging.Decode(msg, &command); err != nil {
+	if err := messaging.Decode(msg, &command); err != nil || command.TransferID != resumedTransferID || command.Amount <= 0 {
 		return false, nil
 	}
-	if command.TransferID != resumedTransferID || command.Amount <= 0 {
-		return false, nil
-	}
-	if err := b.delivery.Pause(command.TransferID); err != nil {
-		return false, err
+	if err := b.dedicated.Pause(command.TransferID); err != nil {
+		return true, fmt.Errorf("pause delivery: %w", err)
 	}
 	if err := pgx.BeginFunc(msg.Context(), b.db, func(tx pgx.Tx) error {
 		return b.observe(tx, command.TransferID, messaging.DeliveryPaused, msg)
 	}); err != nil {
-		return true, err
+		return true, fmt.Errorf("record delivery paused: %w", err)
 	}
 	b.logger.Info("delivery paused", "transfer_id", command.TransferID)
 	return true, nil

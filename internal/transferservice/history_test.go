@@ -158,7 +158,7 @@ func TestARowContinuesTheRowAboveOnlyForTheSameAttempt(t *testing.T) {
 func TestDeliveryResumedExplainsTheMeasuredBrokerWait(t *testing.T) {
 	confirmation := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	history := []historyEntry{
-		{Observation: creditAccepted, ObservedAt: confirmation},
+		{Observation: creditConfirmed, ObservedAt: confirmation},
 		{Observation: deliveryResumed, Service: "Bank B", ObservedAt: confirmation.Add(2500 * time.Millisecond)},
 		{Observation: deliveryPaused, Service: "Bank B"},
 	}

@@ -122,7 +122,7 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 
 func (s *Service) attachBroker(broker *messaging.Broker) {
 	s.broker = broker
-	broker.OnConfirmed(messaging.CreditFundsDedicatedTopic, s.creditAccepted)
+	broker.OnConfirmed(messaging.CreditFundsDedicatedTopic, s.creditConfirmed)
 	broker.Router.AddConsumerHandler("funds-debited",
 		messaging.FundsDebitedTopic, broker.Subscriber,
 		s.fundsDebited)

@@ -43,13 +43,13 @@ var (
 		[]string{messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.FundsRefundedTopic, messaging.ProcessingObservedTopic}}
 	Destination = Role{messaging.BankB,
 		[]command{{messaging.CreditFundsTopic, (*Bank).creditFunds}, {messaging.ResumeDeliveryTopic, (*Bank).resumeDelivery}},
-		[]string{messaging.FundsCreditedTopic, messaging.CreditRejectedTopic, messaging.ProcessingObservedTopic, messaging.CreditFundsDedicatedTopic}}
+		[]string{messaging.FundsCreditedTopic, messaging.CreditRejectedTopic, messaging.ProcessingObservedTopic}}
 )
 
 type Config struct {
-	OpeningBalance int64
-	Role           Role
-	Delivery       Delivery
+	OpeningBalance    int64
+	Role              Role
+	DedicatedConsumer DedicatedConsumer
 }
 
 type Bank struct {
@@ -58,7 +58,7 @@ type Bank struct {
 	role           Role
 	broker         *messaging.Broker
 	logger         *slog.Logger
-	delivery       Delivery
+	dedicated      DedicatedConsumer
 }
 
 func Run(ctx context.Context, settings service.Settings, config Config) error {
@@ -78,19 +78,19 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 	}
 	defer broker.Close()
 	b.attachBroker(broker)
-	var dedicated *dedicatedConsumer
+	var dedicated *amqpConsumer
 	if config.Role.service == messaging.BankB {
 		dedicated, err = openDedicated(settings.AMQPURL)
 		if err != nil {
 			return err
 		}
 		defer dedicated.connection.Close()
-		b.delivery = dedicated
+		b.dedicated = dedicated
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
 	if dedicated != nil {
-		g.Go(func() error { return dedicated.run(ctx, b) })
+		g.Go(func() error { dedicated.run(ctx, b); return nil })
 	}
 	g.Go(func() error { return broker.Run(ctx) })
 	g.Go(func() error { return broker.RunRelay(ctx, db, settings.Logger) })
@@ -105,7 +105,7 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 	if err := messaging.InboxAndOutbox.Create(ctx, db); err != nil {
 		return nil, err
 	}
-	return &Bank{db: db, role: config.Role, openingBalance: config.OpeningBalance, logger: logger, delivery: config.Delivery}, nil
+	return &Bank{db: db, role: config.Role, openingBalance: config.OpeningBalance, logger: logger, dedicated: config.DedicatedConsumer}, nil
 }
 
 func Reset(ctx context.Context, settings service.Settings, config Config) error {

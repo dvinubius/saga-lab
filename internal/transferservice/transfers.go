@@ -117,7 +117,7 @@ const (
 	admitted            observation = "Admitted"
 	nackRequested       observation = messaging.NackRequested
 	duplicateSuppressed observation = messaging.DuplicateSuppressed
-	creditAccepted      observation = messaging.CreditAccepted
+	creditConfirmed     observation = messaging.CreditConfirmed
 	deliveryResumed     observation = messaging.DeliveryResumed
 	deliveryPaused      observation = messaging.DeliveryPaused
 )
@@ -128,7 +128,7 @@ func (o observation) Label() string {
 		return "admitted"
 	case nackRequested:
 		return "couldn’t acknowledge after commit"
-	case creditAccepted:
+	case creditConfirmed:
 		return "the broker confirmed the credit command"
 	case deliveryResumed:
 		return "delivery resumed"
@@ -150,10 +150,9 @@ type transferSummary struct {
 
 type transfer struct {
 	transferSummary
-	RejectionReason   string         `json:"rejection_reason,omitempty"`
-	TraceID           string         `json:"trace_id,omitempty"`
-	CreditConfirmedAt *time.Time     `json:"credit_confirmed_at,omitempty"`
-	History           []historyEntry `json:"history,omitempty"`
+	RejectionReason string         `json:"rejection_reason,omitempty"`
+	TraceID         string         `json:"trace_id,omitempty"`
+	History         []historyEntry `json:"history,omitempty"`
 
 	VisualisationReady bool `json:"visualisation_ready"`
 }
@@ -192,11 +191,11 @@ func (s *Service) submit(ctx context.Context, amount int64, chosen scenario) (tr
 		return transfer{}, err
 	}
 	for {
-		admitted, err := s.admit(ctx, t, debit)
+		recorded, err := s.recordSubmission(ctx, t, debit)
 		if err != nil {
 			return transfer{}, fmt.Errorf("record transfer: %w", err)
 		}
-		if admitted {
+		if recorded {
 			break
 		}
 		// The conflicting transfer may have ended before this lookup; then admission is tried again.
@@ -211,7 +210,7 @@ func (s *Service) submit(ctx context.Context, amount int64, chosen scenario) (tr
 	return s.find(ctx, t.ID)
 }
 
-func (s *Service) admit(ctx context.Context, t transfer, debit *message.Message) (bool, error) {
+func (s *Service) recordSubmission(ctx context.Context, t transfer, debit *message.Message) (bool, error) {
 	insertedTransfer := false
 	queued := false
 	traceContext := propagation.MapCarrier{}
@@ -323,17 +322,23 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 	return endTransition(err, messaging.FundsDebitedTopic, event.TransferID, current, msg, logger)
 }
 
-func (s *Service) creditAccepted(ctx context.Context, tx pgx.Tx, msg *message.Message, confirmedAt time.Time) error {
+func (s *Service) creditConfirmed(ctx context.Context, tx pgx.Tx, msg *message.Message, confirmedAt time.Time) error {
 	var credit messaging.CreditFunds
 	if err := messaging.Decode(msg, &credit); err != nil {
-		return err
+		s.logger.Error("discard credit confirmation", "error", err)
+		return nil
 	}
 	var observedAt time.Time
-	if err := tx.QueryRow(ctx, `UPDATE transfers SET credit_confirmed_at = COALESCE(credit_confirmed_at, $2), resume_at = COALESCE(resume_at, $3) WHERE transfer_id = $1 RETURNING credit_confirmed_at`, credit.TransferID, confirmedAt, confirmedAt.Add(s.resumeWait)).Scan(&observedAt); err != nil {
+	err := tx.QueryRow(ctx, `UPDATE transfers SET credit_confirmed_at = COALESCE(credit_confirmed_at, $2), resume_at = COALESCE(resume_at, $3) WHERE transfer_id = $1 RETURNING credit_confirmed_at`, credit.TransferID, confirmedAt, confirmedAt.Add(s.resumeWait)).Scan(&observedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.logger.Warn("ignore credit confirmation for unknown transfer", "transfer_id", credit.TransferID, "message_id", msg.UUID)
+		return nil
+	}
+	if err != nil {
 		return err
 	}
 	return record(ctx, tx, credit.TransferID, historyEntry{
-		Observation: creditAccepted, Service: messaging.TransferService, ObservedAt: observedAt, MessageID: msg.UUID, CausationID: msg.UUID,
+		Observation: creditConfirmed, Service: messaging.TransferService, ObservedAt: observedAt, MessageID: msg.UUID, CausationID: msg.UUID,
 	})
 }
 
@@ -347,7 +352,7 @@ func (s *Service) debitRejected(msg *message.Message) error {
 	ctx := msg.Context()
 	current := ""
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-		if _, err := lockSlot(ctx, tx); err != nil {
+		if err := lockSlotFor(ctx, tx, event.TransferID); err != nil {
 			return err
 		}
 		updated, err := tx.Exec(ctx,
@@ -387,7 +392,7 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 	ctx := msg.Context()
 	current := ""
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-		if _, err := lockSlot(ctx, tx); err != nil {
+		if err := lockSlotFor(ctx, tx, event.TransferID); err != nil {
 			return err
 		}
 		updated, err := tx.Exec(ctx,
@@ -560,9 +565,9 @@ func record(ctx context.Context, tx pgx.Tx, transferID string, entry historyEntr
 func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	t := transfer{transferSummary: transferSummary{ID: id}}
 	err := s.db.QueryRow(ctx,
-		`SELECT amount, scenario, status, COALESCE(rejection_reason, ''), COALESCE(trace_id, ''), requested_at, credit_confirmed_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
+		`SELECT amount, scenario, status, COALESCE(rejection_reason, ''), COALESCE(trace_id, ''), requested_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
 		id, visitor.ID(ctx),
-	).Scan(&t.Amount, &t.Scenario, &t.Status, &t.RejectionReason, &t.TraceID, &t.RequestedAt, &t.CreditConfirmedAt)
+	).Scan(&t.Amount, &t.Scenario, &t.Status, &t.RejectionReason, &t.TraceID, &t.RequestedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return transfer{}, errTransferNotFound
 	}
@@ -598,7 +603,7 @@ func visualisationReady(chosen scenario, current status, history []historyEntry)
 	case chosen == bankBUnavailable:
 		confirmed, resumed := false, false
 		for _, e := range history {
-			confirmed = confirmed || e.Observation == creditAccepted
+			confirmed = confirmed || e.Observation == creditConfirmed
 			resumed = resumed || e.Observation == deliveryResumed
 		}
 		return confirmed && resumed
