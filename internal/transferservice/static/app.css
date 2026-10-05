@@ -290,6 +290,19 @@ button,.btn,a{transition:var(--hover-transition);}
 .playback-note:empty{display:none;}
 .playback-controls{display:flex;gap:12px;}
 
+.diagram{display:block;font-family:var(--font-mono);font-size:var(--text-mono-meta);}
+.diagram rect{fill:none;stroke:var(--text-muted);}
+.diagram text{fill:var(--text-muted);text-anchor:middle;dominant-baseline:central;}
+.diagram line{stroke:var(--text-muted);}
+.diagram [data-lit] rect{stroke:var(--text-body);}
+.diagram [data-lit] text{fill:var(--text-body);}
+.diagram line[data-lit]{stroke:var(--teal);stroke-width:2;}
+.diagram line[data-lit="forward"]{marker-end:url(#diagram-arrow);}
+.diagram line[data-lit="backward"]{marker-start:url(#diagram-arrow);}
+.diagram marker path{fill:none;stroke:var(--teal);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}
+.diagram .no-consumer{fill:var(--danger);text-anchor:start;}
+.diagram:not([data-no-consumer]) .no-consumer{display:none;}
+
 .outcome .table{table-layout:fixed;}
 .outcome .table th:first-child{width:178px;}
 
