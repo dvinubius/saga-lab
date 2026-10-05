@@ -1,6 +1,6 @@
 # Milestone 5 — Agreed scope
 
-Build specification: not yet written.
+Build specification: [GitHub issue #54 — Complete visitor experience: top-ups, outcome summary and playback](https://github.com/dvinubius/saga-lab/issues/54).
 
 These decisions refine milestone 5. Everything in the milestone 5 entry in [Milestones](../saga-lab-04-milestones.md) is in scope. Cookie-associated visitors, visitor-owned accounts and all five scenarios already shipped in milestone 4.
 
