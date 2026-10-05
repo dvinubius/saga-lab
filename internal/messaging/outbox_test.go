@@ -2,11 +2,21 @@ package messaging_test
 
 import (
 	"context"
+	"io"
+	"log/slog"
+	"os"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/ThreeDotsLabs/watermill"
 	"github.com/dvinubius/saga-lab/internal/messaging"
+	"github.com/dvinubius/saga-lab/internal/postgres"
 	"github.com/dvinubius/saga-lab/internal/postgres/pgtest"
 	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestRecreateEmptiesTheInboxAndOutbox(t *testing.T) {
@@ -65,5 +75,74 @@ func TestOutboxTablesHaveNoInbox(t *testing.T) {
 	}
 	if inbox || !outbox {
 		t.Fatalf("inbox exists = %v, outbox exists = %v, want only the outbox", inbox, outbox)
+	}
+}
+
+func TestRelayRecordsOnlyItsSendSpans(t *testing.T) {
+	amqpURL := os.Getenv("SAGA_LAB_AMQP_URL")
+	if amqpURL == "" {
+		t.Skip("SAGA_LAB_AMQP_URL is not set; run scripts/test.sh")
+	}
+	recorder := tracetest.NewSpanRecorder()
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)))
+	t.Cleanup(func() { otel.SetTracerProvider(previous) })
+
+	id := strings.ReplaceAll(watermill.NewUUID(), "-", "")
+	ctx := context.Background()
+	db, err := postgres.Connect(ctx, pgtest.NewServiceDatabase(t, "relay_"+id))
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(db.Close)
+	if err := messaging.Outbox.Create(ctx, db); err != nil {
+		t.Fatalf("create tables: %v", err)
+	}
+	topic := "RelaySpans_" + id
+	broker, err := messaging.Connect(amqpURL, slog.New(slog.NewTextHandler(io.Discard, nil)), topic)
+	if err != nil {
+		t.Fatalf("connect broker: %v", err)
+	}
+	t.Cleanup(func() { broker.Close() })
+	err = pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
+		msg, err := messaging.New(ctx, "transfer", messaging.DebitFunds{TransferID: "transfer", Amount: 25}, "")
+		if err != nil {
+			return err
+		}
+		return messaging.Enqueue(ctx, tx, topic, msg)
+	})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	relayCtx, stop := context.WithCancel(ctx)
+	relayed := make(chan error)
+	go func() { relayed <- broker.RunRelay(relayCtx, db, slog.New(slog.NewTextHandler(io.Discard, nil))) }()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var pending int
+		if err := db.QueryRow(ctx, `SELECT count(*) FROM outbox`).Scan(&pending); err != nil {
+			t.Fatalf("count outbox rows: %v", err)
+		}
+		if pending == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("outbox still holds %d rows after test deadline", pending)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(300 * time.Millisecond)
+	stop()
+	if err := <-relayed; err != nil {
+		t.Fatalf("relay: %v", err)
+	}
+
+	var names []string
+	for _, s := range recorder.Ended() {
+		names = append(names, s.Name())
+	}
+	if len(names) != 1 || names[0] != "send "+topic {
+		t.Fatalf("recorded spans = %q, want only %q", names, "send "+topic)
 	}
 }

@@ -83,6 +83,9 @@ func TestTransferTraceCoversAllServices(t *testing.T) {
 			if !first.Failed || !slices.Contains(first.Events, "fault.injected") {
 				t.Errorf("first attempt failed = %v, events = %q, want error status and fault.injected", first.Failed, first.Events)
 			}
+			if second.Failed || !slices.Contains(second.Events, "duplicate.suppressed") {
+				t.Errorf("second attempt failed = %v, events = %q, want no error status and duplicate.suppressed", second.Failed, second.Events)
+			}
 			return
 		}
 		if time.Now().After(deadline) {
