@@ -187,10 +187,12 @@ because `ⓘ` is outside the vendored font subsets.
    apart. Where two sections need a firmer break, a hairline centred in the
    gap divides them.
 
-3. **The product wordmark carries a mark**, hooklook-style. "sagas" in
+3. **The product wordmark carries a mark**, hooklook-style. "SAGAS" in
    Space Grotesk 500 at 24px with the wordmark's −0.018em tracking, in body
-   text, after the mark. It wears no brackets — those belong to the personal
-   wordmark in the footer. It is the page's `h1` and links home.
+   text, after the mark. The template says "sagas" and CSS sets it in caps,
+   so a screen reader reads a word rather than letters; the name in running
+   text and titles stays lowercase. It wears no brackets — those belong to
+   the personal wordmark in the footer. It is the page's `h1` and links home.
 
    The mark is a pair of nodes on a looping path around a hub: two rounded
    squares on the diagonal, top-right and bottom-left, joined anticlockwise by
