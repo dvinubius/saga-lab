@@ -25,6 +25,8 @@ type historyRow struct {
 	PlayedAt   time.Time
 	Dwell      time.Duration
 	Gap        string
+	Path       string
+	NoConsumer bool
 }
 
 func historyRows(history []historyEntry) []historyRow {
@@ -49,6 +51,7 @@ func historyRows(history []historyEntry) []historyRow {
 			continue
 		}
 		row := historyRow{historyEntry: e, Lane: slices.Index(lanes, e.Service), Cause: topics[e.CausationID], About: about(e, ackLost), Label: e.Observation.Label(), Balance: balanceChange(e)}
+		row.Path, row.NoConsumer = travelled(e, topics[e.CausationID])
 		if e.Observation == admitted && !requestedAt.IsZero() {
 			row.Label = fmt.Sprintf("admitted after waiting %.1f s for another visitor’s demo", e.ObservedAt.Sub(requestedAt).Seconds())
 		}
@@ -78,15 +81,49 @@ func historyRows(history []historyEntry) []historyRow {
 		}
 		rows = append(rows, row)
 		if e.Observation == creditConfirmed {
-			rows = append(rows, historyRow{
+			waiting := historyRow{
 				historyEntry: historyEntry{Observation: deliveryWaiting, Service: messaging.BankB},
 				Lane:         slices.Index(lanes, messaging.BankB),
 				Label:        deliveryWaiting.Label(),
 				About:        "A missing consumer simulates Bank B being down. The credit command waits in the broker's queue with no consumer, neither delivered nor failed.",
-			})
+			}
+			waiting.Path, waiting.NoConsumer = travelled(waiting.historyEntry, "")
+			rows = append(rows, waiting)
 		}
 	}
 	return rows
+}
+
+var routes = map[string]struct{ from, to string }{
+	messaging.DebitFundsTopic:     {"transfer-service", "bank-a"},
+	messaging.RefundFundsTopic:    {"transfer-service", "bank-a"},
+	messaging.CreditFundsTopic:    {"transfer-service", "bank-b"},
+	messaging.FundsDebitedTopic:   {"bank-a", "transfer-service"},
+	messaging.DebitRejectedTopic:  {"bank-a", "transfer-service"},
+	messaging.FundsRefundedTopic:  {"bank-a", "transfer-service"},
+	messaging.FundsCreditedTopic:  {"bank-b", "transfer-service"},
+	messaging.CreditRejectedTopic: {"bank-b", "transfer-service"},
+}
+
+func travelled(e historyEntry, topic string) (path string, noConsumer bool) {
+	switch {
+	case e.Step == requested, e.Observation == admitted, e.Observation == creditConfirmed:
+		return "transfer-service broker", false
+	case e.Observation == deliveryWaiting:
+		return "broker", true
+	case e.Observation == deliveryResumed:
+		return "broker bank-b", false
+	}
+	route, ok := routes[topic]
+	switch {
+	case !ok:
+		return "", false
+	case e.Observation == nackRequested:
+		return route.to + " broker", false
+	case e.Observation == duplicateSuppressed:
+		return "broker " + route.to, false
+	}
+	return route.from + " broker " + route.to, false
 }
 
 func balanceChange(e historyEntry) string {
