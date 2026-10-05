@@ -90,15 +90,16 @@ Mono (everything technical: IDs, amounts in lists, service names, timestamps,
 labels; 400/500 only). The mono tokens are already sized at 0.93× nominal.
 Space Grotesk has no true italic — emphasis is weight or accent, never
 synthesized slant. Headings are 500 at −0.022em. Sentence case everywhere;
-section labels are set in caps by CSS — see adaptation 10.
+section labels are set in caps by CSS — see adaptation 10 — and the History
+table's `//` asides are lowercase — see rule 14.
 
 **Shape.** 2px corners on controls and surfaces (adaptation 5). No shadows,
 inner or outer. No gradients, textures or background imagery. Separation is
 1px hairlines (`#E6E6E6` light / `#2C2C2C` dark, non-text only) and flat
 neutral fills. Cards are a neutral fill (`--surface-card`) with no border and
 no shadow — the two balance cards, and a transfer's In depth section, which
-holds the links that leave the page for raw evidence (**View as JSON →**,
-**Explore the trace in Grafana →**, which opens in a new tab). A section on a
+holds the links that leave the page for raw evidence (**View as JSON →** and
+**Explore the trace in Grafana →**, both of which open in a new tab). A section on a
 card keeps its own label and gap and takes the card's 16px × 18px padding.
 
 **Code and terminal surfaces** follow the theme — hooklook's departure from
@@ -155,9 +156,11 @@ outline to the muted grey.
 **Glyphs.** The brand has no icon system and no emoji: Unicode does icon duty —
 `↳` `·` `→` `←` `×` `✓` `//` `[ ]`, all of which ship in the vendored font
 subsets. `×` and `✓` are a valence pair, used together, never as a lone
-decorative tick. The only drawn icons are the theme switch's sun and moon and
-the GitHub mark in the footer, drawn inline in the template in
-`currentColor`.
+decorative tick. The only drawn icons are the theme switch's sun and moon, the
+GitHub mark in the footer, and the info mark after a History entry that has an
+explanation (a circled "i", 14px, muted at rest and body on hover or focus),
+all drawn inline in the template in `currentColor`. The info mark is drawn
+because `ⓘ` is outside the vendored font subsets.
 
 ## Adaptations for this app
 
@@ -216,7 +219,7 @@ the GitHub mark in the footer, drawn inline in the template in
    | --- | --- | --- | --- |
    | `--text-body` | Ink, 17.6:1 | Paper, 17.6:1 | the wordmarks, titles, section labels, balance figures, the name column of a row, a History entry's label |
    | `--text-dim` | `#3D3D3D`, 10.4:1 | `#B5B5B5`, 9.0:1 | prose, control labels, units, statuses, fact values, table values, the History table's observed time |
-   | `--text-muted` | Stone, 4.9:1 | Muted on Dark, 6.6:1 | the theme switch at rest, the footer credit, placeholders, `//` asides, the detail line under a history entry |
+   | `--text-muted` | Stone, 4.9:1 | Muted on Dark, 6.6:1 | the theme switch at rest, the footer credit, placeholders, `//` asides, the detail line under a history entry, the info mark at rest, a float's edge |
 
    **A label outranks what sits beside it:** "Bank A" is body, its "credits"
    is dim; a fact's name is body, its value dim.
@@ -228,13 +231,19 @@ the GitHub mark in the footer, drawn inline in the template in
    Here the observed time is what orders the History table, so it stays one
    tier up, in dim.
 
-7. **Floating layers** — popovers, menus, dialogs — do not exist yet. When
-   one appears it takes hooklook's treatment: `--surface-float` as its fill
-   (a step off the page on dark; the page itself on light, where there is no
-   room), a Stone edge on light and Muted on Dark on dark, and
-   `--float-hairline` redefined as `--hairline` for its subtree. A fill
-   inside a float mixes from `--surface-float` toward `--text-body`. A modal
-   keeps a hairline rather than a Stone edge. The tokens are declared.
+7. **Floating layers** — popovers, menus, dialogs — take hooklook's
+   treatment: `--surface-float` as their fill (a step off the page on dark;
+   the page itself on light, where there is no room), a Stone edge on light
+   and Muted on Dark on dark, and `--float-hairline` redefined as `--hairline`
+   for their subtree. A fill inside a float mixes from `--surface-float`
+   toward `--text-body`. A modal keeps a hairline rather than a Stone edge.
+
+   The first is the explanation behind a History entry's info mark (`.float`):
+   a native popover, opened by clicking the mark and closed by clicking
+   elsewhere or Esc, at most 360px wide, holding prose set like a `.note`. It
+   is anchored under the mark where the browser supports anchor positioning,
+   and centred in the viewport where it does not. A page that is still
+   reloading itself closes it on the next reload.
 
 8. **A fill steps off its own ground, not off the page.** `--surface-shade` is
    a fill whose ground is the page — the hover of a row in the Transfers list.
@@ -334,10 +343,13 @@ the GitHub mark in the footer, drawn inline in the template in
     recorded here first.
 
     *The one exception, a recorded departure:* the two processing-observation
-    labels in the History table. "Failed after commit; requeue requested"
-    (`NackRequested`) is Brick (`--danger`); "Repeat recognised; nothing
+    labels in the History table. "couldn’t acknowledge after commit"
+    (`NackRequested`) is Brick (`--danger`) and is followed by the info mark,
+    whose popover explains that the lost acknowledgement is simulated by
+    requesting a redelivery; "repeat recognised; nothing
     applied" (`DuplicateSuppressed`) is Teal at weight 500. The styles belong
     to the observation, not the bank, so a Bank B `DuplicateSuppressed` looks
     the same. Both keep their words and their `// ` prefix, so the hue is
-    never the only signal. The accent was tried for `DuplicateSuppressed` and
+    never the only signal. Like the machine's other `//` asides, both are
+    lowercase rather than sentence case. The accent was tried for `DuplicateSuppressed` and
     sat too close to Brick on the light theme, hence Teal.

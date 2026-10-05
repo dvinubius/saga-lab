@@ -25,7 +25,7 @@ import (
 //go:embed schema.sql
 var schema string
 
-var errInjectedFailure = errors.New("injected failure after commit")
+var errInjectedFailure = errors.New("injected lost acknowledgement after commit")
 
 type Role struct {
 	service         string
@@ -185,7 +185,7 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 		return err
 	}
 	trace.SpanFromContext(msg.Context()).AddEvent("fault.injected")
-	logger.Warn("handler failed after commit; Nack (requeue) requested", "transfer_id", command.TransferID, "message_id", msg.UUID)
+	logger.Warn("simulating lost acknowledgement after commit; Nack (requeue) requested", "transfer_id", command.TransferID, "message_id", msg.UUID)
 	if err := pgx.BeginFunc(msg.Context(), b.db, func(tx pgx.Tx) error {
 		return b.observe(tx, command.TransferID, messaging.NackRequested, msg)
 	}); err != nil {
