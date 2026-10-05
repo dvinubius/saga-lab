@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	amqpURLVariable       = "SAGAS_AMQP_URL"
-	managementURLVariable = "SAGAS_RABBITMQ_MANAGEMENT_URL"
+	amqpURLVariable       = "SAGA_LAB_AMQP_URL"
+	managementURLVariable = "SAGA_LAB_RABBITMQ_MANAGEMENT_URL"
 	readinessDeadline     = 30 * time.Second
 	stopDeadline          = 10 * time.Second
 )

@@ -5,21 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="A live demonstration of orchestrated Sagas: a Transfer Service coordinates transfers of fictional credits between two independently owned banks.">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-<meta property="og:site_name" content="sagas">
-<meta property="og:title" content="sagas · Dinu Barbu">
+<meta property="og:site_name" content="Saga Lab">
+<meta property="og:title" content="Saga Lab · Dinu Barbu">
 <meta property="og:description" content="A live demonstration of orchestrated Sagas: a Transfer Service coordinates transfers of fictional credits between two independently owned banks.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://sagas.dinubarbu.com/">
-<meta property="og:image" content="https://sagas.dinubarbu.com/static/sagas-logo-row.png">
+<meta property="og:url" content="https://saga.dinubarbu.com/">
+<meta property="og:image" content="https://saga.dinubarbu.com/static/saga-lab-logo-row.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1920">
 <meta property="og:image:height" content="1080">
-<meta property="og:image:alt" content="sagas logo beside the wordmark on a dark background">
+<meta property="og:image:alt" content="Saga Lab logo beside the wordmark on a dark background">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="sagas · Dinu Barbu">
+<meta name="twitter:title" content="Saga Lab · Dinu Barbu">
 <meta name="twitter:description" content="A live demonstration of orchestrated Sagas: a Transfer Service coordinates transfers of fictional credits between two independently owned banks.">
-<meta name="twitter:image" content="https://sagas.dinubarbu.com/static/sagas-logo-row.png">
-<meta name="twitter:image:alt" content="sagas logo beside the wordmark on a dark background">
+<meta name="twitter:image" content="https://saga.dinubarbu.com/static/saga-lab-logo-row.png">
+<meta name="twitter:image:alt" content="Saga Lab logo beside the wordmark on a dark background">
 <link rel="stylesheet" href="/static/brand.css">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/theme.js"></script>
@@ -37,7 +37,7 @@
       <path d="M12.5 5H9a4 4 0 0 0-4 4v3M7 10l-2 2-2-2"/>
       <path d="M11.5 19H15a4 4 0 0 0 4-4v-3M17 14l2-2 2 2"/>
       <circle class="hub" cx="12" cy="12" r="2"/>
-    </svg>sagas</a></h1>
+    </svg>Saga Lab</a></h1>
   <button class="theme-toggle" type="button" aria-label="Switch to light theme" title="Switch to light theme">
     <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
       <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>
@@ -54,12 +54,12 @@
 {{define "foot"}}</main>
 <footer class="foot">
   <p class="signature"><span class="bracket">[ </span>Dinu Barbu<span class="bracket"> ]</span></p>
-  <a class="credit" href="https://github.com/dvinubius/saga-lab" title="sagas on GitHub">
+  <a class="credit" href="https://github.com/dvinubius/saga-lab" title="Saga Lab on GitHub">
     ↳ dvinubius
     <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
       <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
     </svg>
-    <span class="sr-only">— sagas on GitHub</span>
+    <span class="sr-only">— Saga Lab on GitHub</span>
   </a>
   <a class="quiet-link" href="https://dinubarbu.com">→ dinubarbu.com</a>
 </footer>
@@ -89,7 +89,7 @@
 {{define "history-entry"}}{{if not .Continues}}{{with .Cause}}<span class="meta">{{.}}{{if gt $.Attempt 1}} · attempt {{$.Attempt}}{{end}}{{if $.AboutCause}}{{template "about" $}}{{end}}</span>{{end}}{{end}}{{with .Observation.Title}}<span class="meta">{{.}}</span>{{end}}
 {{if .Step}}<span class="label">{{.Step.Label}}</span>{{template "about" .}}{{with .Step.LabelTail}}<span class="label">{{.}}</span>{{end}}{{else}}<span class="label">{{.Label}}</span>{{if not .AboutCause}}{{template "about" .}}{{end}}{{end}}{{end}}
 
-{{define "home"}}{{template "head"}}<title>sagas</title>
+{{define "home"}}{{template "head"}}<title>Saga Lab</title>
 {{if and .PendingID (not .Overlap)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
 {{template "top"}}
 <section class="section">
@@ -129,7 +129,7 @@
 {{end}}
 {{template "foot"}}{{end}}
 
-{{define "transfer"}}{{template "head"}}<title>Transfer {{.Transfer.ID}} · sagas</title>
+{{define "transfer"}}{{template "head"}}<title>Transfer {{.Transfer.ID}} · Saga Lab</title>
 {{if not .Transfer.VisualisationReady}}<meta http-equiv="refresh" content="1">{{end}}
 {{template "top"}}
 {{template "balances" .Balances}}

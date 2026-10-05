@@ -71,7 +71,6 @@ button,.btn,a{transition:var(--hover-transition);}
   font-weight:500;
   letter-spacing:var(--track-wordmark);
   line-height:var(--leading-heading);
-  text-transform:uppercase;
 }
 .wordmark a{
   display:inline-flex;

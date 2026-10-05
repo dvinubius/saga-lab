@@ -82,9 +82,9 @@ func TestOutboxTablesHaveNoInbox(t *testing.T) {
 }
 
 func TestRelayRecordsOnlyItsSendSpans(t *testing.T) {
-	amqpURL := os.Getenv("SAGAS_AMQP_URL")
+	amqpURL := os.Getenv("SAGA_LAB_AMQP_URL")
 	if amqpURL == "" {
-		t.Skip("SAGAS_AMQP_URL is not set; run scripts/test.sh")
+		t.Skip("SAGA_LAB_AMQP_URL is not set; run scripts/test.sh")
 	}
 	recorder := tracetest.NewSpanRecorder()
 	previous := otel.GetTracerProvider()
@@ -151,9 +151,9 @@ func TestRelayRecordsOnlyItsSendSpans(t *testing.T) {
 }
 
 func TestRelayKeepsEarlierEntriesPublishedWhenAConfirmationHookFails(t *testing.T) {
-	amqpURL := os.Getenv("SAGAS_AMQP_URL")
+	amqpURL := os.Getenv("SAGA_LAB_AMQP_URL")
 	if amqpURL == "" {
-		t.Skip("SAGAS_AMQP_URL is not set; run scripts/test.sh")
+		t.Skip("SAGA_LAB_AMQP_URL is not set; run scripts/test.sh")
 	}
 	id := strings.ReplaceAll(watermill.NewUUID(), "-", "")
 	ctx := context.Background()

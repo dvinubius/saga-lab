@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	projectPrefixVariable = "SAGAS_ACCEPTANCE_PREFIX"
+	projectPrefixVariable = "SAGA_LAB_ACCEPTANCE_PREFIX"
 	composeDeadline       = 3 * time.Minute
 )
 
@@ -22,12 +22,12 @@ type composeDemonstration struct {
 
 func startComposeDemonstration(t *testing.T) *composeDemonstration {
 	t.Helper()
-	return startProject(t, []string{"SAGAS_OTLP_ENDPOINT="}, "transfer-service")
+	return startProject(t, []string{"SAGA_LAB_OTLP_ENDPOINT="}, "transfer-service")
 }
 
 func startObservedDemonstration(t *testing.T) *composeDemonstration {
 	t.Helper()
-	return startProject(t, []string{"SAGAS_OTLP_ENDPOINT=http://otel-collector:4318"})
+	return startProject(t, []string{"SAGA_LAB_OTLP_ENDPOINT=http://otel-collector:4318"})
 }
 
 func startProject(t *testing.T, env []string, services ...string) *composeDemonstration {
@@ -92,7 +92,7 @@ func composeEnv(env []string) []string {
 		"OTEL_COLLECTOR_HTTP_PORT=",
 		"TEMPO_PORT=",
 		"GRAFANA_PORT=",
-		"SAGAS_BANK_B_RESUME_WAIT=2.5s",
+		"SAGA_LAB_BANK_B_RESUME_WAIT=2.5s",
 	), env...)
 }
 

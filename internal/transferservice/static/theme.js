@@ -1,5 +1,5 @@
 (() => {
-  const key = "sagas.theme";
+  const key = "saga-lab.theme";
   const root = document.documentElement;
   try {
     if (localStorage.getItem(key) === "light") root.dataset.theme = "light";

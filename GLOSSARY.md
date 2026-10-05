@@ -1,4 +1,4 @@
-# sagas
+# Saga Lab
 
 Language for a demonstration of orchestrated transfers of fictional credits between two independent banks.
 

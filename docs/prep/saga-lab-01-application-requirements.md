@@ -1,10 +1,10 @@
-# sagas — Application Requirements
+# Saga Lab — Application Requirements
 
 **Scope of this document:** what the application must demonstrate and what a visitor should experience. Implementation choices, testing infrastructure, and observability technology belong in the other two documents.
 
 ## 1. Purpose and scope
 
-sagas is a small, public, interactive demonstration of **orchestrated Sagas**: a coordinator guides a business operation across independently owned services, each of which commits its own changes. When an operation cannot finish, the coordinator initiates compensating actions rather than rolling back a distributed transaction.
+Saga Lab is a small, public, interactive demonstration of **orchestrated Sagas**: a coordinator guides a business operation across independently owned services, each of which commits its own changes. When an operation cannot finish, the coordinator initiates compensating actions rather than rolling back a distributed transaction.
 
 The first and only V1 business example is a transfer of **fictional credits between two independent banks**. The banking scenario makes the correctness requirements easy to understand; it is not the identity of the project. The design should leave room for other orchestrated-Saga demonstrations in the future **without building a generic Saga engine now**.
 

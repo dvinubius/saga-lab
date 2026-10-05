@@ -2,7 +2,7 @@
 
 Build specification: [GitHub issue #48 — Bank B unavailable: isolated consumer unavailability and serialized admission](https://github.com/dvinubius/saga-lab/issues/48).
 
-These decisions refine milestone 4. Everything in the milestone 4 entry in [Milestones](../sagas-04-milestones.md) is in scope.
+These decisions refine milestone 4. Everything in the milestone 4 entry in [Milestones](../saga-lab-04-milestones.md) is in scope.
 
 - **Visitors:** a minimal cookie-associated visitor replaces the prepared visitor, so that different visitors can contend for admission. A request without a visitor cookie receives an opaque random ID. The first time the Transfer Service sees a visitor, it opens both accounts idempotently over the banks' internal HTTP: 100 credits at Bank A, zero at Bank B. Balances, the transfer list, the pending-transfer restriction and transfer lookups are scoped to the visitor; another visitor's transfer is not found. The JSON API uses the same cookie. Generated bank names and top-ups remain in milestone 5.
 - **Scenario:** the home form adds "Bank B unavailable" as the fourth of five scenarios, before Credit rejection & refund redelivery. The name stays simple: it hides that only one dedicated consumer stops, while Bank B keeps serving every other transfer.

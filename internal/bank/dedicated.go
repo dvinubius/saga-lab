@@ -27,7 +27,7 @@ type resumedStream struct {
 	deliveries <-chan amqp091.Delivery
 }
 
-const dedicatedConsumerTag = "sagas-bank-b-dedicated"
+const dedicatedConsumerTag = "saga-lab-bank-b-dedicated"
 
 func openDedicated(url string) (*amqpConsumer, error) {
 	conn, err := amqp091.Dial(url)

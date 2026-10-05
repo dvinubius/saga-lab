@@ -1,6 +1,6 @@
-# sagas — Milestones
+# Saga Lab — Milestones
 
-**Scope:** delivery sequence for the V1 target described in [Application Requirements](sagas-01-application-requirements.md), [Technical Plan](sagas-02-technical-plan.md), and [Observability](sagas-03-observability.md). Early milestones deliberately implement only part of that target.
+**Scope:** delivery sequence for the V1 target described in [Application Requirements](saga-lab-01-application-requirements.md), [Technical Plan](saga-lab-02-technical-plan.md), and [Observability](saga-lab-03-observability.md). Early milestones deliberately implement only part of that target.
 
 Each milestone ends in demonstrable behavior with its own tests and recorded evidence. Basic logs, tracing, and durable history grow with the behavior; final verification is not postponed until release.
 

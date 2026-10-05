@@ -2,7 +2,7 @@
 
 Build specification: [GitHub issue #42 — Compensation, including duplicate-safe refunds](https://github.com/dvinubius/saga-lab/issues/42).
 
-These decisions refine milestone 3. Everything in the milestone 3 entry in [Milestones](../sagas-04-milestones.md) is in scope.
+These decisions refine milestone 3. Everything in the milestone 3 entry in [Milestones](../saga-lab-04-milestones.md) is in scope.
 
 - **Scenarios:** the home form adds Credit rejection and Refund redelivery after Happy path and Debit redelivery. In both, Bank B rejects the credit after Bank A's debit and Bank A refunds. Under credit rejection the refund command is delivered once. Under refund redelivery Bank A commits the refund, then fails once before acknowledging, and recognises the redelivered command. Both end refunded, with the source balance restored and no credit at Bank B. Insufficient funds still ends in an ordinary debit rejection.
 - **Credit rejection:** the rejection is a business outcome the scenario selects, not an injected fault. It concerns one credit operation, not the account. Bank B gives the reason "Credit refused by Bank B", and it is shown like a debit rejection's reason. The scenario travels in every bank command, so each bank acts only on its exact scenario.
