@@ -141,9 +141,9 @@ func (b *Broker) relay(ctx context.Context, db *pgxpool.Pool) (int, *outboxEntry
 	}
 	published := 0
 	var failed *outboxEntry
-	var publishErr error
+	var entryErr error
 	for _, entry := range entries {
-		if publishErr = b.forward(ctx, entry); publishErr != nil {
+		if entryErr = b.forward(ctx, entry); entryErr != nil {
 			failed = &entry
 			break
 		}
@@ -152,8 +152,10 @@ func (b *Broker) relay(ctx context.Context, db *pgxpool.Pool) (int, *outboxEntry
 			msg := message.NewMessage(entry.MessageID, entry.Payload)
 			msg.Metadata = entry.Metadata
 			msg.SetContext(ctx)
-			if err := hook(ctx, tx, msg, confirmedAt); err != nil {
-				return published, &entry, fmt.Errorf("record confirmed %s message %s: %w", entry.Topic, entry.MessageID, err)
+			if err := pgx.BeginFunc(ctx, tx, func(savepoint pgx.Tx) error { return hook(ctx, savepoint, msg, confirmedAt) }); err != nil {
+				failed = &entry
+				entryErr = fmt.Errorf("record confirmed %s message %s: %w", entry.Topic, entry.MessageID, err)
+				break
 			}
 		}
 		published++
@@ -164,7 +166,7 @@ func (b *Broker) relay(ctx context.Context, db *pgxpool.Pool) (int, *outboxEntry
 	if err := tx.Commit(ctx); err != nil {
 		return published, nil, err
 	}
-	return published, failed, publishErr
+	return published, failed, entryErr
 }
 
 func (b *Broker) forward(ctx context.Context, entry outboxEntry) error {

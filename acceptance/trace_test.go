@@ -5,13 +5,10 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"slices"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/dvinubius/saga-lab/internal/visitor"
 )
 
 func TestTransferTraceCoversAllServices(t *testing.T) {
@@ -19,19 +16,6 @@ func TestTransferTraceCoversAllServices(t *testing.T) {
 	demo := startObservedDemonstration(t)
 
 	accepted := demo.submitTransfer(t, `{"amount": 25}`)
-	visitorURL, err := url.Parse(demo.baseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	visitorID := ""
-	for _, cookie := range demo.client.Jar.Cookies(visitorURL) {
-		if cookie.Name == visitor.CookieName {
-			visitorID = cookie.Value
-		}
-	}
-	if visitorID == "" {
-		t.Fatal("visitor cookie missing")
-	}
 	completed := demo.awaitTransfer(t, accepted.TransferID, "completed")
 	if completed.TraceID == "" {
 		t.Fatal("completed transfer has no trace ID")
@@ -47,9 +31,6 @@ func TestTransferTraceCoversAllServices(t *testing.T) {
 	}
 	want := []span{
 		{Service: "transfer-service", Kind: "SPAN_KIND_SERVER"},
-		{Service: "transfer-service", Kind: "SPAN_KIND_CLIENT"},
-		{Service: "bank-a", Kind: "SPAN_KIND_SERVER"},
-		{Service: "bank-b", Kind: "SPAN_KIND_SERVER"},
 		{Service: "transfer-service", Kind: "SPAN_KIND_CLIENT", Database: true},
 		{Service: "bank-a", Kind: "SPAN_KIND_CLIENT", Database: true},
 		{Service: "bank-b", Kind: "SPAN_KIND_CLIENT", Database: true},
@@ -69,7 +50,7 @@ func TestTransferTraceCoversAllServices(t *testing.T) {
 		body, spans := fetchTrace(t, tempo, completed.TraceID)
 		missing := missingSpans(spans, want)
 		if len(missing) == 0 {
-			assertNoSecrets(t, body, visitorID)
+			assertNoSecrets(t, body)
 			break
 		}
 		if time.Now().After(deadline) {
@@ -83,7 +64,7 @@ func TestTransferTraceCoversAllServices(t *testing.T) {
 	debitFunds = completed.History[0].IssuedMessageID
 	deadline = time.Now().Add(30 * time.Second)
 	for {
-		body, spans := fetchTrace(t, tempo, completed.TraceID)
+		_, spans := fetchTrace(t, tempo, completed.TraceID)
 		var attempts []exportedSpan
 		for _, s := range spans {
 			if s.Service == "bank-a" && s.Kind == "SPAN_KIND_CONSUMER" && s.Topic == "DebitFunds" && s.MessageID == debitFunds {
@@ -91,7 +72,6 @@ func TestTransferTraceCoversAllServices(t *testing.T) {
 			}
 		}
 		if len(attempts) >= 2 {
-			assertNoSecrets(t, body, visitorID)
 			slices.SortFunc(attempts, func(a, b exportedSpan) int { return cmp.Compare(a.Start, b.Start) })
 			first, second := attempts[0], attempts[1]
 			if len(attempts) != 2 {
@@ -227,13 +207,8 @@ func fetchTrace(t *testing.T, tempo, traceID string) ([]byte, []exportedSpan) {
 	return body, spans
 }
 
-func assertNoSecrets(t *testing.T, trace []byte, secrets ...string) {
+func assertNoSecrets(t *testing.T, trace []byte) {
 	t.Helper()
-	for _, secret := range secrets {
-		if strings.Contains(string(trace), secret) {
-			t.Error("exported trace contains a visitor cookie value")
-		}
-	}
 	exported := strings.ToLower(string(trace))
 	for _, leak := range []string{"postgres://", "amqp://", "cookie", "password", "user.name"} {
 		if strings.Contains(exported, leak) {

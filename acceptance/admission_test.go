@@ -87,7 +87,7 @@ func TestRejectedUnavailableTransferAdmitsTheWaitingVisitor(t *testing.T) {
 	second.assertBalances(t, 100, 0)
 	release()
 	rejected := demo.awaitReadiness(t, holder.TransferID, "rejected")
-	if len(observations(rejected.History, "CreditAccepted")) != 0 {
+	if len(observations(rejected.History, "CreditConfirmed")) != 0 {
 		t.Fatalf("rejected transfer sent credit: %+v", rejected)
 	}
 	completed := second.awaitReadiness(t, waiting.TransferID, "completed")
@@ -102,7 +102,7 @@ func TestResetClearsTheDemonstrationSlotAndAdmissionWaits(t *testing.T) {
 	t.Parallel()
 	demo := startDemonstration(t)
 	holder := demo.submitTransfer(t, `{"amount":25,"scenario":"bank_b_unavailable"}`)
-	demo.awaitCreditAccepted(t, holder.TransferID)
+	demo.awaitCreditConfirmed(t, holder.TransferID)
 	second := demo.visitor(t)
 	waiting := second.submitTransfer(t, `{"amount":25,"scenario":"bank_b_unavailable"}`)
 	if waiting.Status != "awaiting_admission" {

@@ -69,14 +69,13 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 }
 
 type transfer struct {
-	TransferID        string         `json:"transfer_id"`
-	Amount            int64          `json:"amount"`
-	Scenario          string         `json:"scenario"`
-	Status            string         `json:"status"`
-	RejectionReason   string         `json:"rejection_reason"`
-	TraceID           string         `json:"trace_id"`
-	CreditConfirmedAt *time.Time     `json:"credit_confirmed_at"`
-	History           []historyEntry `json:"history"`
+	TransferID      string         `json:"transfer_id"`
+	Amount          int64          `json:"amount"`
+	Scenario        string         `json:"scenario"`
+	Status          string         `json:"status"`
+	RejectionReason string         `json:"rejection_reason"`
+	TraceID         string         `json:"trace_id"`
+	History         []historyEntry `json:"history"`
 
 	VisualisationReady bool `json:"visualisation_ready"`
 }

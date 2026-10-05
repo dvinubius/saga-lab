@@ -28,7 +28,7 @@ func historyRows(history []historyEntry) []historyRow {
 		if e.Step == requested {
 			requestedAt = e.ObservedAt
 		}
-		if e.Observation == creditAccepted {
+		if e.Observation == creditConfirmed {
 			confirmedAt = e.ObservedAt
 		}
 		if e.Observation == nackRequested {

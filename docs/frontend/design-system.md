@@ -144,7 +144,7 @@ disabled control keeps its shape and drops to `--disabled-opacity` with
 **Scenario choice.** The home form offers five radios in this order: Happy
 path, Debit redelivery, Credit rejection & refund, Bank B unavailable, and
 Credit rejection & refund redelivery. The selected radio uses the accent dot;
-its text uses the same fact-label style as the other options. `CreditAccepted`
+its text uses the same fact-label style as the other options. `CreditConfirmed`
 is an observation in the Transfer Service lane labelled “the broker confirmed
 the credit command”; it takes no state hue and does not imply queue-insertion
 time. `DeliveryResumed` and `DeliveryPaused` are observations in Bank B's

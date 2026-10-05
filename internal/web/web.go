@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 type Exposure int
@@ -24,13 +22,7 @@ const (
 )
 
 func Serve(ctx context.Context, listener net.Listener, handler http.Handler, exposure Exposure, logger *slog.Logger) error {
-	redacted := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/accounts/") {
-			trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("url.path", "/accounts/{visitorID}"))
-		}
-		handler.ServeHTTP(w, r)
-	})
-	traced := otelhttp.NewHandler(redacted, "http.server",
+	traced := otelhttp.NewHandler(handler, "http.server",
 		otelhttp.WithPublicEndpointFn(func(*http.Request) bool { return exposure == Public }),
 		otelhttp.WithFilter(func(r *http.Request) bool {
 			return r.URL.Path != "/readyz" && !strings.HasPrefix(r.URL.Path, "/static/")
