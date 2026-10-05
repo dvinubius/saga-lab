@@ -48,6 +48,7 @@ var (
 
 type Config struct {
 	OpeningBalance    int64
+	TopUpAmount       int64
 	Role              Role
 	DedicatedConsumer DedicatedConsumer
 }
@@ -55,6 +56,7 @@ type Config struct {
 type Bank struct {
 	db             *pgxpool.Pool
 	openingBalance int64
+	topUpAmount    int64
 	role           Role
 	broker         *messaging.Broker
 	logger         *slog.Logger
@@ -105,7 +107,7 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 	if err := messaging.InboxAndOutbox.Create(ctx, db); err != nil {
 		return nil, err
 	}
-	return &Bank{db: db, role: config.Role, openingBalance: config.OpeningBalance, logger: logger, dedicated: config.DedicatedConsumer}, nil
+	return &Bank{db: db, role: config.Role, openingBalance: config.OpeningBalance, topUpAmount: config.TopUpAmount, logger: logger, dedicated: config.DedicatedConsumer}, nil
 }
 
 func Reset(ctx context.Context, settings service.Settings, config Config) error {
@@ -150,6 +152,9 @@ func (b *Bank) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /accounts/{visitorID}", b.getAccount)
 	mux.HandleFunc("PUT /accounts/{visitorID}", b.openAccount)
+	if b.topUpAmount > 0 {
+		mux.HandleFunc("POST /accounts/{visitorID}/top-ups", b.topUp)
+	}
 	mux.Handle("GET /readyz", web.Readiness(b.ready, b.logger))
 	return mux
 }
@@ -360,4 +365,22 @@ func (b *Bank) openAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (b *Bank) topUp(w http.ResponseWriter, r *http.Request) {
+	a := account{VisitorID: r.PathValue("visitorID")}
+	err := b.db.QueryRow(r.Context(),
+		`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1 RETURNING balance`,
+		a.VisitorID, b.topUpAmount,
+	).Scan(&a.Balance)
+	if errors.Is(err, pgx.ErrNoRows) {
+		web.WriteError(w, http.StatusNotFound, "account not found", b.logger)
+		return
+	}
+	if err != nil {
+		b.logger.Error("top up account", "error", err)
+		web.WriteError(w, http.StatusInternalServerError, "account unavailable", b.logger)
+		return
+	}
+	web.WriteJSON(w, http.StatusOK, a, b.logger)
 }

@@ -177,7 +177,7 @@ button,.btn,a{transition:var(--hover-transition);}
 [data-theme="dark"] .btn-primary{color:var(--ink);}
 .btn-primary:not(:disabled):hover{background:var(--accent-on-hover);}
 .btn-secondary{border-color:var(--hairline);color:var(--text-body);}
-.btn-secondary:hover{border-color:var(--text-body);}
+.btn-secondary:not(:disabled):hover{border-color:var(--text-body);}
 .back{align-self:flex-start;}
 
 .field{
@@ -211,6 +211,7 @@ button,.btn,a{transition:var(--hover-transition);}
 }
 .links{display:flex;justify-content:space-between}
 .account dd{display:flex;align-items:baseline;gap:10px;}
+.account .top-up{flex-direction:column;align-items:flex-start;gap:8px;margin-top:8px;}
 .figure{
   font-size:var(--text-heading);
   font-weight:500;
