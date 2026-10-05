@@ -81,6 +81,37 @@ func TestRefundRowsNameTheirMessagesAndNumberRefundAttempts(t *testing.T) {
 	}
 }
 
+func TestTransferRefundedIsExplainedOnlyAfterALostRefundAcknowledgement(t *testing.T) {
+	refunded := []historyEntry{
+		{Step: requested, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
+		{Step: creditRequested, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
+		{Step: creditRejected, AttemptID: "attempt-b1", MessageID: "credit-rejected", CausationID: "credit-funds"},
+		{Step: refundRequested, CausationID: "credit-rejected", IssuedMessageID: "refund-funds"},
+		{Step: refundCommitted, AttemptID: "attempt-a2", MessageID: "funds-refunded", CausationID: "refund-funds"},
+		{Step: transferRefunded, CausationID: "funds-refunded"},
+	}
+	debitAckLost := append(slices.Clone(refunded), historyEntry{Observation: nackRequested, AttemptID: "attempt-a1", MessageID: "nack", CausationID: "debit-funds"})
+	refundAckLost := append(slices.Clone(refunded), historyEntry{Observation: nackRequested, AttemptID: "attempt-a2", MessageID: "nack", CausationID: "refund-funds"})
+
+	for name, tc := range map[string]struct {
+		history []historyEntry
+		want    bool
+	}{
+		"credit rejection":            {refunded, false},
+		"lost debit acknowledgement":  {debitAckLost, false},
+		"lost refund acknowledgement": {refundAckLost, true},
+	} {
+		rows := historyRows(tc.history)
+		if explained := rows[6].About != ""; explained != tc.want {
+			t.Errorf("%s: transfer_refunded explained = %v, want %v", name, explained, tc.want)
+		}
+		if name == "lost refund acknowledgement" && rows[2].About != "" {
+			t.Errorf("%s: credit_requested explained, want the debit note only after a lost debit acknowledgement", name)
+		}
+	}
+}
+
 func TestCreditRequestedIsExplainedOnlyAfterALostDebitAcknowledgement(t *testing.T) {
 	happy := []historyEntry{
 		{Step: requested, IssuedMessageID: "debit-funds"},

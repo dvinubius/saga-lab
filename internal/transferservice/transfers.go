@@ -498,6 +498,8 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 
 func visualisationReady(chosen scenario, current status, history []historyEntry) bool {
 	switch {
+	case current == refunded && chosen == refundRedelivery:
+		return redeliveryEvidenced(history, messaging.RefundFundsTopic, refundCommitted)
 	case current == rejected, current == refunded:
 		return true
 	case current != completed:
