@@ -21,6 +21,9 @@ type historyRow struct {
 	Tooltip    string
 	Label      string
 	Continues  bool
+	PlayedAt   time.Time
+	Dwell      time.Duration
+	Gap        string
 }
 
 func historyRows(history []historyEntry) []historyRow {
@@ -80,6 +83,32 @@ func historyRows(history []historyEntry) []historyRow {
 				Label:        deliveryWaiting.Label(),
 				About:        "A missing consumer simulates Bank B being down. The credit command waits in the broker's queue with no consumer, neither delivered nor failed.",
 			})
+		}
+	}
+	return rows
+}
+
+const (
+	minDwell = 700 * time.Millisecond
+	maxDwell = 4 * time.Second
+)
+
+func playback(rows []historyRow) []historyRow {
+	for i := range rows {
+		rows[i].PlayedAt = rows[i].ObservedAt
+		if rows[i].Observation == deliveryWaiting && i > 0 {
+			rows[i].PlayedAt = rows[i-1].ObservedAt
+		}
+	}
+	for i := range rows {
+		rows[i].Dwell = minDwell
+		for _, next := range rows[i+1:] {
+			if !next.PlayedAt.IsZero() {
+				gap := next.PlayedAt.Sub(rows[i].PlayedAt)
+				rows[i].Dwell = min(max(gap, minDwell), maxDwell)
+				rows[i].Gap = fmt.Sprintf("%+.3f s", gap.Seconds())
+				break
+			}
 		}
 	}
 	return rows

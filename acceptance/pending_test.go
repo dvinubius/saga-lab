@@ -107,9 +107,12 @@ func TestPageHoldsSubmissionWhileATransferIsPending(t *testing.T) {
 	if transfers := demo.transfers(t); len(transfers) != 1 {
 		t.Errorf("transfers = %+v, want only %s", transfers, pending)
 	}
+	if replay := pageData(demo.get(t, transferPage), "transfer-replay"); replay != "pending" {
+		t.Errorf("pending transfer page shows replay %q, want pending", replay)
+	}
 
 	release()
-	demo.awaitPage(t, transferPage, "completed")
+	demo.awaitReplay(t, transferPage)
 	home = demo.get(t, "/")
 	if submissionDisabled(home) || pendingTransferLink(home) != "" {
 		t.Errorf("home page still holds submission after %s completed", pending)
