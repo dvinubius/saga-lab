@@ -87,6 +87,15 @@ type outboxEntry struct {
 	Metadata  message.Metadata
 }
 
+type ConfirmationHook func(context.Context, pgx.Tx, *message.Message, time.Time) error
+
+func (b *Broker) OnConfirmed(topic string, hook ConfirmationHook) {
+	if b.confirmationHooks == nil {
+		b.confirmationHooks = map[string]ConfirmationHook{}
+	}
+	b.confirmationHooks[topic] = hook
+}
+
 func (b *Broker) RunRelay(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger) error {
 	failures := 0
 	for {
@@ -137,6 +146,15 @@ func (b *Broker) relay(ctx context.Context, db *pgxpool.Pool) (int, *outboxEntry
 		if publishErr = b.forward(ctx, entry); publishErr != nil {
 			failed = &entry
 			break
+		}
+		confirmedAt := time.Now()
+		if hook := b.confirmationHooks[entry.Topic]; hook != nil {
+			msg := message.NewMessage(entry.MessageID, entry.Payload)
+			msg.Metadata = entry.Metadata
+			msg.SetContext(ctx)
+			if err := hook(ctx, tx, msg, confirmedAt); err != nil {
+				return published, &entry, fmt.Errorf("record confirmed %s message %s: %w", entry.Topic, entry.MessageID, err)
+			}
 		}
 		published++
 		if _, err := tx.Exec(ctx, `DELETE FROM outbox WHERE id = $1`, entry.ID); err != nil {
