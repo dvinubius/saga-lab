@@ -73,7 +73,21 @@ button,.btn,a{transition:var(--hover-transition);}
   letter-spacing:var(--track-wordmark);
   line-height:var(--leading-heading);
 }
-.wordmark a{color:var(--text-body);text-decoration:none;}
+.wordmark a{
+  display:inline-flex;
+  align-items:baseline;
+  gap:0.38em;
+  color:var(--text-body);
+  text-decoration:none;
+}
+.wordmark svg{
+  width:1.15em;
+  height:1.15em;
+  flex:none;
+  stroke:var(--text-body);
+  transform:translateY(calc(1.15em / 2 - 0.343em));
+}
+.wordmark svg .hub{fill:var(--accent);stroke:none;}
 .theme-toggle{
   display:inline-flex;
   padding:4px;
