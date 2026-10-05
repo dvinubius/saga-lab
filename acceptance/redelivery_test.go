@@ -16,7 +16,7 @@ func TestDebitRedeliveryCompletesWithoutADuplicateDebit(t *testing.T) {
 	if completed.Scenario != "debit_redelivery" {
 		t.Errorf("scenario = %q, want debit_redelivery", completed.Scenario)
 	}
-	assertSteps(t, completed.History, "requested", "debit_committed", "credit_committed", "finished")
+	assertSteps(t, completed.History, "requested", "debit_committed", "credit_requested", "credit_committed", "finished")
 
 	history := completed.History
 	requested, debit := entry(t, history, "requested"), entry(t, history, "debit_committed")
@@ -46,7 +46,7 @@ func TestDebitRedeliveryRejectsAnUnaffordableDebit(t *testing.T) {
 	rejected := demo.awaitTransfer(t, accepted.TransferID, "rejected")
 
 	demo.assertBalances(t, 100, 0)
-	assertSteps(t, rejected.History, "requested", "debit_rejected")
+	assertSteps(t, rejected.History, "requested", "debit_rejected", "transfer_rejected")
 	if !rejected.VisualisationReady {
 		t.Error("visualisation_ready = false, want true")
 	}

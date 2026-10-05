@@ -2,15 +2,16 @@ package transferservice
 
 import (
 	"reflect"
+	"slices"
 	"testing"
-	"time"
 )
 
 func TestHistoryRowsNameTheCauseAndNumberAttemptsPerCommand(t *testing.T) {
 	history := []historyEntry{
 		{Step: requested, IssuedMessageID: "debit-funds"},
-		{Step: debitCommitted, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds", IssuedMessageID: "credit-funds"},
+		{Step: debitCommitted, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
 		{Observation: nackRequested, AttemptID: "attempt-a1", MessageID: "nack", CausationID: "debit-funds"},
+		{Step: creditRequested, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
 		{Observation: duplicateSuppressed, AttemptID: "attempt-a2", MessageID: "duplicate", CausationID: "debit-funds"},
 		{Step: creditCommitted, AttemptID: "attempt-b1", MessageID: "funds-credited", CausationID: "credit-funds"},
 		{Step: finished, CausationID: "funds-credited"},
@@ -25,29 +26,24 @@ func TestHistoryRowsNameTheCauseAndNumberAttemptsPerCommand(t *testing.T) {
 		got = append(got, shown{row.Cause, row.Attempt})
 	}
 
-	want := []shown{{"", 0}, {"DebitFunds", 1}, {"DebitFunds", 1}, {"DebitFunds", 2}, {"CreditFunds", 1}, {"FundsCredited", 0}}
+	want := []shown{{"", 0}, {"DebitFunds", 1}, {"DebitFunds", 1}, {"FundsDebited", 0}, {"DebitFunds", 2}, {"CreditFunds", 1}, {"FundsCredited", 0}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("rows = %v, want %v", got, want)
 	}
 }
 
-func TestHistoryRowsAreOrderedByObservationTime(t *testing.T) {
-	start := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
-	history := []historyEntry{
-		{Step: requested, ObservedAt: start},
-		{Step: creditCommitted, ObservedAt: start.Add(3 * time.Second)},
-		{Observation: duplicateSuppressed, ObservedAt: start.Add(2 * time.Second)},
-		{Step: debitCommitted, ObservedAt: start.Add(time.Second)},
-		{Observation: nackRequested, ObservedAt: start.Add(time.Second)},
+func TestCreditRequestedIsExplainedOnlyAfterALostDebitAcknowledgement(t *testing.T) {
+	happy := []historyEntry{
+		{Step: requested, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, MessageID: "funds-debited", CausationID: "debit-funds"},
+		{Step: creditRequested, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
 	}
+	redelivered := append(slices.Clone(happy), historyEntry{Observation: nackRequested, AttemptID: "attempt-a1", MessageID: "nack", CausationID: "debit-funds"})
 
-	var got []string
-	for _, row := range historyRows(history) {
-		got = append(got, string(row.Step)+string(row.Observation))
-	}
-
-	want := []string{"requested", "debit_committed", "NackRequested", "DuplicateSuppressed", "credit_committed"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("rows = %v, want %v", got, want)
+	for name, history := range map[string][]historyEntry{"happy path": happy, "lost acknowledgement": redelivered} {
+		explained := historyRows(history)[2].About != ""
+		if want := name == "lost acknowledgement"; explained != want {
+			t.Errorf("%s: credit_requested explained = %v, want %v", name, explained, want)
+		}
 	}
 }

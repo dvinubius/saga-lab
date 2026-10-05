@@ -46,11 +46,13 @@ func (s status) Label() string {
 type step string
 
 const (
-	requested       step = "requested"
-	debitCommitted  step = "debit_committed"
-	debitRejected   step = "debit_rejected"
-	creditCommitted step = "credit_committed"
-	finished        step = "finished"
+	requested        step = "requested"
+	debitCommitted   step = "debit_committed"
+	creditRequested  step = "credit_requested"
+	debitRejected    step = "debit_rejected"
+	transferRejected step = "transfer_rejected"
+	creditCommitted  step = "credit_committed"
+	finished         step = "finished"
 )
 
 func (s step) Label() string {
@@ -59,14 +61,25 @@ func (s step) Label() string {
 		return "Transfer requested"
 	case debitCommitted:
 		return "Bank A committed the debit"
+	case creditRequested:
+		return "Debit confirmed"
 	case debitRejected:
 		return "Bank A rejected the debit"
+	case transferRejected:
+		return "Transfer rejected"
 	case creditCommitted:
 		return "Bank B committed the credit"
 	case finished:
 		return "Transfer completed"
 	}
 	return string(s)
+}
+
+func (s step) LabelTail() string {
+	if s == creditRequested {
+		return "; credit requested"
+	}
+	return ""
 }
 
 type observation string
@@ -84,13 +97,6 @@ func (o observation) Label() string {
 		return "repeat recognised; nothing applied"
 	}
 	return string(o)
-}
-
-func (o observation) About() string {
-	if o == nackRequested {
-		return "We’re simulating the effects of a crash by requesting a redelivery (a Nack), and the broker delivers the message again."
-	}
-	return ""
 }
 
 type transferSummary struct {
@@ -225,7 +231,12 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: debitCommitted, Service: messaging.BankA, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
-			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), IssuedMessageID: command.UUID,
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+		}); err != nil {
+			return err
+		}
+		if err := record(ctx, tx, event.TransferID, historyEntry{
+			Step: creditRequested, Service: messaging.TransferService, ObservedAt: time.Now(), CausationID: msg.UUID, IssuedMessageID: command.UUID,
 		}); err != nil {
 			return err
 		}
@@ -255,9 +266,14 @@ func (s *Service) debitRejected(msg *message.Message) error {
 			current, err = currentStatus(ctx, tx, event.TransferID)
 			return err
 		}
-		return record(ctx, tx, event.TransferID, historyEntry{
+		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: debitRejected, Service: messaging.BankA, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
 			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+		}); err != nil {
+			return err
+		}
+		return record(ctx, tx, event.TransferID, historyEntry{
+			Step: transferRejected, Service: messaging.TransferService, ObservedAt: time.Now(), CausationID: msg.UUID,
 		})
 	})
 	return endTransition(err, messaging.DebitRejectedTopic, event.TransferID, current, msg, logger)
@@ -365,7 +381,7 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	rows, err := s.db.Query(ctx,
 		`SELECT COALESCE(step, ''), COALESCE(observation, ''), service, COALESCE(attempt_id, ''), observed_at, recorded_at,
 		        COALESCE(message_id, ''), COALESCE(causation_id, ''), COALESCE(issued_message_id, '')
-		 FROM transfer_history WHERE transfer_id = $1 ORDER BY entry_id`,
+		 FROM transfer_history WHERE transfer_id = $1 ORDER BY observed_at, entry_id`,
 		id,
 	)
 	if err != nil {

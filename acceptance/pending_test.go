@@ -58,7 +58,7 @@ func TestOnlyOnePendingTransferIsAdmitted(t *testing.T) {
 
 	release()
 	completed := demo.awaitTransfer(t, pending, "completed")
-	assertSteps(t, completed.History, "requested", "debit_committed", "credit_committed", "finished")
+	assertSteps(t, completed.History, "requested", "debit_committed", "credit_requested", "credit_committed", "finished")
 	demo.assertBalances(t, 75, 25)
 
 	next := demo.submitTransfer(t, `{"amount": 10}`)

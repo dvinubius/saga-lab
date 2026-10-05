@@ -52,7 +52,7 @@ func (d *demonstration) assertPrepared(t *testing.T, clearedTransferIDs ...strin
 
 	again := d.submitTransfer(t, `{"amount": 25}`)
 	completed := d.awaitTransfer(t, again.TransferID, "completed")
-	assertSteps(t, completed.History, "requested", "debit_committed", "credit_committed", "finished")
+	assertSteps(t, completed.History, "requested", "debit_committed", "credit_requested", "credit_committed", "finished")
 	d.assertBalances(t, 75, 25)
 	if transfers := d.transfers(t); len(transfers) != 1 || transfers[0].TransferID != again.TransferID {
 		t.Errorf("transfers = %+v, want only %s", transfers, again.TransferID)
