@@ -62,6 +62,7 @@ func startProject(t *testing.T, env []string, services ...string) *composeDemons
 func (d *composeDemonstration) reconnect(t *testing.T) {
 	t.Helper()
 	d.baseURL = "http://" + serviceAddress(t, d.project, "transfer-service", "8080")
+	d.visitorClient.baseURL = d.baseURL
 }
 
 func (d *composeDemonstration) compose(t *testing.T, args ...string) {

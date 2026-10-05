@@ -4,6 +4,9 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
+
+	"github.com/dvinubius/saga-lab/internal/messaging"
 )
 
 func TestHistoryRowsNameTheCauseAndNumberAttemptsPerCommand(t *testing.T) {
@@ -149,5 +152,40 @@ func TestARowContinuesTheRowAboveOnlyForTheSameAttempt(t *testing.T) {
 	want := []bool{false, false, true, false, false}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("continues = %v, want %v", got, want)
+	}
+}
+
+func TestDeliveryResumedExplainsTheMeasuredBrokerWait(t *testing.T) {
+	confirmation := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	history := []historyEntry{
+		{Observation: creditConfirmed, ObservedAt: confirmation},
+		{Observation: deliveryResumed, Service: "Bank B", ObservedAt: confirmation.Add(2500 * time.Millisecond)},
+		{Observation: deliveryPaused, Service: "Bank B"},
+	}
+	rows := historyRows(history)
+	if rows[1].Lane != 2 || rows[1].Label != "delivery resumed after 2.5 s waiting in the queue" {
+		t.Fatalf("resume row = %+v", rows[1])
+	}
+	if rows[1].About != "The credit command waited in RabbitMQ with no consumer, neither delivered nor failed, while Bank B kept serving other transfers." {
+		t.Fatalf("resume note = %q", rows[1].About)
+	}
+	if rows[2].Label != "delivery paused again" {
+		t.Fatalf("pause label = %q", rows[2].Label)
+	}
+	if history[1].Observation.Label() != "delivery resumed" {
+		t.Fatal("observation requires confirmation time to be labelled")
+	}
+}
+
+func TestAdmissionHistoryShowsWaitAndLinksTheDebit(t *testing.T) {
+	requestedAt := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	history := []historyEntry{
+		{Step: requested, Service: messaging.TransferService, ObservedAt: requestedAt},
+		{Observation: observation("Admitted"), Service: messaging.TransferService, ObservedAt: requestedAt.Add(3250 * time.Millisecond), IssuedMessageID: "admission-debit"},
+		{Step: debitCommitted, Service: messaging.BankA, CausationID: "admission-debit"},
+	}
+	rows := historyRows(history)
+	if rows[1].Label != "admitted after waiting 3.2 s for another visitor’s demo" || rows[1].Lane != 0 || rows[2].Cause != "DebitFunds" || rows[0].Cause != "" || rows[1].Cause != "" {
+		t.Fatalf("admission/debit rows = %+v / %+v", rows[1], rows[2])
 	}
 }
