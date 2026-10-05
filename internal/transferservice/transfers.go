@@ -120,6 +120,7 @@ const (
 	creditConfirmed     observation = messaging.CreditConfirmed
 	deliveryResumed     observation = messaging.DeliveryResumed
 	deliveryPaused      observation = messaging.DeliveryPaused
+	deliveryWaiting     observation = "DeliveryWaiting"
 )
 
 func (o observation) Label() string {
@@ -127,17 +128,27 @@ func (o observation) Label() string {
 	case admitted:
 		return "admitted"
 	case nackRequested:
-		return "couldn’t acknowledge after commit"
+		return "Couldn’t acknowledge after commit"
 	case creditConfirmed:
-		return "the broker confirmed the credit command"
+		return "broker confirmed command"
 	case deliveryResumed:
-		return "delivery resumed"
-	case deliveryPaused:
-		return "delivery paused again"
+		return "Command delivered"
+	case deliveryWaiting:
+		return "Command delivery waiting"
 	case duplicateSuppressed:
-		return "redelivery rejected; nothing applied"
+		return "Redelivery rejected; nothing applied"
 	}
 	return string(o)
+}
+
+func (o observation) Title() string {
+	switch o {
+	case deliveryWaiting:
+		return "Service unavailable"
+	case deliveryResumed:
+		return "Service back up"
+	}
+	return ""
 }
 
 type transferSummary struct {
