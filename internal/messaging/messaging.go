@@ -20,6 +20,7 @@ const (
 	DebitRejectedTopic        = "DebitRejected"
 	CreditFundsTopic          = "CreditFunds"
 	CreditFundsDedicatedTopic = "CreditFundsDedicated"
+	ResumeDeliveryTopic       = "ResumeDelivery"
 	FundsCreditedTopic        = "FundsCredited"
 	CreditRejectedTopic       = "CreditRejected"
 	RefundFundsTopic          = "RefundFunds"
@@ -45,6 +46,8 @@ const (
 	NackRequested       = "NackRequested"
 	DuplicateSuppressed = "DuplicateSuppressed"
 	CreditAccepted      = "CreditAccepted"
+	DeliveryResumed     = "DeliveryResumed"
+	DeliveryPaused      = "DeliveryPaused"
 )
 
 const (
@@ -80,6 +83,10 @@ type OperationRejected struct {
 }
 
 type DebitRejected OperationRejected
+
+type ResumeDelivery struct {
+	TransferID string `json:"transfer_id"`
+}
 
 type CreditFunds ScenarioOperation
 

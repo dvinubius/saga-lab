@@ -42,13 +42,14 @@ var (
 		[]command{{messaging.DebitFundsTopic, (*Bank).debitFunds}, {messaging.RefundFundsTopic, (*Bank).refundFunds}},
 		[]string{messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.FundsRefundedTopic, messaging.ProcessingObservedTopic}}
 	Destination = Role{messaging.BankB,
-		[]command{{messaging.CreditFundsTopic, (*Bank).creditFunds}},
+		[]command{{messaging.CreditFundsTopic, (*Bank).creditFunds}, {messaging.ResumeDeliveryTopic, (*Bank).resumeDelivery}},
 		[]string{messaging.FundsCreditedTopic, messaging.CreditRejectedTopic, messaging.ProcessingObservedTopic, messaging.CreditFundsDedicatedTopic}}
 )
 
 type Config struct {
 	OpeningBalance int64
 	Role           Role
+	Delivery       Delivery
 }
 
 type Bank struct {
@@ -57,6 +58,7 @@ type Bank struct {
 	role           Role
 	broker         *messaging.Broker
 	logger         *slog.Logger
+	delivery       Delivery
 }
 
 func Run(ctx context.Context, settings service.Settings, config Config) error {
@@ -76,8 +78,20 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 	}
 	defer broker.Close()
 	b.attachBroker(broker)
+	var dedicated *dedicatedConsumer
+	if config.Role.service == messaging.BankB {
+		dedicated, err = openDedicated(settings.AMQPURL)
+		if err != nil {
+			return err
+		}
+		defer dedicated.connection.Close()
+		b.delivery = dedicated
+	}
 
 	g, ctx := errgroup.WithContext(ctx)
+	if dedicated != nil {
+		g.Go(func() error { return dedicated.run(ctx, b) })
+	}
 	g.Go(func() error { return broker.Run(ctx) })
 	g.Go(func() error { return broker.RunRelay(ctx, db, settings.Logger) })
 	g.Go(func() error { return web.Serve(ctx, settings.Listener, b.Handler(), web.Internal, settings.Logger) })
@@ -91,7 +105,7 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 	if err := messaging.InboxAndOutbox.Create(ctx, db); err != nil {
 		return nil, err
 	}
-	return &Bank{db: db, role: config.Role, openingBalance: config.OpeningBalance, logger: logger}, nil
+	return &Bank{db: db, role: config.Role, openingBalance: config.OpeningBalance, logger: logger, delivery: config.Delivery}, nil
 }
 
 func Reset(ctx context.Context, settings service.Settings, config Config) error {
@@ -288,7 +302,7 @@ func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func
 		}
 		return effect(ctx, tx)
 	})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, pgx.ErrNoRows) && topic != messaging.ResumeDeliveryTopic {
 		logger.Warn("command not applied: account missing", "command", topic, "transfer_id", transferID, "message_id", msg.UUID)
 		return nil
 	}

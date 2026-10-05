@@ -37,15 +37,20 @@ func send(ctx context.Context, publisher message.Publisher, topic string, msg *m
 	return err
 }
 
-func traceHandling(h message.HandlerFunc) message.HandlerFunc {
+func traceHandling(h message.HandlerFunc) message.HandlerFunc { return traceHandlingTopic(h, "") }
+
+func traceHandlingTopic(h message.HandlerFunc, topic string) message.HandlerFunc {
 	return func(msg *message.Message) ([]*message.Message, error) {
-		topic := message.SubscribeTopicFromCtx(msg.Context())
+		handlingTopic := topic
+		if handlingTopic == "" {
+			handlingTopic = message.SubscribeTopicFromCtx(msg.Context())
+		}
 		attemptID := watermill.NewUUID()
 		ctx := otel.GetTextMapPropagator().Extract(msg.Context(), propagation.MapCarrier(msg.Metadata))
 		ctx = context.WithValue(ctx, attemptIDKey{}, attemptID)
-		ctx, span := tracer.Start(ctx, "process "+topic,
+		ctx, span := tracer.Start(ctx, "process "+handlingTopic,
 			trace.WithSpanKind(trace.SpanKindConsumer),
-			trace.WithAttributes(messageAttributes("process", topic, msg)...),
+			trace.WithAttributes(messageAttributes("process", handlingTopic, msg)...),
 			trace.WithAttributes(
 				attribute.String("saga.attempt_id", attemptID),
 				attribute.Bool("messaging.rabbitmq.message.redelivered", amqp.IsMessageRedelivered(msg)),
@@ -77,4 +82,10 @@ func endSpan(span trace.Span, err error) {
 		span.SetStatus(codes.Error, err.Error())
 	}
 	span.End()
+}
+
+func Handle(ctx context.Context, topic string, msg *message.Message, handler func(*message.Message) error) error {
+	msg.SetContext(ctx)
+	_, err := traceHandlingTopic(func(msg *message.Message) ([]*message.Message, error) { return nil, handler(msg) }, topic)(msg)
+	return err
 }
