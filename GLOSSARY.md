@@ -34,8 +34,12 @@ A definitive refusal by Bank A to debit an account, such as when funds are insuf
 **Credit operation**:
 An increase of the destination account’s balance for a transfer.
 
+**Credit rejection**:
+A definitive refusal by Bank B to credit the destination account after Bank A has debited the source. It concerns that one credit operation, not the account, and leads to a refund.
+_Avoid_: Credit failure (a temporary failure to credit is not a rejection)
+
 **Refund**:
-A compensating operation that restores the source amount after a debit when the destination credit is permanently rejected.
+A compensating operation that restores the source amount after a debit when the destination credit is permanently rejected. A refund cannot itself be rejected.
 _Avoid_: Rollback
 
 **Business outcome**:
@@ -51,7 +55,7 @@ The wait for exclusive use of the scenario-4 demonstration slot, before the tran
 The recorded steps and processing observations associated with a transfer.
 
 **Step**:
-One business milestone in a transfer's execution history, reported by the service that observed it: requested, debit committed, credit requested, debit rejected, transfer rejected, credit committed, or finished. The Transfer Service reports the steps that react to a bank's outcome — credit requested, transfer rejected, finished — each naming that outcome as its cause.
+One business milestone in a transfer's execution history, reported by the service that observed it: requested, debit committed, credit requested, debit rejected, transfer rejected, credit committed, finished, credit rejected, refund requested, refund committed, or transfer refunded. The Transfer Service reports the steps that react to a bank's outcome — credit requested, transfer rejected, finished, refund requested, transfer refunded — each naming that outcome as its cause.
 _Avoid_: Milestone, event
 
 **Issued message**:

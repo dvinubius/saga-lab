@@ -88,6 +88,47 @@ func TestDebitCommitsNothingWhenEnqueueFails(t *testing.T) {
 	}
 }
 
+func TestRefundCommitsNothingWhenEnqueueFails(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	ctx := context.Background()
+	b := open(t, db, bank.Config{PreparedBalance: 75, Role: bank.Source})
+	command, err := messaging.New(ctx, "transfer", messaging.RefundFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25}, "")
+	if err != nil {
+		t.Fatalf("new command: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		CREATE FUNCTION refuse_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'outbox refused'; END $$;
+		CREATE TRIGGER refuse_outbox BEFORE INSERT ON outbox FOR EACH ROW EXECUTE FUNCTION refuse_outbox();`); err != nil {
+		t.Fatalf("install outbox trigger: %v", err)
+	}
+	if err := bank.RefundFunds(b, command); err == nil {
+		t.Fatal("RefundFunds with a refusing outbox succeeded, want an error")
+	}
+	if got := balance(t, b, visitor.PreparedID); got != 75 {
+		t.Fatalf("balance after failed handling = %d, want unchanged 75", got)
+	}
+	if got := outbox(t, db); len(got) != 0 {
+		t.Fatalf("outbox after failed handling = %v, want empty", got)
+	}
+	if got := inbox(t, db); got != 0 {
+		t.Fatalf("inbox rows after failed handling = %d, want none", got)
+	}
+
+	if _, err := db.Exec(ctx, `DROP TRIGGER refuse_outbox ON outbox`); err != nil {
+		t.Fatalf("drop outbox trigger: %v", err)
+	}
+	if err := bank.RefundFunds(b, command); err != nil {
+		t.Fatalf("RefundFunds: %v", err)
+	}
+	if got := balance(t, b, visitor.PreparedID); got != 100 {
+		t.Fatalf("balance after handling = %d, want 100", got)
+	}
+	if got, want := outbox(t, db), []string{messaging.FundsRefundedTopic}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("outbox after handling = %v, want %v", got, want)
+	}
+}
+
 func TestDuplicateDebitAppliesNothing(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
@@ -132,6 +173,54 @@ func TestDuplicateCreditAppliesNothing(t *testing.T) {
 	}
 	if got, want := outbox(t, db), []string{messaging.FundsCreditedTopic, messaging.ProcessingObservedTopic}; !reflect.DeepEqual(got, want) {
 		t.Errorf("outbox after duplicate credit = %v, want %v", got, want)
+	}
+	assertObservations(t, db, messaging.DuplicateSuppressed)
+}
+
+func TestDuplicateCreditRejectionAppliesNothing(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	ctx := context.Background()
+	b := open(t, db, bank.Config{PreparedBalance: 0, Role: bank.Destination})
+	command, err := messaging.New(ctx, "transfer", messaging.CreditFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25, Scenario: messaging.CreditRejection}, "")
+	if err != nil {
+		t.Fatalf("new command: %v", err)
+	}
+
+	for range 2 {
+		if err := bank.CreditFunds(b, command); err != nil {
+			t.Fatalf("CreditFunds: %v", err)
+		}
+	}
+
+	if got := balance(t, b, visitor.PreparedID); got != 0 {
+		t.Errorf("balance after rejected credit = %d, want unchanged 0", got)
+	}
+	if got, want := outbox(t, db), []string{messaging.CreditRejectedTopic, messaging.ProcessingObservedTopic}; !reflect.DeepEqual(got, want) {
+		t.Errorf("outbox after duplicate rejected credit = %v, want %v", got, want)
+	}
+	assertObservations(t, db, messaging.DuplicateSuppressed)
+}
+
+func TestDuplicateRefundAppliesNothing(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	ctx := context.Background()
+	b := open(t, db, bank.Config{PreparedBalance: 75, Role: bank.Source})
+	command, err := messaging.New(ctx, "transfer", messaging.RefundFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25, Scenario: messaging.CreditRejection}, "")
+	if err != nil {
+		t.Fatalf("new command: %v", err)
+	}
+
+	for range 2 {
+		if err := bank.RefundFunds(b, command); err != nil {
+			t.Fatalf("RefundFunds: %v", err)
+		}
+	}
+
+	if got := balance(t, b, visitor.PreparedID); got != 100 {
+		t.Errorf("balance after duplicate refund = %d, want 100", got)
+	}
+	if got, want := outbox(t, db), []string{messaging.FundsRefundedTopic, messaging.ProcessingObservedTopic}; !reflect.DeepEqual(got, want) {
+		t.Errorf("outbox after duplicate refund = %v, want %v", got, want)
 	}
 	assertObservations(t, db, messaging.DuplicateSuppressed)
 }

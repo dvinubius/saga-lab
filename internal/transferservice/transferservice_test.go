@@ -60,9 +60,16 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 	debited := func(id string) *message.Message {
 		return event(t, id, messaging.FundsDebited{TransferID: id, ObservedAt: time.Now()})
 	}
+	creditRejected := func(id string) *message.Message {
+		return event(t, id, messaging.CreditRejected{TransferID: id, Reason: "Credit refused by Bank B", ObservedAt: time.Now()})
+	}
+	type prior struct {
+		handle handler
+		event  func(id string) *message.Message
+	}
 	tests := []struct {
 		name      string
-		before    []handler
+		before    []prior
 		handle    handler
 		duplicate func(id string) *message.Message
 		want      state
@@ -83,12 +90,28 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 		},
 		{
 			name:   "FundsCredited",
-			before: []handler{transferservice.FundsDebited},
+			before: []prior{{transferservice.FundsDebited, debited}},
 			handle: transferservice.FundsCredited,
 			duplicate: func(id string) *message.Message {
 				return event(t, id, messaging.FundsCredited{TransferID: id, ObservedAt: time.Now()})
 			},
 			want: state{Status: "completed", Steps: []string{"requested", "debit_committed", "credit_requested", "credit_committed", "finished"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic}},
+		},
+		{
+			name:      "CreditRejected",
+			before:    []prior{{transferservice.FundsDebited, debited}},
+			handle:    transferservice.CreditRejected,
+			duplicate: creditRejected,
+			want:      state{Status: "refund_pending", Steps: []string{"requested", "debit_committed", "credit_requested", "credit_rejected", "refund_requested"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic, messaging.RefundFundsTopic}},
+		},
+		{
+			name:   "FundsRefunded",
+			before: []prior{{transferservice.FundsDebited, debited}, {transferservice.CreditRejected, creditRejected}},
+			handle: transferservice.FundsRefunded,
+			duplicate: func(id string) *message.Message {
+				return event(t, id, messaging.FundsRefunded{TransferID: id, ObservedAt: time.Now()})
+			},
+			want: state{Status: "refunded", Steps: []string{"requested", "debit_committed", "credit_requested", "credit_rejected", "refund_requested", "refund_committed", "transfer_refunded"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic, messaging.RefundFundsTopic}},
 		},
 	}
 	for _, test := range tests {
@@ -101,7 +124,7 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 			}
 			id := submit(t, s)
 			for _, before := range test.before {
-				if err := before(s, debited(id)); err != nil {
+				if err := before.handle(s, before.event(id)); err != nil {
 					t.Fatalf("prepare transfer: %v", err)
 				}
 			}
@@ -250,6 +273,79 @@ func TestFundsDebitedCommitsNothingWhenEnqueueFails(t *testing.T) {
 	}
 }
 
+func TestCreditRejectedCommitsNothingWhenEnqueueFails(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	ctx := context.Background()
+	s, err := transferservice.Open(ctx, db, transferservice.Config{}, slog.New(slog.NewTextHandler(t.Output(), nil)))
+	if err != nil {
+		t.Fatalf("open transfer service: %v", err)
+	}
+	id := submit(t, s)
+	if err := transferservice.FundsDebited(s, event(t, id, messaging.FundsDebited{TransferID: id, ObservedAt: time.Now()})); err != nil {
+		t.Fatalf("FundsDebited: %v", err)
+	}
+	rejectedCredit := event(t, id, messaging.CreditRejected{TransferID: id, Reason: "Credit refused by Bank B", ObservedAt: time.Now()})
+	before := snapshot(t, db, id)
+
+	if _, err := db.Exec(ctx, `
+		CREATE FUNCTION refuse_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'outbox refused'; END $$;
+		CREATE TRIGGER refuse_outbox BEFORE INSERT ON outbox FOR EACH ROW EXECUTE FUNCTION refuse_outbox();`); err != nil {
+		t.Fatalf("install outbox trigger: %v", err)
+	}
+	if err := transferservice.CreditRejected(s, rejectedCredit); err == nil {
+		t.Fatal("CreditRejected with a refusing outbox succeeded, want an error")
+	}
+	if after := snapshot(t, db, id); !reflect.DeepEqual(after, before) {
+		t.Fatalf("after failed handling: %+v, want unchanged %+v", after, before)
+	}
+	if got := transfer(t, s, id).RejectionReason; got != "" {
+		t.Fatalf("rejection reason after failed handling = %q, want none", got)
+	}
+
+	if _, err := db.Exec(ctx, `DROP TRIGGER refuse_outbox ON outbox`); err != nil {
+		t.Fatalf("drop outbox trigger: %v", err)
+	}
+	for range 2 {
+		if err := transferservice.CreditRejected(s, rejectedCredit); err != nil {
+			t.Fatalf("CreditRejected: %v", err)
+		}
+	}
+	want := state{Status: "refund_pending", Steps: []string{"requested", "debit_committed", "credit_requested", "credit_rejected", "refund_requested"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic, messaging.RefundFundsTopic}}
+	if after := snapshot(t, db, id); !reflect.DeepEqual(after, want) {
+		t.Fatalf("after handling: %+v, want %+v", after, want)
+	}
+	if got := transfer(t, s, id).RejectionReason; got != "Credit refused by Bank B" {
+		t.Fatalf("rejection reason = %q, want Bank B's", got)
+	}
+}
+
+func TestRefundPendingTransferHoldsSubmission(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatalf("open transfer service: %v", err)
+	}
+	id := submit(t, s)
+	if err := transferservice.FundsDebited(s, event(t, id, messaging.FundsDebited{TransferID: id, ObservedAt: time.Now()})); err != nil {
+		t.Fatalf("FundsDebited: %v", err)
+	}
+	if err := transferservice.CreditRejected(s, event(t, id, messaging.CreditRejected{TransferID: id, Reason: "Credit refused by Bank B", ObservedAt: time.Now()})); err != nil {
+		t.Fatalf("CreditRejected: %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/transfers", strings.NewReader(`{"amount": 10}`)))
+	var problem struct {
+		PendingTransferID string `json:"pending_transfer_id"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&problem); err != nil || response.Code != http.StatusConflict {
+		t.Fatalf("POST /api/transfers while refund pending: status %d, decode error %v, want %d", response.Code, err, http.StatusConflict)
+	}
+	if problem.PendingTransferID != id {
+		t.Fatalf("conflict names pending transfer %q, want %q", problem.PendingTransferID, id)
+	}
+}
+
 func submit(t *testing.T, s *transferservice.Service) string {
 	t.Helper()
 	response := httptest.NewRecorder()
@@ -274,8 +370,9 @@ type historyEntry struct {
 }
 
 type transferJSON struct {
-	Status  string         `json:"status"`
-	History []historyEntry `json:"history"`
+	Status          string         `json:"status"`
+	RejectionReason string         `json:"rejection_reason"`
+	History         []historyEntry `json:"history"`
 }
 
 func transfer(t *testing.T, s *transferservice.Service, id string) transferJSON {

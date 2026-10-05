@@ -29,16 +29,22 @@ var errInjectedFailure = errors.New("injected lost acknowledgement after commit"
 
 type Role struct {
 	service         string
-	commandTopic    string
+	commands        []command
 	publishedTopics []string
-	execute         func(*Bank, *message.Message) error
+}
+
+type command struct {
+	topic   string
+	execute func(*Bank, *message.Message) error
 }
 
 var (
-	Source = Role{messaging.BankA, messaging.DebitFundsTopic,
-		[]string{messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.ProcessingObservedTopic}, (*Bank).debitFunds}
-	Destination = Role{messaging.BankB, messaging.CreditFundsTopic,
-		[]string{messaging.FundsCreditedTopic, messaging.ProcessingObservedTopic}, (*Bank).creditFunds}
+	Source = Role{messaging.BankA,
+		[]command{{messaging.DebitFundsTopic, (*Bank).debitFunds}, {messaging.RefundFundsTopic, (*Bank).refundFunds}},
+		[]string{messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.FundsRefundedTopic, messaging.ProcessingObservedTopic}}
+	Destination = Role{messaging.BankB,
+		[]command{{messaging.CreditFundsTopic, (*Bank).creditFunds}},
+		[]string{messaging.FundsCreditedTopic, messaging.CreditRejectedTopic, messaging.ProcessingObservedTopic}}
 )
 
 type Config struct {
@@ -89,7 +95,11 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 }
 
 func Reset(ctx context.Context, settings service.Settings, config Config) error {
-	if err := messaging.Purge(settings.AMQPURL, config.Role.commandTopic); err != nil {
+	var commandTopics []string
+	for _, c := range config.Role.commands {
+		commandTopics = append(commandTopics, c.topic)
+	}
+	if err := messaging.Purge(settings.AMQPURL, commandTopics...); err != nil {
 		return err
 	}
 	db, err := postgres.Connect(ctx, settings.DatabaseURL)
@@ -143,9 +153,11 @@ func (b *Bank) ready(ctx context.Context) error {
 
 func (b *Bank) attachBroker(broker *messaging.Broker) {
 	b.broker = broker
-	broker.Router.AddConsumerHandler(b.role.commandTopic, b.role.commandTopic, broker.Subscriber, func(msg *message.Message) error {
-		return b.role.execute(b, msg)
-	})
+	for _, c := range b.role.commands {
+		broker.Router.AddConsumerHandler(c.topic, c.topic, broker.Subscriber, func(msg *message.Message) error {
+			return c.execute(b, msg)
+		})
+	}
 }
 
 func (b *Bank) debitFunds(msg *message.Message) error {
@@ -181,7 +193,11 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 		debited = true
 		return enqueue(tx, command.TransferID, messaging.FundsDebitedTopic, messaging.FundsDebited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 	}, logger)
-	if err != nil || !debited || command.Scenario != messaging.DebitRedelivery {
+	return b.loseAcknowledgementAfterCommit(msg, messaging.ScenarioOperation(command), messaging.DebitRedelivery, debited, err, logger)
+}
+
+func (b *Bank) loseAcknowledgementAfterCommit(msg *message.Message, command messaging.ScenarioOperation, injectedUnder string, applied bool, err error, logger *slog.Logger) error {
+	if err != nil || !applied || command.Scenario != injectedUnder {
 		return err
 	}
 	trace.SpanFromContext(msg.Context()).AddEvent("fault.injected")
@@ -205,19 +221,59 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 		logger.Error("discard credit with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
 		return nil
 	}
-	return b.apply(msg, messaging.CreditFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
-		credited, err := tx.Exec(ctx,
-			`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1`,
-			command.VisitorID, command.Amount,
-		)
-		if err != nil {
-			return err
+	rejected := false
+	err := b.apply(msg, messaging.CreditFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
+		if command.Scenario == messaging.CreditRejection || command.Scenario == messaging.RefundRedelivery {
+			rejected = true
+			return enqueue(tx, command.TransferID, messaging.CreditRejectedTopic, messaging.CreditRejected{
+				TransferID: command.TransferID, Reason: "Credit refused by Bank B", ObservedAt: time.Now(),
+			}, msg)
 		}
-		if credited.RowsAffected() == 0 {
-			return pgx.ErrNoRows
+		if err := addFunds(ctx, tx, command.VisitorID, command.Amount); err != nil {
+			return err
 		}
 		return enqueue(tx, command.TransferID, messaging.FundsCreditedTopic, messaging.FundsCredited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 	}, logger)
+	if err == nil && rejected {
+		logger.Info("credit rejected as the scenario requires", "transfer_id", command.TransferID, "message_id", msg.UUID)
+	}
+	return err
+}
+
+func (b *Bank) refundFunds(msg *message.Message) error {
+	logger := messaging.AttemptLogger(msg.Context(), b.logger)
+	var command messaging.RefundFunds
+	if err := messaging.Decode(msg, &command); err != nil {
+		logger.Error("discard command", "error", err)
+		return nil
+	}
+	if command.Amount <= 0 {
+		logger.Error("discard refund with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
+		return nil
+	}
+	refunded := false
+	err := b.apply(msg, messaging.RefundFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
+		if err := addFunds(ctx, tx, command.VisitorID, command.Amount); err != nil {
+			return err
+		}
+		refunded = true
+		return enqueue(tx, command.TransferID, messaging.FundsRefundedTopic, messaging.FundsRefunded{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
+	}, logger)
+	return b.loseAcknowledgementAfterCommit(msg, messaging.ScenarioOperation(command), messaging.RefundRedelivery, refunded, err, logger)
+}
+
+func addFunds(ctx context.Context, tx pgx.Tx, visitorID string, amount int64) error {
+	result, err := tx.Exec(ctx,
+		`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1`,
+		visitorID, amount,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func(context.Context, pgx.Tx) error, logger *slog.Logger) error {
