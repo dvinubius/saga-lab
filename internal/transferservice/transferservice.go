@@ -35,7 +35,14 @@ var pagesTemplate string
 //go:embed static
 var static embed.FS
 
-var pages = template.Must(template.New("pages").Parse(pagesTemplate))
+var pages = template.Must(template.New("pages").Funcs(template.FuncMap{
+	"account": func(id, name string, b accountBalance) any {
+		return struct {
+			ID, Name string
+			Balance  int64
+		}{id, name, b.Balance}
+	},
+}).Parse(pagesTemplate))
 
 type Config struct {
 	BankAURL   string
@@ -219,11 +226,11 @@ func (s *Service) topUp(ctx context.Context) (balances, error) {
 	if pending != "" {
 		return balances{}, pendingTransferError{PendingID: pending}
 	}
-	bankA, err := s.bankA.topUp(ctx, visitor.ID(ctx))
+	bankB, err := s.bankB.balance(ctx, visitor.ID(ctx))
 	if err != nil {
 		return balances{}, err
 	}
-	bankB, err := s.bankB.balance(ctx, visitor.ID(ctx))
+	bankA, err := s.bankA.topUp(ctx, visitor.ID(ctx))
 	if err != nil {
 		return balances{}, err
 	}

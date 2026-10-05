@@ -47,7 +47,7 @@ func TestRefreshingTheTransferPageNeverResubmits(t *testing.T) {
 		"duplicates-suppressed": {"Duplicate deliveries suppressed", "0"},
 		"duplicate-effects":     {"Duplicate effects", "0"},
 	} {
-		if got := pageOutcome(page, row); !slices.Equal(got, want) {
+		if got := pageOutcomeSummary(page, row); !slices.Equal(got, want) {
 			t.Errorf("page outcome %s = %q, want %q", row, got, want)
 		}
 	}
@@ -126,7 +126,7 @@ func pageBalanceChange(page []byte, step string) string {
 	return string(match[1])
 }
 
-func pageOutcome(page []byte, row string) []string {
+func pageOutcomeSummary(page []byte, row string) []string {
 	segment := regexp.MustCompile(`data-outcome="` + row + `"(?s:.*?)</(?:tr|div)>`).Find(page)
 	var cells []string
 	for _, match := range regexp.MustCompile(`<(?:td|dt|dd)[^>]*>([^<]*)<`).FindAllSubmatch(segment, -1) {
