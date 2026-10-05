@@ -212,3 +212,25 @@ func TestAdmissionHistoryShowsWaitAndLinksTheDebit(t *testing.T) {
 		t.Fatalf("admission/debit rows = %+v / %+v", rows[1], rows[2])
 	}
 }
+
+func TestHistoryRowsShowEachBankOutcomesBalanceChange(t *testing.T) {
+	balance := func(n int64) *int64 { return &n }
+	history := []historyEntry{
+		{Step: requested, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, MessageID: "funds-debited", CausationID: "debit-funds", BalanceBefore: balance(100), BalanceAfter: balance(75)},
+		{Step: creditRequested, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
+		{Step: creditRejected, MessageID: "credit-rejected", CausationID: "credit-funds", BalanceBefore: balance(0), BalanceAfter: balance(0)},
+		{Step: refundRequested, CausationID: "credit-rejected", IssuedMessageID: "refund-funds"},
+		{Step: refundCommitted, MessageID: "funds-refunded", CausationID: "refund-funds"},
+	}
+
+	var got []string
+	for _, row := range historyRows(history) {
+		got = append(got, row.Balance)
+	}
+
+	want := []string{"", "100 → 75", "", "0", "", ""}
+	if !slices.Equal(got, want) {
+		t.Fatalf("balances = %q, want %q", got, want)
+	}
+}

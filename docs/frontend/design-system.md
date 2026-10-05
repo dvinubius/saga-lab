@@ -306,6 +306,11 @@ because `ⓘ` is outside the vendored font subsets.
     A row that leads somewhere is a whole-row link whose hover is
     `--surface-shade`, applied instantly.
 
+    In History, a bank's committed step is followed by the balance it
+    reported, `· 100 → 75`, and a rejection by its unchanged balance, `· 0`.
+    The figure is a value beside a label, so it is dim (`.dim`), and it takes
+    no hue: a refund restoring the source reads in its numbers alone.
+
 13. **Form controls.** A field is mono at `--text-mono-meta` on the page
     surface with a hairline border, at `--row-height` (36px), like a button.
     A radio choice is a borderless fieldset whose visually hidden legend
