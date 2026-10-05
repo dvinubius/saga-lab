@@ -62,6 +62,7 @@ func startProject(t *testing.T, env []string, services ...string) *composeDemons
 func (d *composeDemonstration) reconnect(t *testing.T) {
 	t.Helper()
 	d.baseURL = "http://" + serviceAddress(t, d.project, "transfer-service", "8080")
+	d.visitorClient.baseURL = d.baseURL
 }
 
 func (d *composeDemonstration) compose(t *testing.T, args ...string) {
@@ -91,6 +92,7 @@ func composeEnv(env []string) []string {
 		"OTEL_COLLECTOR_HTTP_PORT=",
 		"TEMPO_PORT=",
 		"GRAFANA_PORT=",
+		"SAGAS_BANK_B_RESUME_WAIT=2.5s",
 	), env...)
 }
 

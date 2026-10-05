@@ -15,14 +15,16 @@ import (
 )
 
 const (
-	DebitFundsTopic     = "DebitFunds"
-	FundsDebitedTopic   = "FundsDebited"
-	DebitRejectedTopic  = "DebitRejected"
-	CreditFundsTopic    = "CreditFunds"
-	FundsCreditedTopic  = "FundsCredited"
-	CreditRejectedTopic = "CreditRejected"
-	RefundFundsTopic    = "RefundFunds"
-	FundsRefundedTopic  = "FundsRefunded"
+	DebitFundsTopic           = "DebitFunds"
+	FundsDebitedTopic         = "FundsDebited"
+	DebitRejectedTopic        = "DebitRejected"
+	CreditFundsTopic          = "CreditFunds"
+	CreditFundsDedicatedTopic = "CreditFundsDedicated"
+	ResumeDeliveryTopic       = "ResumeDelivery"
+	FundsCreditedTopic        = "FundsCredited"
+	CreditRejectedTopic       = "CreditRejected"
+	RefundFundsTopic          = "RefundFunds"
+	FundsRefundedTopic        = "FundsRefunded"
 
 	ProcessingObservedTopic = "ProcessingObserved"
 )
@@ -34,6 +36,7 @@ const (
 )
 
 const (
+	BankBUnavailable = "bank_b_unavailable"
 	DebitRedelivery  = "debit_redelivery"
 	CreditRejection  = "credit_rejection"
 	RefundRedelivery = "refund_redelivery"
@@ -42,6 +45,9 @@ const (
 const (
 	NackRequested       = "NackRequested"
 	DuplicateSuppressed = "DuplicateSuppressed"
+	CreditConfirmed     = "CreditConfirmed"
+	DeliveryResumed     = "DeliveryResumed"
+	DeliveryPaused      = "DeliveryPaused"
 )
 
 const (
@@ -77,6 +83,10 @@ type OperationRejected struct {
 }
 
 type DebitRejected OperationRejected
+
+type ResumeDelivery struct {
+	TransferID string `json:"transfer_id"`
+}
 
 type CreditFunds ScenarioOperation
 
@@ -126,9 +136,10 @@ func Decode(msg *message.Message, payload any) error {
 }
 
 type Broker struct {
-	Subscriber    *amqp.Subscriber
-	Router        *message.Router
-	amqpPublisher *amqp.Publisher
+	Subscriber        *amqp.Subscriber
+	Router            *message.Router
+	amqpPublisher     *amqp.Publisher
+	confirmationHooks map[string]ConfirmationHook
 }
 
 func Connect(url string, logger *slog.Logger, publishedTopics ...string) (*Broker, error) {
@@ -173,8 +184,7 @@ func queueConfig(url string) (amqp.Config, error) {
 }
 
 func Purge(url string, consumedTopics ...string) error {
-	config, err := queueConfig(url)
-	if err != nil {
+	if _, err := queueConfig(url); err != nil {
 		return err
 	}
 	conn, err := amqp091.Dial(url)
@@ -187,19 +197,28 @@ func Purge(url string, consumedTopics ...string) error {
 		return fmt.Errorf("open channel: %w", err)
 	}
 	for _, topic := range consumedTopics {
-		name := config.Queue.GenerateName(topic)
-		queue, err := channel.QueueDeclare(name, config.Queue.Durable, config.Queue.AutoDelete, config.Queue.Exclusive, config.Queue.NoWait, config.Queue.Arguments)
+		queue, err := DeclareQueue(channel, topic)
 		if err != nil {
-			return fmt.Errorf("declare %s queue: %w", name, err)
+			return err
 		}
 		if queue.Consumers > 0 {
-			return fmt.Errorf("%s queue still has %d consumers; stop the service first", name, queue.Consumers)
+			return fmt.Errorf("%s queue still has %d consumers; stop the service first", queue.Name, queue.Consumers)
 		}
-		if _, err := channel.QueuePurge(name, false); err != nil {
-			return fmt.Errorf("purge %s queue: %w", name, err)
+		if _, err := channel.QueuePurge(queue.Name, false); err != nil {
+			return fmt.Errorf("purge %s queue: %w", queue.Name, err)
 		}
 	}
 	return nil
+}
+
+func DeclareQueue(channel *amqp091.Channel, topic string) (amqp091.Queue, error) {
+	config := amqp.NewDurableQueueConfig("").Queue
+	name := config.GenerateName(topic)
+	queue, err := channel.QueueDeclare(name, config.Durable, config.AutoDelete, config.Exclusive, config.NoWait, config.Arguments)
+	if err != nil {
+		return queue, fmt.Errorf("declare %s queue: %w", name, err)
+	}
+	return queue, nil
 }
 
 func (b *Broker) Run(ctx context.Context) error {

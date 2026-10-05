@@ -3,7 +3,9 @@ package acceptance_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/dvinubius/saga-lab/internal/visitor"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -131,6 +133,17 @@ func pendingTransferLink(page []byte) string {
 
 func (d *inProcessDemonstration) holdBankADebits(t *testing.T) (release func()) {
 	t.Helper()
+	d.assertBalances(t, 100, 0)
+	visitorURL, _ := url.Parse(d.visitorClient.baseURL)
+	visitorID := ""
+	for _, cookie := range d.client.Jar.Cookies(visitorURL) {
+		if cookie.Name == visitor.CookieName {
+			visitorID = cookie.Value
+		}
+	}
+	if visitorID == "" {
+		t.Fatal("visitor cookie missing")
+	}
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, d.bankA.settings.DatabaseURL)
 	if err != nil {
@@ -140,14 +153,14 @@ func (d *inProcessDemonstration) holdBankADebits(t *testing.T) (release func()) 
 	if err != nil {
 		t.Fatalf("begin: %v", err)
 	}
-	if _, err := tx.Exec(ctx, `SELECT balance FROM accounts WHERE visitor_id = 'prepared-visitor' FOR UPDATE`); err != nil {
-		t.Fatalf("lock prepared account: %v", err)
+	if _, err := tx.Exec(ctx, `SELECT balance FROM accounts WHERE visitor_id = $1 FOR UPDATE`, visitorID); err != nil {
+		t.Fatalf("lock visitor account: %v", err)
 	}
 	var once sync.Once
 	release = func() {
 		once.Do(func() {
 			if err := tx.Rollback(ctx); err != nil {
-				t.Errorf("release prepared account: %v", err)
+				t.Errorf("release visitor account: %v", err)
 			}
 			conn.Close(ctx)
 		})
@@ -156,8 +169,9 @@ func (d *inProcessDemonstration) holdBankADebits(t *testing.T) (release func()) 
 	return release
 }
 
-func (d *demonstration) submitConcurrently(t *testing.T, n int, body string) []response {
+func (d *visitorClient) submitConcurrently(t *testing.T, n int, body string) []response {
 	t.Helper()
+	d.get(t, "/api/balances")
 	responses := make([]response, n)
 	errs := make([]error, n)
 	start := make(chan struct{})

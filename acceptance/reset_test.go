@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestResetRestoresThePreparedDemonstration(t *testing.T) {
+func TestResetGivesReturningVisitorFreshAccounts(t *testing.T) {
 	t.Parallel()
 	demo := startDemonstration(t)
 	earlier := demo.submitTransfer(t, `{"amount": 25}`)
@@ -19,10 +19,10 @@ func TestResetRestoresThePreparedDemonstration(t *testing.T) {
 
 	demo.reset(t)
 
-	demo.assertPrepared(t, earlier.TransferID, stale.TransferID)
+	demo.assertReset(t, earlier.TransferID, stale.TransferID)
 }
 
-func TestResetScriptRestoresThePreparedDemonstration(t *testing.T) {
+func TestResetScriptGivesReturningVisitorFreshAccounts(t *testing.T) {
 	t.Parallel()
 	demo := startComposeDemonstration(t)
 	earlier := demo.submitTransfer(t, `{"amount": 25}`)
@@ -32,10 +32,10 @@ func TestResetScriptRestoresThePreparedDemonstration(t *testing.T) {
 
 	demo.reset(t)
 
-	demo.assertPrepared(t, earlier.TransferID, stale.TransferID)
+	demo.assertReset(t, earlier.TransferID, stale.TransferID)
 }
 
-func (d *demonstration) assertPrepared(t *testing.T, clearedTransferIDs ...string) {
+func (d *visitorClient) assertReset(t *testing.T, clearedTransferIDs ...string) {
 	t.Helper()
 	d.assertBalances(t, 100, 0)
 	if transfers := d.transfers(t); len(transfers) != 0 {

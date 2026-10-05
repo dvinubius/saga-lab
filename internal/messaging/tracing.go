@@ -39,22 +39,25 @@ func send(ctx context.Context, publisher message.Publisher, topic string, msg *m
 
 func traceHandling(h message.HandlerFunc) message.HandlerFunc {
 	return func(msg *message.Message) ([]*message.Message, error) {
-		topic := message.SubscribeTopicFromCtx(msg.Context())
-		attemptID := watermill.NewUUID()
-		ctx := otel.GetTextMapPropagator().Extract(msg.Context(), propagation.MapCarrier(msg.Metadata))
-		ctx = context.WithValue(ctx, attemptIDKey{}, attemptID)
-		ctx, span := tracer.Start(ctx, "process "+topic,
-			trace.WithSpanKind(trace.SpanKindConsumer),
-			trace.WithAttributes(messageAttributes("process", topic, msg)...),
-			trace.WithAttributes(
-				attribute.String("saga.attempt_id", attemptID),
-				attribute.Bool("messaging.rabbitmq.message.redelivered", amqp.IsMessageRedelivered(msg)),
-			))
-		msg.SetContext(ctx)
-		produced, err := h(msg)
-		endSpan(span, err)
-		return produced, err
+		return handleTraced(message.SubscribeTopicFromCtx(msg.Context()), msg, h)
 	}
+}
+
+func handleTraced(topic string, msg *message.Message, h message.HandlerFunc) ([]*message.Message, error) {
+	attemptID := watermill.NewUUID()
+	ctx := otel.GetTextMapPropagator().Extract(msg.Context(), propagation.MapCarrier(msg.Metadata))
+	ctx = context.WithValue(ctx, attemptIDKey{}, attemptID)
+	ctx, span := tracer.Start(ctx, "process "+topic,
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithAttributes(messageAttributes("process", topic, msg)...),
+		trace.WithAttributes(
+			attribute.String("saga.attempt_id", attemptID),
+			attribute.Bool("messaging.rabbitmq.message.redelivered", amqp.IsMessageRedelivered(msg)),
+		))
+	msg.SetContext(ctx)
+	produced, err := h(msg)
+	endSpan(span, err)
+	return produced, err
 }
 
 func messageAttributes(operation, topic string, msg *message.Message) []attribute.KeyValue {
@@ -77,4 +80,10 @@ func endSpan(span trace.Span, err error) {
 		span.SetStatus(codes.Error, err.Error())
 	}
 	span.End()
+}
+
+func Handle(ctx context.Context, topic string, msg *message.Message, handler func(*message.Message) error) error {
+	msg.SetContext(ctx)
+	_, err := handleTraced(topic, msg, func(msg *message.Message) ([]*message.Message, error) { return nil, handler(msg) })
+	return err
 }
