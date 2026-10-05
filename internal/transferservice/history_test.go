@@ -131,3 +131,23 @@ func TestCreditRequestedIsExplainedOnlyAfterALostDebitAcknowledgement(t *testing
 		}
 	}
 }
+
+func TestARowContinuesTheRowAboveOnlyForTheSameAttempt(t *testing.T) {
+	history := []historyEntry{
+		{Step: requested, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
+		{Observation: nackRequested, AttemptID: "attempt-a1", MessageID: "nack", CausationID: "debit-funds"},
+		{Observation: duplicateSuppressed, AttemptID: "attempt-a2", MessageID: "duplicate", CausationID: "debit-funds"},
+		{Step: creditRequested, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
+	}
+
+	var got []bool
+	for _, row := range historyRows(history) {
+		got = append(got, row.Continues)
+	}
+
+	want := []bool{false, false, true, false, false}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("continues = %v, want %v", got, want)
+	}
+}
