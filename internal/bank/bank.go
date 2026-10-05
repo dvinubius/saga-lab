@@ -181,15 +181,19 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 		debited = true
 		return enqueue(tx, command.TransferID, messaging.FundsDebitedTopic, messaging.FundsDebited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 	}, logger)
-	if err != nil || !debited || command.Scenario != messaging.DebitRedelivery {
+	return b.loseAcknowledgementAfterCommit(msg, command.TransferID, command.Scenario, messaging.DebitRedelivery, debited, err, logger)
+}
+
+func (b *Bank) loseAcknowledgementAfterCommit(msg *message.Message, transferID, scenario, injectedUnder string, applied bool, err error, logger *slog.Logger) error {
+	if err != nil || !applied || scenario != injectedUnder {
 		return err
 	}
 	trace.SpanFromContext(msg.Context()).AddEvent("fault.injected")
-	logger.Warn("simulating lost acknowledgement after commit; Nack (requeue) requested", "transfer_id", command.TransferID, "message_id", msg.UUID)
+	logger.Warn("simulating lost acknowledgement after commit; Nack (requeue) requested", "transfer_id", transferID, "message_id", msg.UUID)
 	if err := pgx.BeginFunc(msg.Context(), b.db, func(tx pgx.Tx) error {
-		return b.observe(tx, command.TransferID, messaging.NackRequested, msg)
+		return b.observe(tx, transferID, messaging.NackRequested, msg)
 	}); err != nil {
-		logger.Error("record NackRequested", "transfer_id", command.TransferID, "message_id", msg.UUID, "error", err)
+		logger.Error("record NackRequested", "transfer_id", transferID, "message_id", msg.UUID, "error", err)
 	}
 	return errInjectedFailure
 }
