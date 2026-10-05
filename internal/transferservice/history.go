@@ -1,7 +1,9 @@
 package transferservice
 
 import (
+	"fmt"
 	"slices"
+	"time"
 
 	"github.com/dvinubius/saga-lab/internal/messaging"
 )
@@ -14,13 +16,18 @@ type historyRow struct {
 	Cause     string
 	Attempt   int
 	About     string
+	Label     string
 	Continues bool
 }
 
 func historyRows(history []historyEntry) []historyRow {
 	topics := messageTopics(history)
 	ackLost := map[string]bool{}
+	var confirmedAt time.Time
 	for _, e := range history {
+		if e.Observation == creditAccepted {
+			confirmedAt = e.ObservedAt
+		}
 		if e.Observation == nackRequested {
 			ackLost[topics[e.CausationID]] = true
 		}
@@ -28,7 +35,10 @@ func historyRows(history []historyEntry) []historyRow {
 	attempts := map[string][]string{}
 	rows := make([]historyRow, len(history))
 	for i, e := range history {
-		rows[i] = historyRow{historyEntry: e, Lane: slices.Index(lanes, e.Service), Cause: topics[e.CausationID], About: about(e, ackLost)}
+		rows[i] = historyRow{historyEntry: e, Lane: slices.Index(lanes, e.Service), Cause: topics[e.CausationID], About: about(e, ackLost), Label: e.Observation.Label()}
+		if e.Observation == deliveryResumed && !confirmedAt.IsZero() {
+			rows[i].Label = fmt.Sprintf("delivery resumed after %.1f s waiting in the queue", e.ObservedAt.Sub(confirmedAt).Seconds())
+		}
 		if e.AttemptID == "" {
 			continue
 		}
@@ -45,6 +55,8 @@ func historyRows(history []historyEntry) []historyRow {
 
 func about(e historyEntry, ackLost map[string]bool) string {
 	switch {
+	case e.Observation == deliveryResumed:
+		return "The credit command waited in RabbitMQ with no consumer, neither delivered nor failed, while Bank B kept serving other transfers."
 	case e.Observation == nackRequested:
 		return "We’re simulating the effects of a crash by requesting a redelivery (a Nack), and the broker delivers the message again."
 	case e.Step == creditRequested && ackLost[messaging.DebitFundsTopic]:

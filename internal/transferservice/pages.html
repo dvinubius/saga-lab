@@ -70,7 +70,7 @@
 </button><div class="float note" id="about-{{$.Step}}{{$.AttemptID}}" popover style="position-anchor: --about-{{$.Step}}{{$.AttemptID}}">{{.}}</div>{{end}}{{end}}
 
 {{define "history-entry"}}{{if not .Continues}}{{with .Cause}}<span class="meta">{{.}}{{if gt $.Attempt 1}} · attempt {{$.Attempt}}{{end}}</span>{{end}}{{end}}
-{{if .Step}}<span class="label">{{.Step.Label}}</span>{{template "about" .}}{{with .Step.LabelTail}}<span class="label">{{.}}</span>{{end}}{{else}}<span class="label">{{.Observation.Label}}</span>{{template "about" .}}{{end}}{{end}}
+{{if .Step}}<span class="label">{{.Step.Label}}</span>{{template "about" .}}{{with .Step.LabelTail}}<span class="label">{{.}}</span>{{end}}{{else}}<span class="label">{{.Label}}</span>{{template "about" .}}{{end}}{{end}}
 
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
 {{if and .PendingID (not .Overlap)}}<meta http-equiv="refresh" content="1; url=/">{{end}}

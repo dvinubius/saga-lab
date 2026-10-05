@@ -112,6 +112,8 @@ const (
 	nackRequested       observation = messaging.NackRequested
 	duplicateSuppressed observation = messaging.DuplicateSuppressed
 	creditAccepted      observation = messaging.CreditAccepted
+	deliveryResumed     observation = messaging.DeliveryResumed
+	deliveryPaused      observation = messaging.DeliveryPaused
 )
 
 func (o observation) Label() string {
@@ -120,6 +122,10 @@ func (o observation) Label() string {
 		return "couldn’t acknowledge after commit"
 	case creditAccepted:
 		return "the broker confirmed the credit command"
+	case deliveryResumed:
+		return "delivery resumed"
+	case deliveryPaused:
+		return "delivery paused again"
 	case duplicateSuppressed:
 		return "redelivery rejected; nothing applied"
 	}
@@ -283,7 +289,7 @@ func (s *Service) creditAccepted(ctx context.Context, tx pgx.Tx, msg *message.Me
 		return err
 	}
 	var observedAt time.Time
-	if err := tx.QueryRow(ctx, `UPDATE transfers SET credit_confirmed_at = COALESCE(credit_confirmed_at, $2) WHERE transfer_id = $1 RETURNING credit_confirmed_at`, credit.TransferID, confirmedAt).Scan(&observedAt); err != nil {
+	if err := tx.QueryRow(ctx, `UPDATE transfers SET credit_confirmed_at = COALESCE(credit_confirmed_at, $2), resume_at = COALESCE(resume_at, $3) WHERE transfer_id = $1 RETURNING credit_confirmed_at`, credit.TransferID, confirmedAt, confirmedAt.Add(s.resumeWait)).Scan(&observedAt); err != nil {
 		return err
 	}
 	return record(ctx, tx, credit.TransferID, historyEntry{
@@ -526,6 +532,13 @@ func visualisationReady(chosen scenario, current status, history []historyEntry)
 		return true
 	case current != completed:
 		return false
+	case chosen == bankBUnavailable:
+		confirmed, resumed := false, false
+		for _, e := range history {
+			confirmed = confirmed || e.Observation == creditAccepted
+			resumed = resumed || e.Observation == deliveryResumed
+		}
+		return confirmed && resumed
 	case chosen == debitRedelivery:
 		return redeliveryEvidenced(history, messaging.DebitFundsTopic, debitCommitted)
 	}
