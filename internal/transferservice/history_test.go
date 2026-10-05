@@ -292,3 +292,148 @@ func TestPlaybackCapsALongAdmissionWaitAndKeepsItsRealGap(t *testing.T) {
 		t.Errorf("gap = %q, want the real gap", rows[1].Gap)
 	}
 }
+
+func litPaths(history []historyEntry) []string {
+	var got []string
+	for _, row := range historyRows(history) {
+		got = append(got, row.Path)
+	}
+	return got
+}
+
+func TestHappyPathLightsEachStepFromSenderThroughTheBrokerToReceiver(t *testing.T) {
+	history := []historyEntry{
+		{Step: requested, Service: messaging.TransferService, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, Service: messaging.BankA, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
+		{Step: creditRequested, Service: messaging.TransferService, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
+		{Step: creditCommitted, Service: messaging.BankB, AttemptID: "attempt-b1", MessageID: "funds-credited", CausationID: "credit-funds"},
+		{Step: finished, Service: messaging.TransferService, CausationID: "funds-credited"},
+	}
+
+	want := []string{
+		"transfer-service broker",
+		"transfer-service broker bank-a",
+		"bank-a broker transfer-service",
+		"transfer-service broker bank-b",
+		"bank-b broker transfer-service",
+	}
+	if got := litPaths(history); !slices.Equal(got, want) {
+		t.Fatalf("paths =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestARedeliveredDebitIsHandedOverAgainByTheBroker(t *testing.T) {
+	history := []historyEntry{
+		{Step: requested, Service: messaging.TransferService, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, Service: messaging.BankA, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
+		{Observation: nackRequested, Service: messaging.BankA, AttemptID: "attempt-a1", MessageID: "nack", CausationID: "debit-funds"},
+		{Step: creditRequested, Service: messaging.TransferService, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
+		{Observation: duplicateSuppressed, Service: messaging.BankA, AttemptID: "attempt-a2", MessageID: "duplicate", CausationID: "debit-funds"},
+		{Step: creditCommitted, Service: messaging.BankB, AttemptID: "attempt-b1", MessageID: "funds-credited", CausationID: "credit-funds"},
+		{Step: finished, Service: messaging.TransferService, CausationID: "funds-credited"},
+	}
+
+	want := []string{
+		"transfer-service broker",
+		"transfer-service broker bank-a",
+		"bank-a broker",
+		"bank-a broker transfer-service",
+		"broker bank-a",
+		"transfer-service broker bank-b",
+		"bank-b broker transfer-service",
+	}
+	if got := litPaths(history); !slices.Equal(got, want) {
+		t.Fatalf("paths =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestTheCreditWaitsInTheBrokerWhileBankBHasNoConsumer(t *testing.T) {
+	history := []historyEntry{
+		{Step: requested, Service: messaging.TransferService, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, Service: messaging.BankA, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
+		{Step: creditRequested, Service: messaging.TransferService, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
+		{Observation: creditConfirmed, Service: messaging.TransferService, MessageID: "credit-funds", CausationID: "credit-funds"},
+		{Observation: deliveryResumed, Service: messaging.BankB},
+		{Step: creditCommitted, Service: messaging.BankB, AttemptID: "attempt-b1", MessageID: "funds-credited", CausationID: "credit-funds"},
+		{Observation: deliveryPaused, Service: messaging.BankB},
+		{Step: finished, Service: messaging.TransferService, CausationID: "funds-credited"},
+	}
+
+	type lit struct {
+		Path       string
+		NoConsumer bool
+	}
+	var got []lit
+	for _, row := range historyRows(history) {
+		got = append(got, lit{row.Path, row.NoConsumer})
+	}
+
+	want := []lit{
+		{"transfer-service broker", false},
+		{"transfer-service broker bank-a", false},
+		{"bank-a broker transfer-service", false},
+		{"transfer-service broker", false},
+		{"broker", true},
+		{"broker bank-b", false},
+		{"transfer-service broker bank-b", false},
+		{"bank-b broker transfer-service", false},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("paths =\n%v\nwant\n%v", got, want)
+	}
+}
+
+func TestAnAdmittedTransferPublishesItsDebitToTheBroker(t *testing.T) {
+	history := []historyEntry{
+		{Step: requested, Service: messaging.TransferService},
+		{Observation: admitted, Service: messaging.TransferService, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, Service: messaging.BankA, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
+	}
+
+	want := []string{"transfer-service broker", "transfer-service broker", "transfer-service broker bank-a"}
+	if got := litPaths(history); !slices.Equal(got, want) {
+		t.Fatalf("paths =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestARejectedDebitTravelsToBankAAndBack(t *testing.T) {
+	history := []historyEntry{
+		{Step: requested, Service: messaging.TransferService, IssuedMessageID: "debit-funds"},
+		{Step: debitRejected, Service: messaging.BankA, AttemptID: "attempt-a1", MessageID: "debit-rejected", CausationID: "debit-funds"},
+		{Step: transferRejected, Service: messaging.TransferService, CausationID: "debit-rejected"},
+	}
+
+	want := []string{"transfer-service broker", "transfer-service broker bank-a", "bank-a broker transfer-service"}
+	if got := litPaths(history); !slices.Equal(got, want) {
+		t.Fatalf("paths =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestACompensatedTransferWithARedeliveredRefundLightsEveryLeg(t *testing.T) {
+	history := []historyEntry{
+		{Step: requested, Service: messaging.TransferService, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, Service: messaging.BankA, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
+		{Step: creditRequested, Service: messaging.TransferService, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
+		{Step: creditRejected, Service: messaging.BankB, AttemptID: "attempt-b1", MessageID: "credit-rejected", CausationID: "credit-funds"},
+		{Step: refundRequested, Service: messaging.TransferService, CausationID: "credit-rejected", IssuedMessageID: "refund-funds"},
+		{Step: refundCommitted, Service: messaging.BankA, AttemptID: "attempt-a2", MessageID: "funds-refunded", CausationID: "refund-funds"},
+		{Observation: nackRequested, Service: messaging.BankA, AttemptID: "attempt-a2", MessageID: "nack", CausationID: "refund-funds"},
+		{Step: transferRefunded, Service: messaging.TransferService, CausationID: "funds-refunded"},
+		{Observation: duplicateSuppressed, Service: messaging.BankA, AttemptID: "attempt-a3", MessageID: "duplicate", CausationID: "refund-funds"},
+	}
+
+	want := []string{
+		"transfer-service broker",
+		"transfer-service broker bank-a",
+		"bank-a broker transfer-service",
+		"transfer-service broker bank-b",
+		"bank-b broker transfer-service",
+		"transfer-service broker bank-a",
+		"bank-a broker",
+		"bank-a broker transfer-service",
+		"broker bank-a",
+	}
+	if got := litPaths(history); !slices.Equal(got, want) {
+		t.Fatalf("paths =\n%q\nwant\n%q", got, want)
+	}
+}
