@@ -4,6 +4,9 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
+
+	"github.com/dvinubius/saga-lab/internal/messaging"
 )
 
 func TestHistoryRowsNameTheCauseAndNumberAttemptsPerCommand(t *testing.T) {
@@ -29,6 +32,24 @@ func TestHistoryRowsNameTheCauseAndNumberAttemptsPerCommand(t *testing.T) {
 	want := []shown{{"", 0}, {"DebitFunds", 1}, {"DebitFunds", 1}, {"FundsDebited", 0}, {"DebitFunds", 2}, {"CreditFunds", 1}, {"FundsCredited", 0}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("rows = %v, want %v", got, want)
+	}
+}
+
+func TestHistoryRowsShowTheCausingMessageAndAttemptIDs(t *testing.T) {
+	history := []historyEntry{
+		{Step: requested, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
+		{Step: creditRequested, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
+	}
+
+	var got []string
+	for _, row := range historyRows(history) {
+		got = append(got, row.Tooltip)
+	}
+
+	want := []string{"", "message debit-funds\nattempt attempt-a1", "message funds-debited"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("tooltips = %q, want %q", got, want)
 	}
 }
 
@@ -149,5 +170,45 @@ func TestARowContinuesTheRowAboveOnlyForTheSameAttempt(t *testing.T) {
 	want := []bool{false, false, true, false, false}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("continues = %v, want %v", got, want)
+	}
+}
+
+func TestUnavailableBankBWaitsAfterTheCreditConfirmation(t *testing.T) {
+	confirmation := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	history := []historyEntry{
+		{Step: creditRequested, IssuedMessageID: "credit-funds"},
+		{Observation: creditConfirmed, ObservedAt: confirmation, CausationID: "credit-funds"},
+		{Observation: deliveryResumed, Service: "Bank B", ObservedAt: confirmation.Add(2500 * time.Millisecond)},
+		{Observation: deliveryPaused, Service: "Bank B"},
+	}
+	rows := historyRows(history)
+	if rows[1].Cause != "→ [Sent CreditFunds]" || !rows[1].AboutCause || rows[1].About != "The broker has the message for Bank B." || rows[1].Label != "broker confirmed command" {
+		t.Fatalf("confirmation row = %+v", rows[1])
+	}
+	waiting := rows[2]
+	if waiting.Lane != 2 || waiting.Observation != deliveryWaiting || waiting.Label != "Command delivery waiting" || waiting.Observation.Title() != "Service unavailable" || !waiting.ObservedAt.IsZero() {
+		t.Fatalf("waiting row = %+v", waiting)
+	}
+	if waiting.About != "A missing consumer simulates Bank B being down. The credit command waits in the broker's queue with no consumer, neither delivered nor failed." {
+		t.Fatalf("waiting note = %q", waiting.About)
+	}
+	if rows[3].Label != "Command delivered after 2.5s" || rows[3].Observation.Title() != "Service back up" || rows[3].About != "" {
+		t.Fatalf("resume row = %+v", rows[3])
+	}
+	if len(rows) != 4 {
+		t.Fatalf("rows = %+v, want delivery paused left out", rows[4:])
+	}
+}
+
+func TestAdmissionHistoryShowsWaitAndLinksTheDebit(t *testing.T) {
+	requestedAt := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	history := []historyEntry{
+		{Step: requested, Service: messaging.TransferService, ObservedAt: requestedAt},
+		{Observation: observation("Admitted"), Service: messaging.TransferService, ObservedAt: requestedAt.Add(3250 * time.Millisecond), IssuedMessageID: "admission-debit"},
+		{Step: debitCommitted, Service: messaging.BankA, CausationID: "admission-debit"},
+	}
+	rows := historyRows(history)
+	if rows[1].Label != "admitted after waiting 3.2 s for another visitor’s demo" || rows[1].Lane != 0 || rows[2].Cause != "DebitFunds" || rows[0].Cause != "" || rows[1].Cause != "" {
+		t.Fatalf("admission/debit rows = %+v / %+v", rows[1], rows[2])
 	}
 }

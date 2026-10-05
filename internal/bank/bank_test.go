@@ -12,35 +12,47 @@ import (
 	"github.com/dvinubius/saga-lab/internal/bank"
 	"github.com/dvinubius/saga-lab/internal/messaging"
 	"github.com/dvinubius/saga-lab/internal/postgres/pgtest"
-	"github.com/dvinubius/saga-lab/internal/visitor"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func TestPreparedAccountStartsWithConfiguredBalance(t *testing.T) {
+func TestAccountOpeningIsIdempotentAndPreservesBalance(t *testing.T) {
 	db := pgtest.NewDatabase(t)
-
-	b := open(t, db, bank.Config{PreparedBalance: 100})
-
-	if got := balance(t, b, visitor.PreparedID); got != 100 {
-		t.Fatalf("prepared balance = %d, want 100", got)
+	b := open(t, db, bank.Config{OpeningBalance: 100, Role: bank.Source})
+	if got := get(b, "/accounts/visitor").Code; got != http.StatusNotFound {
+		t.Fatalf("before opening: status %d, want 404", got)
+	}
+	openAccount(t, b, "visitor")
+	if got := balance(t, b, "visitor"); got != 100 {
+		t.Fatalf("opening balance = %d, want 100", got)
+	}
+	command, err := messaging.New(context.Background(), "transfer", messaging.DebitFunds{TransferID: "transfer", VisitorID: "visitor", Amount: 25}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bank.DebitFunds(b, command); err != nil {
+		t.Fatal(err)
+	}
+	openAccount(t, b, "visitor")
+	restarted := open(t, db, bank.Config{OpeningBalance: 7, Role: bank.Source})
+	openAccount(t, restarted, "visitor")
+	if got := balance(t, restarted, "visitor"); got != 75 {
+		t.Fatalf("existing balance after opening and restart = %d, want 75", got)
 	}
 }
 
-func TestLaterStartupPreservesExistingAccount(t *testing.T) {
-	db := pgtest.NewDatabase(t)
-	open(t, db, bank.Config{PreparedBalance: 100})
-
-	restarted := open(t, db, bank.Config{PreparedBalance: 7})
-
-	if got := balance(t, restarted, visitor.PreparedID); got != 100 {
-		t.Fatalf("prepared balance after restart = %d, want existing 100", got)
+func openAccount(t *testing.T, b *bank.Bank, visitorID string) {
+	t.Helper()
+	response := httptest.NewRecorder()
+	b.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPut, "/accounts/"+visitorID, nil))
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("open account: status %d, body %q", response.Code, response.Body)
 	}
 }
 
 func TestVisitorWithoutAccountIsNotFound(t *testing.T) {
 	db := pgtest.NewDatabase(t)
-	b := open(t, db, bank.Config{PreparedBalance: 0})
+	b := open(t, db, bank.Config{OpeningBalance: 0})
 
 	if got := get(b, "/accounts/unknown-visitor").Code; got != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", got, http.StatusNotFound)
@@ -50,8 +62,8 @@ func TestVisitorWithoutAccountIsNotFound(t *testing.T) {
 func TestDebitCommitsNothingWhenEnqueueFails(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
-	b := open(t, db, bank.Config{PreparedBalance: 100, Role: bank.Source})
-	command, err := messaging.New(ctx, "transfer", messaging.DebitFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25}, "")
+	b := open(t, db, bank.Config{OpeningBalance: 100, Role: bank.Source})
+	command, err := messaging.New(ctx, "transfer", messaging.DebitFunds{TransferID: "transfer", VisitorID: "test-visitor", Amount: 25}, "")
 	if err != nil {
 		t.Fatalf("new command: %v", err)
 	}
@@ -64,7 +76,7 @@ func TestDebitCommitsNothingWhenEnqueueFails(t *testing.T) {
 	if err := bank.DebitFunds(b, command); err == nil {
 		t.Fatal("DebitFunds with a refusing outbox succeeded, want an error")
 	}
-	if got := balance(t, b, visitor.PreparedID); got != 100 {
+	if got := balance(t, b, "test-visitor"); got != 100 {
 		t.Fatalf("balance after failed handling = %d, want unchanged 100", got)
 	}
 	if got := outbox(t, db); len(got) != 0 {
@@ -80,7 +92,7 @@ func TestDebitCommitsNothingWhenEnqueueFails(t *testing.T) {
 	if err := bank.DebitFunds(b, command); err != nil {
 		t.Fatalf("DebitFunds: %v", err)
 	}
-	if got := balance(t, b, visitor.PreparedID); got != 75 {
+	if got := balance(t, b, "test-visitor"); got != 75 {
 		t.Fatalf("balance after handling = %d, want 75", got)
 	}
 	if got, want := outbox(t, db), []string{messaging.FundsDebitedTopic}; !reflect.DeepEqual(got, want) {
@@ -91,8 +103,8 @@ func TestDebitCommitsNothingWhenEnqueueFails(t *testing.T) {
 func TestRefundCommitsNothingWhenEnqueueFails(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
-	b := open(t, db, bank.Config{PreparedBalance: 75, Role: bank.Source})
-	command, err := messaging.New(ctx, "transfer", messaging.RefundFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25}, "")
+	b := open(t, db, bank.Config{OpeningBalance: 75, Role: bank.Source})
+	command, err := messaging.New(ctx, "transfer", messaging.RefundFunds{TransferID: "transfer", VisitorID: "test-visitor", Amount: 25}, "")
 	if err != nil {
 		t.Fatalf("new command: %v", err)
 	}
@@ -105,7 +117,7 @@ func TestRefundCommitsNothingWhenEnqueueFails(t *testing.T) {
 	if err := bank.RefundFunds(b, command); err == nil {
 		t.Fatal("RefundFunds with a refusing outbox succeeded, want an error")
 	}
-	if got := balance(t, b, visitor.PreparedID); got != 75 {
+	if got := balance(t, b, "test-visitor"); got != 75 {
 		t.Fatalf("balance after failed handling = %d, want unchanged 75", got)
 	}
 	if got := outbox(t, db); len(got) != 0 {
@@ -121,7 +133,7 @@ func TestRefundCommitsNothingWhenEnqueueFails(t *testing.T) {
 	if err := bank.RefundFunds(b, command); err != nil {
 		t.Fatalf("RefundFunds: %v", err)
 	}
-	if got := balance(t, b, visitor.PreparedID); got != 100 {
+	if got := balance(t, b, "test-visitor"); got != 100 {
 		t.Fatalf("balance after handling = %d, want 100", got)
 	}
 	if got, want := outbox(t, db), []string{messaging.FundsRefundedTopic}; !reflect.DeepEqual(got, want) {
@@ -132,8 +144,8 @@ func TestRefundCommitsNothingWhenEnqueueFails(t *testing.T) {
 func TestDuplicateDebitAppliesNothing(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
-	b := open(t, db, bank.Config{PreparedBalance: 100, Role: bank.Source})
-	command, err := messaging.New(ctx, "transfer", messaging.DebitFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25}, "")
+	b := open(t, db, bank.Config{OpeningBalance: 100, Role: bank.Source})
+	command, err := messaging.New(ctx, "transfer", messaging.DebitFunds{TransferID: "transfer", VisitorID: "test-visitor", Amount: 25}, "")
 	if err != nil {
 		t.Fatalf("new command: %v", err)
 	}
@@ -144,7 +156,7 @@ func TestDuplicateDebitAppliesNothing(t *testing.T) {
 		}
 	}
 
-	if got := balance(t, b, visitor.PreparedID); got != 75 {
+	if got := balance(t, b, "test-visitor"); got != 75 {
 		t.Errorf("balance after duplicate debit = %d, want 75", got)
 	}
 	if got, want := outbox(t, db), []string{messaging.FundsDebitedTopic, messaging.ProcessingObservedTopic}; !reflect.DeepEqual(got, want) {
@@ -156,8 +168,8 @@ func TestDuplicateDebitAppliesNothing(t *testing.T) {
 func TestDuplicateCreditAppliesNothing(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
-	b := open(t, db, bank.Config{PreparedBalance: 100, Role: bank.Destination})
-	command, err := messaging.New(ctx, "transfer", messaging.CreditFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25}, "")
+	b := open(t, db, bank.Config{OpeningBalance: 100, Role: bank.Destination})
+	command, err := messaging.New(ctx, "transfer", messaging.CreditFunds{TransferID: "transfer", VisitorID: "test-visitor", Amount: 25}, "")
 	if err != nil {
 		t.Fatalf("new command: %v", err)
 	}
@@ -168,7 +180,7 @@ func TestDuplicateCreditAppliesNothing(t *testing.T) {
 		}
 	}
 
-	if got := balance(t, b, visitor.PreparedID); got != 125 {
+	if got := balance(t, b, "test-visitor"); got != 125 {
 		t.Errorf("balance after duplicate credit = %d, want 125", got)
 	}
 	if got, want := outbox(t, db), []string{messaging.FundsCreditedTopic, messaging.ProcessingObservedTopic}; !reflect.DeepEqual(got, want) {
@@ -180,8 +192,8 @@ func TestDuplicateCreditAppliesNothing(t *testing.T) {
 func TestDuplicateCreditRejectionAppliesNothing(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
-	b := open(t, db, bank.Config{PreparedBalance: 0, Role: bank.Destination})
-	command, err := messaging.New(ctx, "transfer", messaging.CreditFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25, Scenario: messaging.CreditRejection}, "")
+	b := open(t, db, bank.Config{OpeningBalance: 0, Role: bank.Destination})
+	command, err := messaging.New(ctx, "transfer", messaging.CreditFunds{TransferID: "transfer", VisitorID: "test-visitor", Amount: 25, Scenario: messaging.CreditRejection}, "")
 	if err != nil {
 		t.Fatalf("new command: %v", err)
 	}
@@ -192,7 +204,7 @@ func TestDuplicateCreditRejectionAppliesNothing(t *testing.T) {
 		}
 	}
 
-	if got := balance(t, b, visitor.PreparedID); got != 0 {
+	if got := balance(t, b, "test-visitor"); got != 0 {
 		t.Errorf("balance after rejected credit = %d, want unchanged 0", got)
 	}
 	if got, want := outbox(t, db), []string{messaging.CreditRejectedTopic, messaging.ProcessingObservedTopic}; !reflect.DeepEqual(got, want) {
@@ -204,8 +216,8 @@ func TestDuplicateCreditRejectionAppliesNothing(t *testing.T) {
 func TestDuplicateRefundAppliesNothing(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
-	b := open(t, db, bank.Config{PreparedBalance: 75, Role: bank.Source})
-	command, err := messaging.New(ctx, "transfer", messaging.RefundFunds{TransferID: "transfer", VisitorID: visitor.PreparedID, Amount: 25, Scenario: messaging.CreditRejection}, "")
+	b := open(t, db, bank.Config{OpeningBalance: 75, Role: bank.Source})
+	command, err := messaging.New(ctx, "transfer", messaging.RefundFunds{TransferID: "transfer", VisitorID: "test-visitor", Amount: 25, Scenario: messaging.CreditRejection}, "")
 	if err != nil {
 		t.Fatalf("new command: %v", err)
 	}
@@ -216,7 +228,7 @@ func TestDuplicateRefundAppliesNothing(t *testing.T) {
 		}
 	}
 
-	if got := balance(t, b, visitor.PreparedID); got != 100 {
+	if got := balance(t, b, "test-visitor"); got != 100 {
 		t.Errorf("balance after duplicate refund = %d, want 100", got)
 	}
 	if got, want := outbox(t, db), []string{messaging.FundsRefundedTopic, messaging.ProcessingObservedTopic}; !reflect.DeepEqual(got, want) {
@@ -268,6 +280,7 @@ func open(t *testing.T, db *pgxpool.Pool, config bank.Config) *bank.Bank {
 	if err != nil {
 		t.Fatalf("open bank: %v", err)
 	}
+	openAccount(t, b, "test-visitor")
 	return b
 }
 

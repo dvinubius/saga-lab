@@ -30,8 +30,8 @@ const (
 )
 
 var (
-	bankAConfig = bank.Config{PreparedBalance: 100, Role: bank.Source}
-	bankBConfig = bank.Config{PreparedBalance: 0, Role: bank.Destination}
+	bankAConfig = bank.Config{OpeningBalance: 100, Role: bank.Source}
+	bankBConfig = bank.Config{OpeningBalance: 0, Role: bank.Destination}
 )
 
 type inProcessDemonstration struct {
@@ -88,7 +88,7 @@ func startDemonstration(t *testing.T) *inProcessDemonstration {
 	bankB := newService("bank-b", "bank_b", func(ctx context.Context, settings service.Settings) error {
 		return bank.Run(ctx, settings, bankBConfig)
 	})
-	config := transferservice.Config{BankAURL: bankA.url(), BankBURL: bankB.url(), GrafanaURL: "http://localhost:3000"}
+	config := transferservice.Config{ResumeWait: 2500 * time.Millisecond, BankAURL: bankA.url(), BankBURL: bankB.url(), GrafanaURL: "http://localhost:3000"}
 	transferService := newService("transfer-service", "transfer_service", func(ctx context.Context, settings service.Settings) error {
 		return transferservice.Run(ctx, settings, config)
 	})

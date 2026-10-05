@@ -1,7 +1,9 @@
 package bank
 
 var (
-	DebitFunds  = (*Bank).debitFunds
-	CreditFunds = (*Bank).creditFunds
-	RefundFunds = (*Bank).refundFunds
+	DedicatedCredit = (*Bank).dedicatedCredit
+	ResumeDelivery  = (*Bank).resumeDelivery
+	DebitFunds      = (*Bank).debitFunds
+	CreditFunds     = (*Bank).creditFunds
+	RefundFunds     = (*Bank).refundFunds
 )

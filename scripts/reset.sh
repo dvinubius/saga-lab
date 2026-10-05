@@ -12,4 +12,4 @@ for service in "${services[@]}"; do
 done
 docker compose up --detach --wait "${services[@]}"
 
-echo "Reset complete: Bank A holds 100 credits, Bank B 0, and no transfers remain."
+echo "Reset complete: no visitors or transfers remain. Browsers get fresh 100 / 0 accounts on their next request."

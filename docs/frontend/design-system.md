@@ -69,9 +69,9 @@ light-theme / dark-theme pair, like the accent:
 | | Light | Dark | Role here |
 | --- | --- | --- | --- |
 | Ember | `#A8500F` | `#DE8A42` | brand, the primary action, quiet-link rules |
-| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; a state's hue (rule 14) |
+| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; a state's hue, a scenario's avoided issue (rule 14) |
 | Violet | `#6B5D91` | `#AFA3CF` | secondary data and syntax color — nothing spends it yet |
-| Brick | `#A03028` | `#E0756A` | `--danger`: a rejected value or refused submission (rule 13); a failed state's hue (rule 14) |
+| Brick | `#A03028` | `#E0756A` | `--danger`: a rejected value or refused submission (rule 13); a failed state's hue, a scenario's simulated fault (rule 14) |
 
 Stone, Ink and Paper carry the overwhelming majority of the interface. Teal
 and Violet are for syntax on code surfaces and for data marks (a chart, a
@@ -323,7 +323,16 @@ because `ⓘ` is outside the vendored font subsets.
     palette. A transfer's status and its history steps take no hue:
     "Completed" and "Waiting for Bank A to debit" differ in words alone, and
     so do the Evidence row's "Being collected" and "Complete".
+    While awaiting admission, the status line says “Another visitor is trying
+    this demo. Yours will start automatically when it's your turn.” It uses
+    the ordinary status text, with no promised duration, spinner or state hue.
+    The transfer list uses the same label, and the pending form remains disabled.
 
     A state that does need a hue takes Brick for a failure and Teal
     otherwise, and keeps its words, so the hue is never the only signal. Not
     the accent: it sits too close to Brick on the light theme.
+
+    In History, a scenario may spend the same pair on what it demonstrates:
+    Brick on the entry showing the fault or issue the scenario simulates,
+    Teal on the entry showing how the system correctly avoids the trouble
+    that fault would typically cause.
