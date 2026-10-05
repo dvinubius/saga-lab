@@ -3,6 +3,7 @@ package transferservice
 import (
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/dvinubius/saga-lab/internal/messaging"
 )
@@ -18,7 +19,15 @@ const (
 
 var scenarios = []scenario{happyPath, debitRedelivery, creditRejection, refundRedelivery}
 
-var errUnknownScenario = errors.New("scenario must be one of: happy_path, debit_redelivery, credit_rejection, refund_redelivery")
+var errUnknownScenario = errors.New("scenario must be one of: " + strings.Join(slugs(scenarios), ", "))
+
+func slugs(ss []scenario) []string {
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i] = string(s)
+	}
+	return out
+}
 
 func (s scenario) Label() string {
 	switch s {

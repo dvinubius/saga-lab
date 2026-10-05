@@ -193,19 +193,19 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 		debited = true
 		return enqueue(tx, command.TransferID, messaging.FundsDebitedTopic, messaging.FundsDebited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 	}, logger)
-	return b.loseAcknowledgementAfterCommit(msg, command.TransferID, command.Scenario, messaging.DebitRedelivery, debited, err, logger)
+	return b.loseAcknowledgementAfterCommit(msg, messaging.ScenarioOperation(command), messaging.DebitRedelivery, debited, err, logger)
 }
 
-func (b *Bank) loseAcknowledgementAfterCommit(msg *message.Message, transferID, scenario, injectedUnder string, applied bool, err error, logger *slog.Logger) error {
-	if err != nil || !applied || scenario != injectedUnder {
+func (b *Bank) loseAcknowledgementAfterCommit(msg *message.Message, command messaging.ScenarioOperation, injectedUnder string, applied bool, err error, logger *slog.Logger) error {
+	if err != nil || !applied || command.Scenario != injectedUnder {
 		return err
 	}
 	trace.SpanFromContext(msg.Context()).AddEvent("fault.injected")
-	logger.Warn("simulating lost acknowledgement after commit; Nack (requeue) requested", "transfer_id", transferID, "message_id", msg.UUID)
+	logger.Warn("simulating lost acknowledgement after commit; Nack (requeue) requested", "transfer_id", command.TransferID, "message_id", msg.UUID)
 	if err := pgx.BeginFunc(msg.Context(), b.db, func(tx pgx.Tx) error {
-		return b.observe(tx, transferID, messaging.NackRequested, msg)
+		return b.observe(tx, command.TransferID, messaging.NackRequested, msg)
 	}); err != nil {
-		logger.Error("record NackRequested", "transfer_id", transferID, "message_id", msg.UUID, "error", err)
+		logger.Error("record NackRequested", "transfer_id", command.TransferID, "message_id", msg.UUID, "error", err)
 	}
 	return errInjectedFailure
 }
@@ -229,15 +229,8 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 				TransferID: command.TransferID, Reason: "Credit refused by Bank B", ObservedAt: time.Now(),
 			}, msg)
 		}
-		credited, err := tx.Exec(ctx,
-			`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1`,
-			command.VisitorID, command.Amount,
-		)
-		if err != nil {
+		if err := addFunds(ctx, tx, command.VisitorID, command.Amount); err != nil {
 			return err
-		}
-		if credited.RowsAffected() == 0 {
-			return pgx.ErrNoRows
 		}
 		return enqueue(tx, command.TransferID, messaging.FundsCreditedTopic, messaging.FundsCredited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 	}, logger)
@@ -260,20 +253,27 @@ func (b *Bank) refundFunds(msg *message.Message) error {
 	}
 	refunded := false
 	err := b.apply(msg, messaging.RefundFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
-		result, err := tx.Exec(ctx,
-			`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1`,
-			command.VisitorID, command.Amount,
-		)
-		if err != nil {
+		if err := addFunds(ctx, tx, command.VisitorID, command.Amount); err != nil {
 			return err
-		}
-		if result.RowsAffected() == 0 {
-			return pgx.ErrNoRows
 		}
 		refunded = true
 		return enqueue(tx, command.TransferID, messaging.FundsRefundedTopic, messaging.FundsRefunded{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 	}, logger)
-	return b.loseAcknowledgementAfterCommit(msg, command.TransferID, command.Scenario, messaging.RefundRedelivery, refunded, err, logger)
+	return b.loseAcknowledgementAfterCommit(msg, messaging.ScenarioOperation(command), messaging.RefundRedelivery, refunded, err, logger)
+}
+
+func addFunds(ctx context.Context, tx pgx.Tx, visitorID string, amount int64) error {
+	result, err := tx.Exec(ctx,
+		`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1`,
+		visitorID, amount,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func(context.Context, pgx.Tx) error, logger *slog.Logger) error {
