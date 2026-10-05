@@ -242,6 +242,7 @@ func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func
 		return fmt.Errorf("%s for transfer %s: %w", topic, transferID, err)
 	}
 	if duplicate {
+		trace.SpanFromContext(ctx).AddEvent("duplicate.suppressed")
 		logger.Info("ignore duplicate command", "command", topic, "transfer_id", transferID, "message_id", msg.UUID)
 	}
 	return nil
