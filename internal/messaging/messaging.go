@@ -15,14 +15,15 @@ import (
 )
 
 const (
-	DebitFundsTopic     = "DebitFunds"
-	FundsDebitedTopic   = "FundsDebited"
-	DebitRejectedTopic  = "DebitRejected"
-	CreditFundsTopic    = "CreditFunds"
-	FundsCreditedTopic  = "FundsCredited"
-	CreditRejectedTopic = "CreditRejected"
-	RefundFundsTopic    = "RefundFunds"
-	FundsRefundedTopic  = "FundsRefunded"
+	DebitFundsTopic           = "DebitFunds"
+	FundsDebitedTopic         = "FundsDebited"
+	DebitRejectedTopic        = "DebitRejected"
+	CreditFundsTopic          = "CreditFunds"
+	CreditFundsDedicatedTopic = "CreditFundsDedicated"
+	FundsCreditedTopic        = "FundsCredited"
+	CreditRejectedTopic       = "CreditRejected"
+	RefundFundsTopic          = "RefundFunds"
+	FundsRefundedTopic        = "FundsRefunded"
 
 	ProcessingObservedTopic = "ProcessingObserved"
 )
@@ -34,6 +35,7 @@ const (
 )
 
 const (
+	BankBUnavailable = "bank_b_unavailable"
 	DebitRedelivery  = "debit_redelivery"
 	CreditRejection  = "credit_rejection"
 	RefundRedelivery = "refund_redelivery"
@@ -42,6 +44,7 @@ const (
 const (
 	NackRequested       = "NackRequested"
 	DuplicateSuppressed = "DuplicateSuppressed"
+	CreditAccepted      = "CreditAccepted"
 )
 
 const (
@@ -126,9 +129,10 @@ func Decode(msg *message.Message, payload any) error {
 }
 
 type Broker struct {
-	Subscriber    *amqp.Subscriber
-	Router        *message.Router
-	amqpPublisher *amqp.Publisher
+	Subscriber        *amqp.Subscriber
+	Router            *message.Router
+	amqpPublisher     *amqp.Publisher
+	confirmationHooks map[string]ConfirmationHook
 }
 
 func Connect(url string, logger *slog.Logger, publishedTopics ...string) (*Broker, error) {

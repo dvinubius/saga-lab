@@ -43,7 +43,7 @@ var (
 		[]string{messaging.FundsDebitedTopic, messaging.DebitRejectedTopic, messaging.FundsRefundedTopic, messaging.ProcessingObservedTopic}}
 	Destination = Role{messaging.BankB,
 		[]command{{messaging.CreditFundsTopic, (*Bank).creditFunds}},
-		[]string{messaging.FundsCreditedTopic, messaging.CreditRejectedTopic, messaging.ProcessingObservedTopic}}
+		[]string{messaging.FundsCreditedTopic, messaging.CreditRejectedTopic, messaging.ProcessingObservedTopic, messaging.CreditFundsDedicatedTopic}}
 )
 
 type Config struct {
@@ -98,6 +98,9 @@ func Reset(ctx context.Context, settings service.Settings, config Config) error 
 	var commandTopics []string
 	for _, c := range config.Role.commands {
 		commandTopics = append(commandTopics, c.topic)
+	}
+	if config.Role.service == messaging.BankB {
+		commandTopics = append(commandTopics, messaging.CreditFundsDedicatedTopic)
 	}
 	if err := messaging.Purge(settings.AMQPURL, commandTopics...); err != nil {
 		return err

@@ -111,12 +111,15 @@ type observation string
 const (
 	nackRequested       observation = messaging.NackRequested
 	duplicateSuppressed observation = messaging.DuplicateSuppressed
+	creditAccepted      observation = messaging.CreditAccepted
 )
 
 func (o observation) Label() string {
 	switch o {
 	case nackRequested:
 		return "couldn’t acknowledge after commit"
+	case creditAccepted:
+		return "the broker confirmed the credit command"
 	case duplicateSuppressed:
 		return "redelivery rejected; nothing applied"
 	}
@@ -133,9 +136,10 @@ type transferSummary struct {
 
 type transfer struct {
 	transferSummary
-	RejectionReason string         `json:"rejection_reason,omitempty"`
-	TraceID         string         `json:"trace_id,omitempty"`
-	History         []historyEntry `json:"history,omitempty"`
+	RejectionReason   string         `json:"rejection_reason,omitempty"`
+	TraceID           string         `json:"trace_id,omitempty"`
+	CreditConfirmedAt *time.Time     `json:"credit_confirmed_at,omitempty"`
+	History           []historyEntry `json:"history,omitempty"`
 
 	VisualisationReady bool `json:"visualisation_ready"`
 }
@@ -264,9 +268,27 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 		}); err != nil {
 			return err
 		}
-		return messaging.Enqueue(ctx, tx, messaging.CreditFundsTopic, command)
+		topic := messaging.CreditFundsTopic
+		if credit.Scenario == messaging.BankBUnavailable {
+			topic = messaging.CreditFundsDedicatedTopic
+		}
+		return messaging.Enqueue(ctx, tx, topic, command)
 	})
 	return endTransition(err, messaging.FundsDebitedTopic, event.TransferID, current, msg, logger)
+}
+
+func (s *Service) creditAccepted(ctx context.Context, tx pgx.Tx, msg *message.Message, confirmedAt time.Time) error {
+	var credit messaging.CreditFunds
+	if err := messaging.Decode(msg, &credit); err != nil {
+		return err
+	}
+	var observedAt time.Time
+	if err := tx.QueryRow(ctx, `UPDATE transfers SET credit_confirmed_at = COALESCE(credit_confirmed_at, $2) WHERE transfer_id = $1 RETURNING credit_confirmed_at`, credit.TransferID, confirmedAt).Scan(&observedAt); err != nil {
+		return err
+	}
+	return record(ctx, tx, credit.TransferID, historyEntry{
+		Observation: creditAccepted, Service: messaging.TransferService, ObservedAt: observedAt, MessageID: msg.UUID, CausationID: msg.UUID,
+	})
 }
 
 func (s *Service) debitRejected(msg *message.Message) error {
@@ -469,9 +491,9 @@ func record(ctx context.Context, tx pgx.Tx, transferID string, entry historyEntr
 func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	t := transfer{transferSummary: transferSummary{ID: id}}
 	err := s.db.QueryRow(ctx,
-		`SELECT amount, scenario, status, COALESCE(rejection_reason, ''), COALESCE(trace_id, ''), requested_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
+		`SELECT amount, scenario, status, COALESCE(rejection_reason, ''), COALESCE(trace_id, ''), requested_at, credit_confirmed_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
 		id, visitor.ID(ctx),
-	).Scan(&t.Amount, &t.Scenario, &t.Status, &t.RejectionReason, &t.TraceID, &t.RequestedAt)
+	).Scan(&t.Amount, &t.Scenario, &t.Status, &t.RejectionReason, &t.TraceID, &t.RequestedAt, &t.CreditConfirmedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return transfer{}, errTransferNotFound
 	}
