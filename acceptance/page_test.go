@@ -32,6 +32,11 @@ func TestRefreshingTheTransferPageNeverResubmits(t *testing.T) {
 	if got, want := pageSteps(page), []string{"requested", "debit_committed", "credit_requested", "credit_committed", "finished"}; !slices.Equal(got, want) {
 		t.Errorf("page history steps = %q, want %q", got, want)
 	}
+	for step, want := range map[string]string{"debit_committed": "100 → 75", "credit_requested": "", "credit_committed": "0 → 25"} {
+		if got := pageBalanceChange(page, step); got != want {
+			t.Errorf("page %s balance change = %q, want %q", step, got, want)
+		}
+	}
 
 	before := demo.transfer(t, id)
 	for range 3 {
@@ -74,6 +79,15 @@ func (d *visitorClient) awaitPage(t *testing.T, path, status string) []byte {
 
 func pageData(page []byte, id string) string {
 	match := regexp.MustCompile(`id="` + id + `"[^>]*value="([^"]*)"`).FindSubmatch(page)
+	if match == nil {
+		return ""
+	}
+	return string(match[1])
+}
+
+func pageBalanceChange(page []byte, step string) string {
+	row := regexp.MustCompile(`data-step="` + step + `"(?s:.*?)</tr>`).Find(page)
+	match := regexp.MustCompile(`<span class="dim balance"> · ([^<]*)</span>`).FindSubmatch(row)
 	if match == nil {
 		return ""
 	}
