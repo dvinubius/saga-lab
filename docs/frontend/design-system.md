@@ -32,6 +32,7 @@ embedded into the Transfer Service binary and served under `/static/`:
 | `app.css` | Values this app needs and the brand does not have, the shared text roles, and every component style. |
 | `theme.js` | The theme switch. |
 | `fresh.js` | Reloads a page the browser restores from its back/forward cache. |
+| `playback.js` | Steps a ready transfer page's playback panel through its History rows (adaptation 15). |
 | `fonts/` | The four subset `.woff2` files built by the design system's `build-webfonts.py`, with the two OFL licences. |
 | `favicon.svg` | The product mark on an Ink tile — dark in both themes, because a browser tab is not part of the page. |
 | `saga-lab-logo-row.png` | The 1920 × 1080 link preview for `og:image` and `twitter:image`: the mark beside the wordmark, on Ink. |
@@ -48,7 +49,7 @@ back/forward cache. Going back from a transfer to the home page shows the
 current balances and Transfers list; the amount field is not restored.
 
 Fonts are served with a year-long immutable cache; CSS and JS are not cached.
-A transfer page whose evidence is not yet complete, and the home page while a
+A transfer page whose replay is not yet ready, and the home page while a
 transfer is pending, reload themselves once a second, and fonts fetched again on every reload would flash.
 Changing a font file therefore means renaming it.
 
@@ -123,12 +124,13 @@ Highlighted content is rendered as text through the template — captured bytes
 never reach the page as markup. An inline `<code>` inside a mono row (the
 transfer ID, the trace ID) takes no fill of its own.
 
-**Motion.** None is defined in the brand. Default to no animation; nothing
-bounces, pulses or spins. Hover changes on buttons and links — color,
-background, border — ease over 150ms (`--transition-state` from the brand,
-spent through `--hover-transition`). List rows change instantly. Something
-in progress says what it is waiting for in words, and the page reloads itself
-until it is done; there is no spinner.
+**Motion.** None is defined in the brand. Nothing bounces, pulses or spins.
+Hover changes on buttons and links — color, background, border — ease over
+150ms (`--transition-state` from the brand, spent through
+`--hover-transition`). List rows change instantly. Something in progress says
+what it is waiting for in words, and the page reloads itself until it is done;
+there is no spinner. The one thing that moves is playback (adaptation 15): it
+steps from entry to entry, and each step changes instantly.
 
 **Buttons and links.** Primary: solid accent fill — Paper text on light, Ink
 text on dark (Paper on Ember Light is too faint). Its hover is
@@ -248,7 +250,8 @@ because `ⓘ` is outside the vendored font subsets.
    reloading itself closes it on the next reload.
 
 8. **A fill steps off its own ground, not off the page.** `--surface-shade` is
-   a fill whose ground is the page — the hover of a row in the Transfers list.
+   a fill whose ground is the page — the hover of a row in the Transfers list,
+   and the current History row during playback.
    `--surface-shade-2` is a fill inside a filled region, and
    `--shade-hairline` the hairline on one; a filled region (hooklook's request
    list) is not used here yet, but these are what it takes when it is.
@@ -320,7 +323,10 @@ because `ⓘ` is outside the vendored font subsets.
 14. **Statuses are words, not colors.** The brand has one accent and no status
     palette. A transfer's status and its history steps take no hue:
     "Completed" and "Waiting for Bank A to debit" differ in words alone, and
-    so do the Evidence row's "Being collected" and "Complete".
+    so do the Replay row's "Available once the transfer has ended", "Being
+    prepared" and "Ready". The Replay row is always shown; together with the
+    status it tells apart admission waiting, the Saga running and the replay
+    being prepared.
     While awaiting admission, the status line says “Another visitor is trying
     this demo. Yours will start automatically when it's your turn.” It uses
     the ordinary status text, with no promised duration, spinner or state hue.
@@ -334,3 +340,31 @@ because `ⓘ` is outside the vendored font subsets.
     Brick on the entry showing the fault or issue the scenario simulates,
     Teal on the entry showing how the system correctly avoids the trouble
     that fault would typically cause.
+
+15. **Playback.** Once a transfer's replay is ready, a playback panel sits
+    above History and plays the transfer once from the start, on every load
+    of the page. It is a card like In depth, labelled PLAYBACK, and holds:
+
+    - the current entry's real timestamp in UTC and its real gap to the next
+      entry ("+4.980 s to the next entry", or "last entry"), as a `.fact`;
+    - the current entry as History shows it — cause, attempt, title, label
+      and balance change, with the scenario's Brick and Teal marks — in mono
+      at `--text-mono-meta`;
+    - the entry's explanation, if it has one, as a `.note`, in place of the
+      info mark;
+    - three secondary buttons: **← Step back**, **Pause** / **Play** /
+      **Replay**, **Step forward →**. Stepping pauses. At either end the step
+      that would leave the rows is disabled. At the end the panel rests on the
+      last entry and the middle button reads **Replay**.
+
+    Each entry stays on screen for its real gap to the next, at least 700 ms
+    and at most 4 s; the server computes this and the script only reads it.
+
+    History stays the complete record and follows the panel: the current row
+    takes `--surface-shade`, rows not yet played drop to `--disabled-opacity`
+    (like a disabled control, rule 13), and played rows look normal. Every row
+    is played at the end. Two rows of one attempt still read as one: the
+    shading and dimming apply per row and leave their joint unchanged.
+
+    While the replay is not ready there is no panel; the page reloads every
+    second and shows the live History.
