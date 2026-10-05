@@ -10,10 +10,11 @@ var lanes = []string{messaging.TransferService, messaging.BankA, messaging.BankB
 
 type historyRow struct {
 	historyEntry
-	Lane    int
-	Cause   string
-	Attempt int
-	About   string
+	Lane      int
+	Cause     string
+	Attempt   int
+	About     string
+	Continues bool
 }
 
 func historyRows(history []historyEntry) []historyRow {
@@ -31,6 +32,7 @@ func historyRows(history []historyEntry) []historyRow {
 		if e.AttemptID == "" {
 			continue
 		}
+		rows[i].Continues = i > 0 && history[i-1].AttemptID == e.AttemptID
 		n := slices.Index(attempts[e.CausationID], e.AttemptID)
 		if n < 0 {
 			attempts[e.CausationID] = append(attempts[e.CausationID], e.AttemptID)
@@ -48,7 +50,7 @@ func about(e historyEntry, ackLost map[string]bool) string {
 	case e.Step == creditRequested && ackLost[messaging.DebitFundsTopic]:
 		return "The debit command, although unacknowledged in order to trigger redelivery, was successful in terms of the commit to Bank A's outbox. The relay then published the result (message to Transfer Service), allowing the flow to continue."
 	case e.Step == refundCommitted:
-		return "The refund is a new operation at Bank A that restores the source balance, not a rollback of Bank A's debit."
+		return "The refund is a new operation, not a rollback the debit."
 	case e.Step == transferRefunded && ackLost[messaging.RefundFundsTopic]:
 		return "Bank A's FundsRefunded went out through its outbox although the acknowledgement of the refund command was lost, so the flow continued."
 	}
