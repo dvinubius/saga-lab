@@ -33,5 +33,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS transfer_history_by_message ON transfer_histor
 CREATE INDEX IF NOT EXISTS transfer_history_by_transfer ON transfer_history (transfer_id, entry_id);
 
 DROP INDEX IF EXISTS one_pending_transfer_per_visitor;
-CREATE UNIQUE INDEX one_pending_transfer_per_visitor ON transfers (visitor_id)
+CREATE UNIQUE INDEX IF NOT EXISTS pending_transfer_restriction ON transfers (visitor_id)
     WHERE status IN ('debit_pending', 'credit_pending', 'refund_pending');
