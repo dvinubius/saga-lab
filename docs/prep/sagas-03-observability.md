@@ -1,10 +1,10 @@
-# Saga Lab — Observability Requirements and Technical Plan
+# sagas — Observability Requirements and Technical Plan
 
-**Scope of this document:** why the system needs observability, what the visitor and an engineer should be able to investigate, and how to instrument and present that evidence. Business behavior is specified in [Application Requirements](saga-lab-01-application-requirements.md); service architecture is in [Technical Plan](saga-lab-02-technical-plan.md), and the delivery sequence is in [Milestones](saga-lab-04-milestones.md).
+**Scope of this document:** why the system needs observability, what the visitor and an engineer should be able to investigate, and how to instrument and present that evidence. Business behavior is specified in [Application Requirements](sagas-01-application-requirements.md); service architecture is in [Technical Plan](sagas-02-technical-plan.md), and the delivery sequence is in [Milestones](sagas-04-milestones.md).
 
 ## 1. Purpose: evidence for an orchestrated Saga
 
-Observability is as important to the portfolio demonstration as correctness. Saga Lab should show not only **that** a credit transfer finished with the right balances, but **how** independent services, asynchronous messaging, duplicate delivery, and compensation led to that result.
+Observability is as important to the portfolio demonstration as correctness. sagas should show not only **that** a credit transfer finished with the right balances, but **how** independent services, asynchronous messaging, duplicate delivery, and compensation led to that result.
 
 The public experience has two complementary layers:
 
@@ -144,7 +144,7 @@ Use bounded metric dimensions such as service, handler, message type, result, fa
 
 ## 7. Application timeline versus raw telemetry
 
-The frontend's narrated execution is backed by **explicit, persisted application events**, not inferred from traces, raw logs, or Prometheus time series. Banks send both business outcome events and separate message-processing observations through RabbitMQ; the Transfer Service persists them as durable history. Business events advance the Saga; processing observations do not. Stable observation IDs deduplicate evidence delivery while attempt IDs distinguish repeated handling of the observed command. The [technical plan](saga-lab-02-technical-plan.md#6-application-owned-timeline-and-frontend-playback) defines transport and readiness.
+The frontend's narrated execution is backed by **explicit, persisted application events**, not inferred from traces, raw logs, or Prometheus time series. Banks send both business outcome events and separate message-processing observations through RabbitMQ; the Transfer Service persists them as durable history. Business events advance the Saga; processing observations do not. Stable observation IDs deduplicate evidence delivery while attempt IDs distinguish repeated handling of the observed command. The [technical plan](sagas-02-technical-plan.md#6-application-owned-timeline-and-frontend-playback) defines transport and readiness.
 
 Preserve occurrence and ingestion times separately. Do not generate a recursive stream of evidence about evidence-message handling. Application-observed acknowledgement/Nack requests and broker-confirmed observations must remain distinguishable.
 

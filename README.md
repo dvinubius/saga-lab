@@ -1,4 +1,4 @@
-# Saga Lab
+# sagas
 
 A local demonstration of orchestrated Sagas: a Transfer Service coordinates transfers of fictional credits between two independently owned banks.
 
@@ -28,7 +28,7 @@ This builds the services, starts them with PostgreSQL, RabbitMQ, and the tracing
 | Tempo API        | <http://localhost:3200> |                    |
 | Collector (OTLP/HTTP) | `localhost:4318`   |                    |
 
-The RabbitMQ management UI is at <http://localhost:15672> (user and password `saga_lab`).
+The RabbitMQ management UI is at <http://localhost:15672> (user and password `sagas`).
 
 HTTP interfaces:
 
@@ -108,7 +108,7 @@ A transfer's trace starts with the request that submitted it; the Transfer Servi
 
 To inspect a transfer's trace, follow **Explore the trace in Grafana →** on the transfer page; it opens Grafana's Explore with the trace ID as a TraceQL query. By hand: take the trace ID from the transfer page or from `trace_id` in `GET /api/transfers/{transferID}`, and in Grafana (<http://localhost:3000>, no login) open **Explore**, choose **Tempo**, select **TraceQL**, and paste the trace ID. Searching TraceQL for `{span.saga.transfer_id="<transfer ID>"}` finds the same trace from a transfer ID. Spans do not record cookies, credentials, connection strings, or database roles. Traces are evidence only; balances, history, and status come from the services' databases.
 
-Set `SAGA_LAB_OTLP_ENDPOINT` to an empty value to start the services without tracing. Set `SAGA_LAB_GRAFANA_URL` to the Grafana address visitors' browsers reach (default `http://localhost:3000`); the transfer page's trace link points there.
+Set `SAGAS_OTLP_ENDPOINT` to an empty value to start the services without tracing. Set `SAGAS_GRAFANA_URL` to the Grafana address visitors' browsers reach (default `http://localhost:3000`); the transfer page's trace link points there.
 
 ## Test
 
@@ -116,7 +116,7 @@ Set `SAGA_LAB_OTLP_ENDPOINT` to an empty value to start the services without tra
 make test
 ```
 
-This builds the service images once and runs `go test ./...`. Each run gets a random run ID and starts one PostgreSQL and one RabbitMQ for the whole run in its own Compose project, `saga-lab-test-<run>`, on free ports. Package tests create their databases there, and most acceptance tests use both. At most four tests run at a time. The run's PostgreSQL allows 300 connections, enough for four tests' services and the package tests. The two Compose-backed tests start a stack each, and with many stacks at once, Docker Desktop on macOS sometimes leaves a healthy container's published port unforwarded, and requests to it are refused. A run removes only its own projects afterwards, so concurrent runs and the development stack and its data are untouched. A run killed outright can leave its projects behind; `docker compose ls` lists them. Arguments to `scripts/test.sh` are passed to `go test`, for example `scripts/test.sh -run TestRefreshing -v ./acceptance`.
+This builds the service images once and runs `go test ./...`. Each run gets a random run ID and starts one PostgreSQL and one RabbitMQ for the whole run in its own Compose project, `sagas-test-<run>`, on free ports. Package tests create their databases there, and most acceptance tests use both. At most four tests run at a time. The run's PostgreSQL allows 300 connections, enough for four tests' services and the package tests. The two Compose-backed tests start a stack each, and with many stacks at once, Docker Desktop on macOS sometimes leaves a healthy container's published port unforwarded, and requests to it are refused. A run removes only its own projects afterwards, so concurrent runs and the development stack and its data are untouched. A run killed outright can leave its projects behind; `docker compose ls` lists them. Arguments to `scripts/test.sh` are passed to `go test`, for example `scripts/test.sh -run TestRefreshing -v ./acceptance`.
 
 ```bash
 scripts/test.sh -short
@@ -126,6 +126,6 @@ This is the fast loop. It needs only the run's PostgreSQL and RabbitMQ: it build
 
 Most acceptance tests in `acceptance/` run Bank A, Bank B, and the Transfer Service inside the test process, with tracing turned off, and drive the Transfer Service only over HTTP. Each test gets three fresh databases, each owned by its own login role that alone can open it, as in the Compose stack, and its own RabbitMQ virtual host. They are removed when the test ends, also when it fails, so every test begins from the prepared 100/0 state regardless of order. A failing test prints its services' logs, each line naming its service. Restart and reset are tested this way too: stopping a service cancels it and waits for it to return, starting runs it again with the same settings, and reset calls each service's reset entry point while the services are stopped, in the order `scripts/reset.sh` uses.
 
-`TestTransferTraceCoversAllServices` and `TestResetScriptRestoresThePreparedDemonstration` start their own Compose project each, `saga-lab-acceptance-<run>-<random>`, on free ports. The trace test starts the whole stack, completes a transfer, and polls Tempo's API until the transfer's trace holds the HTTP, database, send, and process spans it expects from each service. It then checks that the trace contains no connection strings, cookies, or database roles. The reset-script test starts only the services and their PostgreSQL and RabbitMQ, with tracing turned off. It completes a transfer, stops Bank A and submits another transfer so its `DebitFunds` waits in the queue, runs `scripts/reset.sh` against its project, and then expects 100/0, no transfers, open submission, and a fresh 25-credit transfer ending at 75/25. Both skip with `-short`.
+`TestTransferTraceCoversAllServices` and `TestResetScriptRestoresThePreparedDemonstration` start their own Compose project each, `sagas-acceptance-<run>-<random>`, on free ports. The trace test starts the whole stack, completes a transfer, and polls Tempo's API until the transfer's trace holds the HTTP, database, send, and process spans it expects from each service. It then checks that the trace contains no connection strings, cookies, or database roles. The reset-script test starts only the services and their PostgreSQL and RabbitMQ, with tracing turned off. It completes a transfer, stops Bank A and submits another transfer so its `DebitFunds` waits in the queue, runs `scripts/reset.sh` against its project, and then expects 100/0, no transfers, open submission, and a fresh 25-credit transfer ending at 75/25. Both skip with `-short`.
 
-Package tests skip unless `SAGA_LAB_POSTGRES_URL` is set. In-process acceptance tests also need `SAGA_LAB_AMQP_URL` and `SAGA_LAB_RABBITMQ_MANAGEMENT_URL`, and Compose-backed ones skip unless `SAGA_LAB_ACCEPTANCE_PREFIX` names their project prefix; `scripts/test.sh` sets all four. The Compose-backed tests use the image `saga-lab-services` as last built, and fail if a stack is not ready within three minutes.
+Package tests skip unless `SAGAS_POSTGRES_URL` is set. In-process acceptance tests also need `SAGAS_AMQP_URL` and `SAGAS_RABBITMQ_MANAGEMENT_URL`, and Compose-backed ones skip unless `SAGAS_ACCEPTANCE_PREFIX` names their project prefix; `scripts/test.sh` sets all four. The Compose-backed tests use the image `sagas-services` as last built, and fail if a stack is not ready within three minutes.

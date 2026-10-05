@@ -29,8 +29,8 @@ services:
     image: rabbitmq:4.3.5-management-alpine@sha256:b3b8b7f95f5382a19f9ea33540e604f30aad081d37ad9aba72255135765373a1
     hostname: rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: saga_lab
-      RABBITMQ_DEFAULT_PASS: saga_lab
+      RABBITMQ_DEFAULT_USER: sagas
+      RABBITMQ_DEFAULT_PASS: sagas
     ports:
       - "127.0.0.1:${RABBITMQ_PORT-5672}:5672"
       - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT-15672}:15672"
@@ -78,13 +78,13 @@ services:
       - tempo
 
   bank-a:
-    image: saga-lab-services
+    image: sagas-services
     build: .
     entrypoint: ["/usr/local/bin/bank-a"]
     environment:
       DATABASE_URL: postgres://bank_a:bank_a@postgres:5432/bank_a?sslmode=disable
-      AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGA_LAB_OTLP_ENDPOINT-http://otel-collector:4318}
+      AMQP_URL: amqp://sagas:sagas@rabbitmq:5672/
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGAS_OTLP_ENDPOINT-http://otel-collector:4318}
       OTEL_BSP_SCHEDULE_DELAY: "500"
     ports:
       - "127.0.0.1:${BANK_A_PORT-8081}:8080"
@@ -97,13 +97,13 @@ services:
     restart: unless-stopped
 
   bank-b:
-    image: saga-lab-services
+    image: sagas-services
     build: .
     entrypoint: ["/usr/local/bin/bank-b"]
     environment:
       DATABASE_URL: postgres://bank_b:bank_b@postgres:5432/bank_b?sslmode=disable
-      AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGA_LAB_OTLP_ENDPOINT-http://otel-collector:4318}
+      AMQP_URL: amqp://sagas:sagas@rabbitmq:5672/
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGAS_OTLP_ENDPOINT-http://otel-collector:4318}
       OTEL_BSP_SCHEDULE_DELAY: "500"
     ports:
       - "127.0.0.1:${BANK_B_PORT-8082}:8080"
@@ -116,17 +116,17 @@ services:
     restart: unless-stopped
 
   transfer-service:
-    image: saga-lab-services
+    image: sagas-services
     build: .
     entrypoint: ["/usr/local/bin/transfer-service"]
     environment:
       DATABASE_URL: postgres://transfer_service:transfer_service@postgres:5432/transfer_service?sslmode=disable
-      AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGA_LAB_OTLP_ENDPOINT-http://otel-collector:4318}
+      AMQP_URL: amqp://sagas:sagas@rabbitmq:5672/
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGAS_OTLP_ENDPOINT-http://otel-collector:4318}
       OTEL_BSP_SCHEDULE_DELAY: "500"
       BANK_A_URL: http://bank-a:8080
       BANK_B_URL: http://bank-b:8080
-      GRAFANA_URL: ${SAGA_LAB_GRAFANA_URL-http://localhost:3000}
+      GRAFANA_URL: ${SAGAS_GRAFANA_URL-http://localhost:3000}
     ports:
       - "127.0.0.1:${TRANSFER_SERVICE_PORT-8080}:8080"
     depends_on:

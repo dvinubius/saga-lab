@@ -1,6 +1,6 @@
-# Saga Lab — Technical Plan
+# sagas — Technical Plan
 
-**Scope of this document:** the suggested architecture, implementation mechanisms, tests, and deployment. The delivery sequence is maintained in [Milestones](saga-lab-04-milestones.md). The externally observable behavior is specified in [Application Requirements](saga-lab-01-application-requirements.md); telemetry design is specified in [Observability](saga-lab-03-observability.md).
+**Scope of this document:** the suggested architecture, implementation mechanisms, tests, and deployment. The delivery sequence is maintained in [Milestones](sagas-04-milestones.md). The externally observable behavior is specified in [Application Requirements](sagas-01-application-requirements.md); telemetry design is specified in [Observability](sagas-03-observability.md).
 
 This document describes the V1 target architecture. Milestone 1 is a happy-path learning increment: it does not yet implement the inbox/outbox and duplicate-safety guarantees introduced in milestone 2.
 
@@ -165,7 +165,7 @@ Add tests with each milestone. Exercise the **application's** correctness rather
 
 ## 8. Milestones
 
-The delivery sequence is maintained in [Milestones](saga-lab-04-milestones.md). Tests and evidence accompany each milestone; the full V1 guarantees apply when their supporting milestones are complete.
+The delivery sequence is maintained in [Milestones](sagas-04-milestones.md). Tests and evidence accompany each milestone; the full V1 guarantees apply when their supporting milestones are complete.
 
 ## 9. Public deployment and explicit exclusions
 

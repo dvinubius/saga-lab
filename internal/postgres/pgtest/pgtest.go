@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const AdminURLVariable = "SAGA_LAB_POSTGRES_URL"
+const AdminURLVariable = "SAGAS_POSTGRES_URL"
 
 func NewDatabase(t *testing.T) *pgxpool.Pool {
 	t.Helper()

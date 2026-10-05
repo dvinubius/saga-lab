@@ -79,9 +79,9 @@ func TestOutboxTablesHaveNoInbox(t *testing.T) {
 }
 
 func TestRelayRecordsOnlyItsSendSpans(t *testing.T) {
-	amqpURL := os.Getenv("SAGA_LAB_AMQP_URL")
+	amqpURL := os.Getenv("SAGAS_AMQP_URL")
 	if amqpURL == "" {
-		t.Skip("SAGA_LAB_AMQP_URL is not set; run scripts/test.sh")
+		t.Skip("SAGAS_AMQP_URL is not set; run scripts/test.sh")
 	}
 	recorder := tracetest.NewSpanRecorder()
 	previous := otel.GetTracerProvider()
