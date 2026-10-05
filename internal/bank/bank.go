@@ -193,17 +193,20 @@ func (b *Bank) debitFunds(msg *message.Message) error {
 		}
 		if balance < command.Amount {
 			return enqueue(tx, command.TransferID, messaging.DebitRejectedTopic, messaging.DebitRejected{
-				TransferID: command.TransferID, Reason: "Insufficient funds", ObservedAt: time.Now(),
+				TransferID: command.TransferID, Reason: "Insufficient funds", ObservedAt: time.Now(), BalanceBefore: &balance, BalanceAfter: &balance,
 			}, msg)
 		}
-		if _, err := tx.Exec(ctx,
-			`UPDATE accounts SET balance = balance - $2 WHERE visitor_id = $1`,
+		var after int64
+		if err := tx.QueryRow(ctx,
+			`UPDATE accounts SET balance = balance - $2 WHERE visitor_id = $1 RETURNING balance`,
 			command.VisitorID, command.Amount,
-		); err != nil {
+		).Scan(&after); err != nil {
 			return err
 		}
 		debited = true
-		return enqueue(tx, command.TransferID, messaging.FundsDebitedTopic, messaging.FundsDebited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
+		return enqueue(tx, command.TransferID, messaging.FundsDebitedTopic, messaging.FundsDebited{
+			TransferID: command.TransferID, ObservedAt: time.Now(), BalanceBefore: &balance, BalanceAfter: &after,
+		}, msg)
 	}, logger)
 	return b.loseAcknowledgementAfterCommit(msg, messaging.ScenarioOperation(command), messaging.DebitRedelivery, debited, err, logger)
 }
@@ -236,15 +239,24 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 	rejected := false
 	err := b.apply(msg, messaging.CreditFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
 		if command.Scenario == messaging.CreditRejection || command.Scenario == messaging.RefundRedelivery {
+			var balance int64
+			if err := tx.QueryRow(ctx,
+				`SELECT balance FROM accounts WHERE visitor_id = $1 FOR UPDATE`, command.VisitorID,
+			).Scan(&balance); err != nil {
+				return err
+			}
 			rejected = true
 			return enqueue(tx, command.TransferID, messaging.CreditRejectedTopic, messaging.CreditRejected{
-				TransferID: command.TransferID, Reason: "Credit refused by Bank B", ObservedAt: time.Now(),
+				TransferID: command.TransferID, Reason: "Credit refused by Bank B", ObservedAt: time.Now(), BalanceBefore: &balance, BalanceAfter: &balance,
 			}, msg)
 		}
-		if err := addFunds(ctx, tx, command.VisitorID, command.Amount); err != nil {
+		before, after, err := addFunds(ctx, tx, command.VisitorID, command.Amount)
+		if err != nil {
 			return err
 		}
-		return enqueue(tx, command.TransferID, messaging.FundsCreditedTopic, messaging.FundsCredited{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
+		return enqueue(tx, command.TransferID, messaging.FundsCreditedTopic, messaging.FundsCredited{
+			TransferID: command.TransferID, ObservedAt: time.Now(), BalanceBefore: &before, BalanceAfter: &after,
+		}, msg)
 	}, logger)
 	if err == nil && rejected {
 		logger.Info("credit rejected as the scenario requires", "transfer_id", command.TransferID, "message_id", msg.UUID)
@@ -265,27 +277,29 @@ func (b *Bank) refundFunds(msg *message.Message) error {
 	}
 	refunded := false
 	err := b.apply(msg, messaging.RefundFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
-		if err := addFunds(ctx, tx, command.VisitorID, command.Amount); err != nil {
+		before, after, err := addFunds(ctx, tx, command.VisitorID, command.Amount)
+		if err != nil {
 			return err
 		}
 		refunded = true
-		return enqueue(tx, command.TransferID, messaging.FundsRefundedTopic, messaging.FundsRefunded{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
+		return enqueue(tx, command.TransferID, messaging.FundsRefundedTopic, messaging.FundsRefunded{
+			TransferID: command.TransferID, ObservedAt: time.Now(), BalanceBefore: &before, BalanceAfter: &after,
+		}, msg)
 	}, logger)
 	return b.loseAcknowledgementAfterCommit(msg, messaging.ScenarioOperation(command), messaging.RefundRedelivery, refunded, err, logger)
 }
 
-func addFunds(ctx context.Context, tx pgx.Tx, visitorID string, amount int64) error {
-	result, err := tx.Exec(ctx,
-		`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1`,
+func addFunds(ctx context.Context, tx pgx.Tx, visitorID string, amount int64) (before, after int64, err error) {
+	if err := tx.QueryRow(ctx,
+		`SELECT balance FROM accounts WHERE visitor_id = $1 FOR UPDATE`, visitorID,
+	).Scan(&before); err != nil {
+		return 0, 0, err
+	}
+	err = tx.QueryRow(ctx,
+		`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1 RETURNING balance`,
 		visitorID, amount,
-	)
-	if err != nil {
-		return err
-	}
-	if result.RowsAffected() == 0 {
-		return pgx.ErrNoRows
-	}
-	return nil
+	).Scan(&after)
+	return before, after, err
 }
 
 func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func(context.Context, pgx.Tx) error, logger *slog.Logger) error {

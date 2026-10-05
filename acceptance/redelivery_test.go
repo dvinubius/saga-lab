@@ -20,6 +20,9 @@ func TestDebitRedeliveryCompletesWithoutADuplicateDebit(t *testing.T) {
 
 	history := completed.History
 	requested, debit := entry(t, history, "requested"), entry(t, history, "debit_committed")
+	assertBalancePair(t, debit, 100, 75)
+	assertBalancePair(t, entry(t, history, "credit_committed"), 0, 25)
+	assertNoBalancePair(t, history, "debit_committed", "credit_committed")
 	nacks, duplicates := observations(history, "NackRequested"), observations(history, "DuplicateSuppressed")
 	if len(nacks) != 1 || len(duplicates) != 1 {
 		t.Fatalf("observations: %d NackRequested and %d DuplicateSuppressed, want one each; history %+v", len(nacks), len(duplicates), history)

@@ -11,6 +11,10 @@ func TestCreditRejectionEndsRefunded(t *testing.T) {
 
 	demo.assertBalances(t, 100, 0)
 	assertSteps(t, refunded.History, "requested", "debit_committed", "credit_requested", "credit_rejected", "refund_requested", "refund_committed", "transfer_refunded")
+	assertBalancePair(t, entry(t, refunded.History, "debit_committed"), 100, 75)
+	assertBalancePair(t, entry(t, refunded.History, "credit_rejected"), 0, 0)
+	assertBalancePair(t, entry(t, refunded.History, "refund_committed"), 75, 100)
+	assertNoBalancePair(t, refunded.History, "debit_committed", "credit_rejected", "refund_committed")
 	if refunded.RejectionReason != "Credit refused by Bank B" {
 		t.Errorf("rejection reason = %q, want Bank B's", refunded.RejectionReason)
 	}
@@ -29,6 +33,8 @@ func TestRefundRedeliveryRefundsOnce(t *testing.T) {
 
 	history := refunded.History
 	requested, refund := entry(t, history, "refund_requested"), entry(t, history, "refund_committed")
+	assertBalancePair(t, refund, 75, 100)
+	assertNoBalancePair(t, history, "debit_committed", "credit_rejected", "refund_committed")
 	nacks, duplicates := observations(history, "NackRequested"), observations(history, "DuplicateSuppressed")
 	if len(nacks) != 1 || len(duplicates) != 1 {
 		t.Fatalf("observations: %d NackRequested and %d DuplicateSuppressed, want one each; history %+v", len(nacks), len(duplicates), history)

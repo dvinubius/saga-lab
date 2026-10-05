@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS transfer_history (
 ALTER TABLE transfer_history ALTER COLUMN step DROP NOT NULL;
 ALTER TABLE transfer_history ADD COLUMN IF NOT EXISTS observation TEXT CHECK (num_nonnulls(step, observation) = 1);
 ALTER TABLE transfer_history ADD COLUMN IF NOT EXISTS attempt_id TEXT;
+ALTER TABLE transfer_history ADD COLUMN IF NOT EXISTS balance_before BIGINT;
+ALTER TABLE transfer_history ADD COLUMN IF NOT EXISTS balance_after BIGINT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS transfer_history_by_message ON transfer_history (message_id);
 
