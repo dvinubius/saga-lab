@@ -459,7 +459,8 @@ func bankConfig(t *testing.T) transferservice.Config {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	t.Cleanup(banks.Close)
-	return transferservice.Config{BankAURL: banks.URL, BankBURL: banks.URL}
+	// Development uses 2.5 seconds for test-suite productivity; the public release restores five seconds.
+	return transferservice.Config{ResumeWait: 2500 * time.Millisecond, BankAURL: banks.URL, BankBURL: banks.URL}
 }
 
 func testRequest(method, path string, body io.Reader) *http.Request {

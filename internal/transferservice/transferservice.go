@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/dvinubius/saga-lab/internal/messaging"
 	"github.com/dvinubius/saga-lab/internal/postgres"
@@ -40,6 +41,7 @@ type Config struct {
 	BankAURL   string
 	BankBURL   string
 	GrafanaURL string
+	ResumeWait time.Duration
 }
 
 func Run(ctx context.Context, settings service.Settings, config Config) error {
@@ -53,7 +55,7 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 	if err != nil {
 		return err
 	}
-	broker, err := messaging.Connect(settings.AMQPURL, settings.Logger, messaging.DebitFundsTopic, messaging.CreditFundsTopic, messaging.CreditFundsDedicatedTopic, messaging.RefundFundsTopic)
+	broker, err := messaging.Connect(settings.AMQPURL, settings.Logger, messaging.DebitFundsTopic, messaging.CreditFundsTopic, messaging.CreditFundsDedicatedTopic, messaging.RefundFundsTopic, messaging.ResumeDeliveryTopic)
 	if err != nil {
 		return err
 	}
@@ -63,6 +65,7 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return broker.Run(ctx) })
 	g.Go(func() error { return broker.RunRelay(ctx, db, settings.Logger) })
+	g.Go(func() error { return s.runResumeSchedule(ctx) })
 	g.Go(func() error { return web.Serve(ctx, settings.Listener, s.Handler(), web.Public, settings.Logger) })
 	return g.Wait()
 }
@@ -94,9 +97,13 @@ type Service struct {
 	bankB      bankClient
 	grafanaURL string
 	logger     *slog.Logger
+	resumeWait time.Duration
 }
 
 func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Logger) (*Service, error) {
+	if config.ResumeWait <= 0 {
+		return nil, errors.New("Bank B resume wait must be positive")
+	}
 	if _, err := db.Exec(ctx, schema); err != nil {
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
@@ -109,6 +116,7 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 		bankB:      newBankClient(messaging.BankB, config.BankBURL),
 		grafanaURL: strings.TrimSuffix(config.GrafanaURL, "/"),
 		logger:     logger,
+		resumeWait: config.ResumeWait,
 	}, nil
 }
 
