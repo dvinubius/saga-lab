@@ -65,12 +65,12 @@
 
 {{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{.UTC.Format "15:04:05.000"}}</time>{{end}}
 
-{{define "about"}}{{with .About}}<button class="about" type="button" popovertarget="about-{{$.Step}}{{$.AttemptID}}" aria-label="About this entry" title="About this entry" style="anchor-name: --about-{{$.Step}}{{$.AttemptID}}">
+{{define "about"}}{{with .About}}<button class="about" type="button" popovertarget="about-{{$.Step}}{{$.Observation}}{{$.AttemptID}}" aria-label="About this entry" title="About this entry" style="anchor-name: --about-{{$.Step}}{{$.Observation}}{{$.AttemptID}}">
   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6.5"/><path d="M8 7v4.5"/><circle cx="8" cy="4.75" r="0.9" fill="currentColor" stroke="none"/></svg>
-</button><div class="float note" id="about-{{$.Step}}{{$.AttemptID}}" popover style="position-anchor: --about-{{$.Step}}{{$.AttemptID}}">{{.}}</div>{{end}}{{end}}
+</button><div class="float note" id="about-{{$.Step}}{{$.Observation}}{{$.AttemptID}}" popover style="position-anchor: --about-{{$.Step}}{{$.Observation}}{{$.AttemptID}}">{{.}}</div>{{end}}{{end}}
 
-{{define "history-entry"}}{{if not .Continues}}{{with .Cause}}<span class="meta">{{.}}{{if gt $.Attempt 1}} · attempt {{$.Attempt}}{{end}}</span>{{end}}{{end}}
-{{if .Step}}<span class="label">{{.Step.Label}}</span>{{template "about" .}}{{with .Step.LabelTail}}<span class="label">{{.}}</span>{{end}}{{else}}<span class="label">{{.Label}}</span>{{template "about" .}}{{end}}{{end}}
+{{define "history-entry"}}{{if not .Continues}}{{with .Cause}}<span class="meta">{{.}}{{if gt $.Attempt 1}} · attempt {{$.Attempt}}{{end}}{{if $.AboutCause}}{{template "about" $}}{{end}}</span>{{end}}{{end}}{{with .Observation.Title}}<span class="meta">{{.}}</span>{{end}}
+{{if .Step}}<span class="label">{{.Step.Label}}</span>{{template "about" .}}{{with .Step.LabelTail}}<span class="label">{{.}}</span>{{end}}{{else}}<span class="label">{{.Label}}</span>{{if not .AboutCause}}{{template "about" .}}{{end}}{{end}}{{end}}
 
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
 {{if and .PendingID (not .Overlap)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
@@ -163,12 +163,12 @@
     <thead><tr><th class="caps">Observed (UTC)</th>{{range $.Lanes}}<th class="caps">{{.}}</th>{{end}}</tr></thead>
     <tbody>
     {{range $row := $.History}}<tr{{if .Step}} data-step="{{.Step}}"{{else}} data-observation="{{.Observation}}"{{end}}{{if .Continues}} class="continues"{{end}}>
-      <td>{{template "time" .ObservedAt}}</td>
-      {{range $lane, $_ := $.Lanes}}{{if eq $lane $row.Lane}}<td{{with $row.AttemptID}} title="{{.}}"{{end}}>{{template "history-entry" $row}}</td>{{else}}<td></td>{{end}}{{end}}
+      <td>{{if not .ObservedAt.IsZero}}{{template "time" .ObservedAt}}{{end}}</td>
+      {{range $lane, $_ := $.Lanes}}{{if eq $lane $row.Lane}}<td{{with $row.Tooltip}} title="{{.}}"{{end}}>{{template "history-entry" $row}}</td>{{else}}<td></td>{{end}}{{end}}
     </tr>
     {{end}}</tbody>
   </table>
-  <p class="note">Each column is a service, and each row is one entry it reported, in the order the entries were observed. Recorded times are left out.</p>
+  <p class="note">Each column is a service, and each row is one entry it reported.</p>
 </section>
 {{end}}
 

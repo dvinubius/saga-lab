@@ -35,6 +35,24 @@ func TestHistoryRowsNameTheCauseAndNumberAttemptsPerCommand(t *testing.T) {
 	}
 }
 
+func TestHistoryRowsShowTheCausingMessageAndAttemptIDs(t *testing.T) {
+	history := []historyEntry{
+		{Step: requested, IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds"},
+		{Step: creditRequested, CausationID: "funds-debited", IssuedMessageID: "credit-funds"},
+	}
+
+	var got []string
+	for _, row := range historyRows(history) {
+		got = append(got, row.Tooltip)
+	}
+
+	want := []string{"", "message debit-funds\nattempt attempt-a1", "message funds-debited"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("tooltips = %q, want %q", got, want)
+	}
+}
+
 func TestBankACommittedTheRefundAlwaysExplainsTheRefund(t *testing.T) {
 	history := []historyEntry{
 		{Step: requested, IssuedMessageID: "debit-funds"},
@@ -155,25 +173,30 @@ func TestARowContinuesTheRowAboveOnlyForTheSameAttempt(t *testing.T) {
 	}
 }
 
-func TestDeliveryResumedExplainsTheMeasuredBrokerWait(t *testing.T) {
+func TestUnavailableBankBWaitsAfterTheCreditConfirmation(t *testing.T) {
 	confirmation := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	history := []historyEntry{
-		{Observation: creditConfirmed, ObservedAt: confirmation},
+		{Step: creditRequested, IssuedMessageID: "credit-funds"},
+		{Observation: creditConfirmed, ObservedAt: confirmation, CausationID: "credit-funds"},
 		{Observation: deliveryResumed, Service: "Bank B", ObservedAt: confirmation.Add(2500 * time.Millisecond)},
 		{Observation: deliveryPaused, Service: "Bank B"},
 	}
 	rows := historyRows(history)
-	if rows[1].Lane != 2 || rows[1].Label != "delivery resumed after 2.5 s waiting in the queue" {
-		t.Fatalf("resume row = %+v", rows[1])
+	if rows[1].Cause != "→ [Sent CreditFunds]" || !rows[1].AboutCause || rows[1].About != "The broker has the message for Bank B." || rows[1].Label != "broker confirmed command" {
+		t.Fatalf("confirmation row = %+v", rows[1])
 	}
-	if rows[1].About != "The credit command waited in RabbitMQ with no consumer, neither delivered nor failed, while Bank B kept serving other transfers." {
-		t.Fatalf("resume note = %q", rows[1].About)
+	waiting := rows[2]
+	if waiting.Lane != 2 || waiting.Observation != deliveryWaiting || waiting.Label != "Command delivery waiting" || waiting.Observation.Title() != "Service unavailable" || !waiting.ObservedAt.IsZero() {
+		t.Fatalf("waiting row = %+v", waiting)
 	}
-	if rows[2].Label != "delivery paused again" {
-		t.Fatalf("pause label = %q", rows[2].Label)
+	if waiting.About != "A missing consumer simulates Bank B being down. The credit command waits in the broker's queue with no consumer, neither delivered nor failed." {
+		t.Fatalf("waiting note = %q", waiting.About)
 	}
-	if history[1].Observation.Label() != "delivery resumed" {
-		t.Fatal("observation requires confirmation time to be labelled")
+	if rows[3].Label != "Command delivered after 2.5s" || rows[3].Observation.Title() != "Service back up" || rows[3].About != "" {
+		t.Fatalf("resume row = %+v", rows[3])
+	}
+	if len(rows) != 4 {
+		t.Fatalf("rows = %+v, want delivery paused left out", rows[4:])
 	}
 }
 

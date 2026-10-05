@@ -67,9 +67,9 @@ light-theme / dark-theme pair, like the accent:
 | | Light | Dark | Role here |
 | --- | --- | --- | --- |
 | Ember | `#A8500F` | `#DE8A42` | brand, the primary action, quiet-link rules |
-| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; a state's hue (rule 14) |
+| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; a state's hue, a scenario's avoided issue (rule 14) |
 | Violet | `#6B5D91` | `#AFA3CF` | secondary data and syntax color — nothing spends it yet |
-| Brick | `#A03028` | `#E0756A` | `--danger`: a rejected value or refused submission (rule 13); a failed state's hue (rule 14) |
+| Brick | `#A03028` | `#E0756A` | `--danger`: a rejected value or refused submission (rule 13); a failed state's hue, a scenario's simulated fault (rule 14) |
 
 Stone, Ink and Paper carry the overwhelming majority of the interface. Teal
 and Violet are for syntax on code surfaces and for data marks (a chart, a
@@ -140,19 +140,6 @@ body text over a 1px accent bottom border; inline it takes a trailing `→`
 one (**→ dinubarbu.com**), as in hooklook. Never underline a button. A
 disabled control keeps its shape and drops to `--disabled-opacity` with
 `cursor: not-allowed`.
-
-**Scenario choice.** The home form offers five radios in this order: Happy
-path, Debit redelivery, Credit rejection & refund, Bank B unavailable, and
-Credit rejection & refund redelivery. The selected radio uses the accent dot;
-its text uses the same fact-label style as the other options. `CreditConfirmed`
-is an observation in the Transfer Service lane labelled “the broker confirmed
-the credit command”; it takes no state hue and does not imply queue-insertion
-time. `DeliveryResumed` and `DeliveryPaused` are observations in Bank B's
-lane, without a state hue. `Admitted` is an observation in the Transfer Service's
-lane, displaying the wait from request to admission only for a transfer that
-waited for another visitor. Resumption displays the wait from the broker's
-confirmation and has an info note explaining that the command waited in
-RabbitMQ with no consumer while Bank B continued serving other transfers.
 
 **Focus.** The brand defines no focus style. Not the accent — a focus ring is
 a state the accent would then carry alone. `:focus-visible` is a 2px outline
@@ -340,3 +327,8 @@ because `ⓘ` is outside the vendored font subsets.
     A state that does need a hue takes Brick for a failure and Teal
     otherwise, and keeps its words, so the hue is never the only signal. Not
     the accent: it sits too close to Brick on the light theme.
+
+    In History, a scenario may spend the same pair on what it demonstrates:
+    Brick on the entry showing the fault or issue the scenario simulates,
+    Teal on the entry showing how the system correctly avoids the trouble
+    that fault would typically cause.

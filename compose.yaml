@@ -124,8 +124,8 @@ services:
       AMQP_URL: amqp://saga_lab:saga_lab@rabbitmq:5672/
       OTEL_EXPORTER_OTLP_ENDPOINT: ${SAGA_LAB_OTLP_ENDPOINT-http://otel-collector:4318}
       OTEL_BSP_SCHEDULE_DELAY: "500"
-      # Development uses 2.5 seconds for test-suite productivity; the public release restores five seconds.
-      BANK_B_RESUME_WAIT: 2.5s
+      # The test suite sets 2.5 seconds for productivity.
+      BANK_B_RESUME_WAIT: ${SAGA_LAB_BANK_B_RESUME_WAIT-5s}
       BANK_A_URL: http://bank-a:8080
       BANK_B_URL: http://bank-b:8080
       GRAFANA_URL: ${SAGA_LAB_GRAFANA_URL-http://localhost:3000}
