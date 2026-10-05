@@ -53,7 +53,7 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 	if err != nil {
 		return err
 	}
-	broker, err := messaging.Connect(settings.AMQPURL, settings.Logger, messaging.DebitFundsTopic, messaging.CreditFundsTopic, messaging.RefundFundsTopic)
+	broker, err := messaging.Connect(settings.AMQPURL, settings.Logger, messaging.DebitFundsTopic, messaging.CreditFundsTopic, messaging.CreditFundsDedicatedTopic, messaging.RefundFundsTopic)
 	if err != nil {
 		return err
 	}
@@ -114,6 +114,7 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 
 func (s *Service) attachBroker(broker *messaging.Broker) {
 	s.broker = broker
+	broker.OnConfirmed(messaging.CreditFundsDedicatedTopic, s.creditAccepted)
 	broker.Router.AddConsumerHandler("funds-debited",
 		messaging.FundsDebitedTopic, broker.Subscriber,
 		s.fundsDebited)

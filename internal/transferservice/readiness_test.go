@@ -36,6 +36,8 @@ func TestVisualisationReadiness(t *testing.T) {
 		{"happy path completed", happyPath, completed, steps, true},
 		{"happy path rejected", happyPath, rejected, []historyEntry{requestedStep, {Step: debitRejected}}, true},
 		{"debit redelivery rejected", debitRedelivery, rejected, []historyEntry{requestedStep, {Step: debitRejected}}, true},
+		{"Bank B unavailable rejected", bankBUnavailable, rejected, []historyEntry{requestedStep, {Step: debitRejected}}, true},
+		{"Bank B unavailable pending with confirmation", bankBUnavailable, creditPending, []historyEntry{requestedStep, debitStep, {Observation: creditAccepted}}, false},
 		{"happy path pending", happyPath, creditPending, steps[:2], false},
 		{"credit rejection refunded", creditRejection, refunded, []historyEntry{requestedStep, debitStep, {Step: creditRequested}, {Step: creditRejected}, {Step: refundRequested}, {Step: refundCommitted}, {Step: transferRefunded}}, true},
 		{"credit rejection pending its refund", creditRejection, refundPending, []historyEntry{requestedStep, debitStep, {Step: creditRequested}, {Step: creditRejected}, {Step: refundRequested}}, false},

@@ -141,6 +141,14 @@ one (**→ dinubarbu.com**), as in hooklook. Never underline a button. A
 disabled control keeps its shape and drops to `--disabled-opacity` with
 `cursor: not-allowed`.
 
+**Scenario choice.** The home form offers five radios in this order: Happy
+path, Debit redelivery, Credit rejection & refund, Bank B unavailable, and
+Credit rejection & refund redelivery. The selected radio uses the accent dot;
+its text uses the same fact-label style as the other options. `CreditAccepted`
+is an observation in the Transfer Service lane labelled “the broker confirmed
+the credit command”; it takes no state hue and does not imply queue-insertion
+time.
+
 **Focus.** The brand defines no focus style. Not the accent — a focus ring is
 a state the accent would then carry alone. `:focus-visible` is a 2px outline
 in body text. A text field shows focus by turning its border and a 1px inset
