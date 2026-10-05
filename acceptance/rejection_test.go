@@ -20,6 +20,8 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 	assertSteps(t, rejected.History, "requested", "debit_rejected", "transfer_rejected")
 	assertServices(t, rejected.History, "Transfer Service", "Bank A", "Transfer Service")
 	requested, rejection, ended := rejected.History[0], rejected.History[1], rejected.History[2]
+	assertBalancePair(t, rejection, 100, 100)
+	assertNoBalancePair(t, rejected.History, "debit_rejected")
 	if rejection.MessageID == "" {
 		t.Errorf("DebitRejected message ID missing from history")
 	}
@@ -40,6 +42,9 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 	}
 	if got, want := pageSteps(page), []string{"requested", "debit_rejected", "transfer_rejected"}; !slices.Equal(got, want) {
 		t.Errorf("page history steps = %q, want %q", got, want)
+	}
+	if got := pageBalanceChange(page, "debit_rejected"); got != "100" {
+		t.Errorf("page debit_rejected balance = %q, want the unchanged 100", got)
 	}
 	for range 3 {
 		demo.get(t, transferPage)

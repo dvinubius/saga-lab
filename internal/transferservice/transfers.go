@@ -178,6 +178,8 @@ type historyEntry struct {
 	MessageID       string      `json:"message_id,omitempty"`
 	CausationID     string      `json:"causation_id,omitempty"`
 	IssuedMessageID string      `json:"issued_message_id,omitempty"`
+	BalanceBefore   *int64      `json:"balance_before,omitempty"`
+	BalanceAfter    *int64      `json:"balance_after,omitempty"`
 }
 
 const foreignKeyViolation = "23503"
@@ -315,7 +317,7 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: debitCommitted, Service: messaging.BankA, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
-			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), BalanceBefore: event.BalanceBefore, BalanceAfter: event.BalanceAfter,
 		}); err != nil {
 			return err
 		}
@@ -379,7 +381,7 @@ func (s *Service) debitRejected(msg *message.Message) error {
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: debitRejected, Service: messaging.BankA, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
-			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), BalanceBefore: event.BalanceBefore, BalanceAfter: event.BalanceAfter,
 		}); err != nil {
 			return err
 		}
@@ -419,7 +421,7 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: creditCommitted, Service: messaging.BankB, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
-			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), BalanceBefore: event.BalanceBefore, BalanceAfter: event.BalanceAfter,
 		}); err != nil {
 			return err
 		}
@@ -461,7 +463,7 @@ func (s *Service) creditRejected(msg *message.Message) error {
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: creditRejected, Service: messaging.BankB, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
-			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), BalanceBefore: event.BalanceBefore, BalanceAfter: event.BalanceAfter,
 		}); err != nil {
 			return err
 		}
@@ -498,7 +500,7 @@ func (s *Service) fundsRefunded(msg *message.Message) error {
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: refundCommitted, Service: messaging.BankA, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
-			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), BalanceBefore: event.BalanceBefore, BalanceAfter: event.BalanceAfter,
 		}); err != nil {
 			return err
 		}
@@ -565,10 +567,10 @@ func currentStatus(ctx context.Context, tx pgx.Tx, transferID string) (string, e
 
 func record(ctx context.Context, tx pgx.Tx, transferID string, entry historyEntry) error {
 	_, err := tx.Exec(ctx,
-		`INSERT INTO transfer_history (transfer_id, step, observation, service, observed_at, attempt_id, message_id, causation_id, issued_message_id)
-		 VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4, $5, NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''))
+		`INSERT INTO transfer_history (transfer_id, step, observation, service, observed_at, attempt_id, message_id, causation_id, issued_message_id, balance_before, balance_after)
+		 VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4, $5, NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), $10, $11)
 		 ON CONFLICT (message_id) DO NOTHING`,
-		transferID, entry.Step, entry.Observation, entry.Service, entry.ObservedAt, entry.AttemptID, entry.MessageID, entry.CausationID, entry.IssuedMessageID,
+		transferID, entry.Step, entry.Observation, entry.Service, entry.ObservedAt, entry.AttemptID, entry.MessageID, entry.CausationID, entry.IssuedMessageID, entry.BalanceBefore, entry.BalanceAfter,
 	)
 	return err
 }
@@ -587,7 +589,7 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	}
 	rows, err := s.db.Query(ctx,
 		`SELECT COALESCE(step, ''), COALESCE(observation, ''), service, COALESCE(attempt_id, ''), observed_at, recorded_at,
-		        COALESCE(message_id, ''), COALESCE(causation_id, ''), COALESCE(issued_message_id, '')
+		        COALESCE(message_id, ''), COALESCE(causation_id, ''), COALESCE(issued_message_id, ''), balance_before, balance_after
 		 FROM transfer_history WHERE transfer_id = $1 ORDER BY observed_at, entry_id`,
 		id,
 	)
@@ -596,7 +598,7 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	}
 	t.History, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (historyEntry, error) {
 		var e historyEntry
-		err := row.Scan(&e.Step, &e.Observation, &e.Service, &e.AttemptID, &e.ObservedAt, &e.RecordedAt, &e.MessageID, &e.CausationID, &e.IssuedMessageID)
+		err := row.Scan(&e.Step, &e.Observation, &e.Service, &e.AttemptID, &e.ObservedAt, &e.RecordedAt, &e.MessageID, &e.CausationID, &e.IssuedMessageID, &e.BalanceBefore, &e.BalanceAfter)
 		return e, err
 	})
 	t.VisualisationReady = visualisationReady(t.Scenario, t.Status, t.History)

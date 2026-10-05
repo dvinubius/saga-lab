@@ -21,6 +21,7 @@ type historyRow struct {
 	Tooltip    string
 	Label      string
 	Continues  bool
+	Balance    string
 }
 
 func historyRows(history []historyEntry) []historyRow {
@@ -44,7 +45,7 @@ func historyRows(history []historyEntry) []historyRow {
 		if e.Observation == deliveryPaused {
 			continue
 		}
-		row := historyRow{historyEntry: e, Lane: slices.Index(lanes, e.Service), Cause: topics[e.CausationID], About: about(e, ackLost), Label: e.Observation.Label()}
+		row := historyRow{historyEntry: e, Lane: slices.Index(lanes, e.Service), Cause: topics[e.CausationID], About: about(e, ackLost), Label: e.Observation.Label(), Balance: balanceChange(e)}
 		if e.Observation == admitted && !requestedAt.IsZero() {
 			row.Label = fmt.Sprintf("admitted after waiting %.1f s for another visitor’s demo", e.ObservedAt.Sub(requestedAt).Seconds())
 		}
@@ -83,6 +84,16 @@ func historyRows(history []historyEntry) []historyRow {
 		}
 	}
 	return rows
+}
+
+func balanceChange(e historyEntry) string {
+	switch {
+	case e.BalanceBefore == nil || e.BalanceAfter == nil:
+		return ""
+	case *e.BalanceBefore == *e.BalanceAfter:
+		return fmt.Sprint(*e.BalanceAfter)
+	}
+	return fmt.Sprintf("%d → %d", *e.BalanceBefore, *e.BalanceAfter)
 }
 
 func about(e historyEntry, ackLost map[string]bool) string {
