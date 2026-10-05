@@ -12,12 +12,13 @@ type scenario string
 
 const (
 	happyPath        scenario = "happy_path"
+	bankBUnavailable scenario = messaging.BankBUnavailable
 	debitRedelivery  scenario = messaging.DebitRedelivery
 	creditRejection  scenario = messaging.CreditRejection
 	refundRedelivery scenario = messaging.RefundRedelivery
 )
 
-var scenarios = []scenario{happyPath, debitRedelivery, creditRejection, refundRedelivery}
+var scenarios = []scenario{happyPath, debitRedelivery, creditRejection, bankBUnavailable, refundRedelivery}
 
 var errUnknownScenario = errors.New("scenario must be one of: " + strings.Join(slugs(scenarios), ", "))
 
@@ -37,6 +38,8 @@ func (s scenario) Label() string {
 		return "Debit redelivery"
 	case creditRejection:
 		return "Credit rejection & refund"
+	case bankBUnavailable:
+		return "Bank B unavailable"
 	case refundRedelivery:
 		return "Credit rejection & refund redelivery"
 	}
