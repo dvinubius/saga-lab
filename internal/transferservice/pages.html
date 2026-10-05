@@ -69,16 +69,16 @@
 {{end}}
 
 {{define "balances"}}<dl class="accounts">
-  <div class="account">
-    <dt class="caps">Bank A</dt>
-    <dd><data class="figure" id="bank-a-balance" value="{{.BankA.Balance}}">{{.BankA.Balance}}</data> <span class="fact">credits</span></dd>
-  </div>
-  <div class="account">
-    <dt class="caps">Bank B</dt>
-    <dd><data class="figure" id="bank-b-balance" value="{{.BankB.Balance}}">{{.BankB.Balance}}</data> <span class="fact">credits</span></dd>
-  </div>
+  <div class="account">{{template "bank-a" .BankA}}</div>
+  <div class="account">{{template "bank-b" .BankB}}</div>
 </dl>
 {{end}}
+
+{{define "bank-a"}}<dt class="caps">Bank A</dt>
+    <dd><data class="figure" id="bank-a-balance" value="{{.Balance}}">{{.Balance}}</data> <span class="fact">credits</span></dd>{{end}}
+
+{{define "bank-b"}}<dt class="caps">Bank B</dt>
+    <dd><data class="figure" id="bank-b-balance" value="{{.Balance}}">{{.Balance}}</data> <span class="fact">credits</span></dd>{{end}}
 
 {{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{.UTC.Format "15:04:05.000"}}</time>{{end}}
 
@@ -90,11 +90,17 @@
 {{if .Step}}<span class="label">{{.Step.Label}}</span>{{template "about" .}}{{with .Step.LabelTail}}<span class="label">{{.}}</span>{{end}}{{else}}<span class="label">{{.Label}}</span>{{if not .AboutCause}}{{template "about" .}}{{end}}{{end}}{{end}}
 
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
-{{if and .PendingID (not .Overlap)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
+{{if and .PendingID (not .Overlap) (not .TopUpRefused)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
 {{template "top"}}
 <section class="section">
   <p class="note">Your fictional credits at each bank.</p>
-  {{template "balances" .Balances}}
+  <dl class="accounts">
+    <div class="account">{{template "bank-a" .Balances.BankA}}
+      <dd class="top-up"><form method="post" action="/top-ups"><button class="btn btn-secondary" id="top-up"{{if .PendingID}} disabled{{end}}>+100 credits</button></form>
+        {{if .TopUpRefused}}<p class="error" id="top-up-error">No credits were added: a transfer is still pending.</p>{{end}}</dd>
+    </div>
+    <div class="account">{{template "bank-b" .Balances.BankB}}</div>
+  </dl>
 </section>
 
 <section class="section">
