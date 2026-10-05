@@ -147,8 +147,10 @@ func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.getHome)
 	mux.HandleFunc("POST /transfers", s.postTransferForm)
+	mux.HandleFunc("POST /top-ups", s.postTopUpForm)
 	mux.HandleFunc("GET /transfers/{transferID}", s.getTransferPage)
 	mux.HandleFunc("GET /api/balances", s.getBalances)
+	mux.HandleFunc("POST /api/top-ups", s.postTopUp)
 	mux.HandleFunc("GET /api/transfers", s.getTransfers)
 	mux.HandleFunc("POST /api/transfers", s.postTransfer)
 	mux.HandleFunc("GET /api/transfers/{transferID}", s.getTransfer)
@@ -204,6 +206,42 @@ func (s *Service) getBalances(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Error("read balances", "error", err)
 		web.WriteError(w, http.StatusBadGateway, "balances unavailable", s.logger)
+		return
+	}
+	web.WriteJSON(w, http.StatusOK, b, s.logger)
+}
+
+func (s *Service) topUp(ctx context.Context) (balances, error) {
+	pending, err := s.pendingTransferID(ctx)
+	if err != nil {
+		return balances{}, fmt.Errorf("find pending transfer: %w", err)
+	}
+	if pending != "" {
+		return balances{}, pendingTransferError{PendingID: pending}
+	}
+	bankA, err := s.bankA.topUp(ctx, visitor.ID(ctx))
+	if err != nil {
+		return balances{}, err
+	}
+	bankB, err := s.bankB.balance(ctx, visitor.ID(ctx))
+	if err != nil {
+		return balances{}, err
+	}
+	return balances{BankA: accountBalance{bankA}, BankB: accountBalance{bankB}}, nil
+}
+
+func (s *Service) postTopUp(w http.ResponseWriter, r *http.Request) {
+	b, err := s.topUp(r.Context())
+	if pending, ok := errors.AsType[pendingTransferError](err); ok {
+		web.WriteJSON(w, http.StatusConflict, map[string]string{
+			"error":               "a transfer is still pending; top up once it has finished",
+			"pending_transfer_id": pending.PendingID,
+		}, s.logger)
+		return
+	}
+	if err != nil {
+		s.logger.Error("top up", "error", err)
+		web.WriteError(w, http.StatusBadGateway, "top-up unavailable", s.logger)
 		return
 	}
 	web.WriteJSON(w, http.StatusOK, b, s.logger)
@@ -282,6 +320,7 @@ type homePage struct {
 	Error         string
 	ScenarioError string
 	Overlap       bool
+	TopUpRefused  bool
 }
 
 type transferPage struct {
@@ -347,6 +386,20 @@ func (s *Service) postTransferForm(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/transfers/"+t.ID, http.StatusSeeOther)
 }
 
+func (s *Service) postTopUpForm(w http.ResponseWriter, r *http.Request) {
+	_, err := s.topUp(r.Context())
+	if pending, ok := errors.AsType[pendingTransferError](err); ok {
+		s.renderHome(w, r, http.StatusConflict, homePage{PendingID: pending.PendingID, TopUpRefused: true})
+		return
+	}
+	if err != nil {
+		s.logger.Error("top up", "error", err)
+		http.Error(w, "The top-up could not be applied.", http.StatusBadGateway)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
 func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 	t, err := s.find(r.Context(), r.PathValue("transferID"))
 	if errors.Is(err, errTransferNotFound) {
@@ -364,7 +417,7 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Balances are temporarily unavailable.", http.StatusBadGateway)
 		return
 	}
-	page := transferPage{Balances: b, Transfer: t, Lanes: lanes, History: historyRows(t.History)}
+	page := transferPage{Balances: b, Transfer: t, Lanes: lanes, History: playback(historyRows(t.History))}
 	if t.TraceID != "" {
 		page.TraceURL = s.traceURL(t.TraceID)
 	}

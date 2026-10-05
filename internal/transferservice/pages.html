@@ -69,18 +69,20 @@
 {{end}}
 
 {{define "balances"}}<dl class="accounts">
-  <div class="account">
-    <dt class="caps">Bank A</dt>
-    <dd><data class="figure" id="bank-a-balance" value="{{.BankA.Balance}}">{{.BankA.Balance}}</data> <span class="fact">credits</span></dd>
-  </div>
-  <div class="account">
-    <dt class="caps">Bank B</dt>
-    <dd><data class="figure" id="bank-b-balance" value="{{.BankB.Balance}}">{{.BankB.Balance}}</data> <span class="fact">credits</span></dd>
-  </div>
+  <div class="account">{{template "bank-a" .BankA}}</div>
+  <div class="account">{{template "bank-b" .BankB}}</div>
 </dl>
 {{end}}
 
-{{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{.UTC.Format "15:04:05.000"}}</time>{{end}}
+{{define "bank-a"}}<dt class="caps">Bank A</dt>
+    <dd><data class="figure" id="bank-a-balance" value="{{.Balance}}">{{.Balance}}</data> <span class="fact">credits</span></dd>{{end}}
+
+{{define "bank-b"}}<dt class="caps">Bank B</dt>
+    <dd><data class="figure" id="bank-b-balance" value="{{.Balance}}">{{.Balance}}</data> <span class="fact">credits</span></dd>{{end}}
+
+{{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{template "timestamp" .}}</time>{{end}}
+
+{{define "timestamp"}}{{.UTC.Format "15:04:05.000"}}{{end}}
 
 {{define "about"}}{{with .About}}<button class="about" type="button" popovertarget="about-{{$.Step}}{{$.Observation}}{{$.AttemptID}}" aria-label="About this entry" title="About this entry" style="anchor-name: --about-{{$.Step}}{{$.Observation}}{{$.AttemptID}}">
   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6.5"/><path d="M8 7v4.5"/><circle cx="8" cy="4.75" r="0.9" fill="currentColor" stroke="none"/></svg>
@@ -94,11 +96,17 @@
 {{if .Step}}<span class="label">{{.Step.Label}}</span>{{with .Balance}}<span class="dim balance"> · {{.}}</span>{{end}}{{template "about" .}}{{with .Step.LabelTail}}<span class="label">{{.}}</span>{{end}}{{else}}<span class="label">{{.Label}}</span>{{if not .AboutCause}}{{template "about" .}}{{end}}{{end}}{{end}}
 
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
-{{if and .PendingID (not .Overlap)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
+{{if and .PendingID (not .Overlap) (not .TopUpRefused)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
 {{template "top"}}
 <section class="section">
   <p class="note">Your fictional credits at each bank.</p>
-  {{template "balances" .Balances}}
+  <dl class="accounts">
+    <div class="account">{{template "bank-a" .Balances.BankA}}
+      <dd class="top-up"><form method="post" action="/top-ups"><button class="btn btn-secondary" id="top-up"{{if .PendingID}} disabled{{end}}>+100 credits</button></form>
+        {{if .TopUpRefused}}<p class="error" id="top-up-error">No credits were added: a transfer is still pending.</p>{{end}}</dd>
+    </div>
+    <div class="account">{{template "bank-b" .Balances.BankB}}</div>
+  </dl>
 </section>
 
 <section class="section">
@@ -155,10 +163,10 @@
       <dt>Status</dt>
       <dd><data id="transfer-status" value="{{.Status}}">{{.Status.Label}}</data></dd>
     </div>
-    {{if not .Status.Pending}}<div>
-      <dt>Evidence</dt>
-      <dd>{{if .VisualisationReady}}<data id="transfer-evidence" value="complete">Complete</data>{{else}}<data id="transfer-evidence" value="collecting">Being collected</data>{{end}}</dd>
-    </div>{{end}}
+    <div>
+      <dt>Replay</dt>
+      <dd>{{if .VisualisationReady}}<data id="transfer-replay" value="ready">Ready</data>{{else if .Status.Pending}}<data id="transfer-replay" value="pending">Available once the transfer has ended</data>{{else}}<data id="transfer-replay" value="preparing">Being prepared</data>{{end}}</dd>
+    </div>
     {{with .RejectionReason}}<div>
       <dt>Reason</dt>
       <dd><data id="rejection-reason" value="{{.}}">{{.}}</data></dd>
@@ -177,6 +185,19 @@
     {{with $.TraceURL}}<a class="quiet-link" id="trace-link" href="{{.}}" target="_blank">Explore the trace in Grafana →</a>{{end}}
   </p>
 </section>
+
+{{if .VisualisationReady}}<section class="section playback" id="playback">
+  <h3 class="caps section-label">Playback</h3>
+  <p class="fact"><time class="playback-time"></time> UTC · <span class="playback-gap"></span></p>
+  <div class="playback-entry"></div>
+  <p class="note playback-note"></p>
+  <div class="playback-controls">
+    <button class="btn btn-secondary" type="button" data-control="back">← Step back</button>
+    <button class="btn btn-secondary" type="button" data-control="play">Pause</button>
+    <button class="btn btn-secondary" type="button" data-control="forward">Step forward →</button>
+  </div>
+</section>
+<script src="/static/playback.js" defer></script>{{end}}
 
 {{with .Outcome}}<section class="section outcome" id="outcome">
   <h3 class="caps section-label">Outcome</h3>
@@ -206,7 +227,7 @@
   <table class="table history">
     <thead><tr><th class="caps">Observed (UTC)</th>{{range $.Lanes}}<th class="caps">{{.}}</th>{{end}}</tr></thead>
     <tbody>
-    {{range $row := $.History}}<tr{{if .Step}} data-step="{{.Step}}"{{else}} data-observation="{{.Observation}}"{{end}}{{if .Continues}} class="continues"{{end}}>
+    {{range $row := $.History}}<tr{{if .Step}} data-step="{{.Step}}"{{else}} data-observation="{{.Observation}}"{{end}} data-observed-at="{{template "timestamp" .PlayedAt}}" data-dwell="{{.Dwell.Milliseconds}}"{{with .Gap}} data-gap="{{.}}"{{end}}{{if .Continues}} class="continues"{{end}}>
       <td>{{if not .ObservedAt.IsZero}}{{template "time" .ObservedAt}}{{end}}</td>
       {{range $lane, $_ := $.Lanes}}{{if eq $lane $row.Lane}}<td{{with $row.Tooltip}} title="{{.}}"{{end}}>{{template "history-entry" $row}}</td>{{else}}<td></td>{{end}}{{end}}
     </tr>

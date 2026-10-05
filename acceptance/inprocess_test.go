@@ -30,7 +30,7 @@ const (
 )
 
 var (
-	bankAConfig = bank.Config{OpeningBalance: 100, Role: bank.Source}
+	bankAConfig = bank.Config{OpeningBalance: 100, TopUpAmount: 100, Role: bank.Source}
 	bankBConfig = bank.Config{OpeningBalance: 0, Role: bank.Destination}
 )
 

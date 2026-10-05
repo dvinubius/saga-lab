@@ -70,25 +70,40 @@ func TestRefreshingTheTransferPageNeverResubmits(t *testing.T) {
 
 func (d *visitorClient) awaitPage(t *testing.T, path, status string) []byte {
 	t.Helper()
+	return d.awaitPageUntil(t, path, func(page []byte) bool { return pageData(page, "transfer-status") == status })
+}
+
+func (d *visitorClient) awaitReplay(t *testing.T, path string) []byte {
+	t.Helper()
+	return d.awaitPageUntil(t, path, func(page []byte) bool { return pageData(page, "transfer-replay") == "ready" })
+}
+
+func (d *visitorClient) awaitPageUntil(t *testing.T, path string, done func([]byte) bool) []byte {
+	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		page := d.get(t, path)
-		current, evidence := pageData(page, "transfer-status"), pageData(page, "transfer-evidence")
+		current, replay := pageData(page, "transfer-status"), pageData(page, "transfer-replay")
 		polling := regexp.MustCompile(`<meta http-equiv="refresh"`).Match(page)
-		if pending := current == "debit_pending" || current == "credit_pending"; pending != (evidence == "") {
-			t.Fatalf("status %q shown with evidence %q", current, evidence)
+		playback := regexp.MustCompile(`id="playback"`).Match(page)
+		pending := current == "awaiting_admission" || current == "debit_pending" || current == "credit_pending" || current == "refund_pending"
+		if pending != (replay == "pending") || !slices.Contains([]string{"pending", "preparing", "ready"}, replay) {
+			t.Fatalf("status %q shown with replay %q", current, replay)
 		}
-		if polling != (evidence != "complete") {
-			t.Fatalf("status %q and evidence %q shown with polling = %t", current, evidence, polling)
+		if polling == (replay == "ready") || playback != (replay == "ready") {
+			t.Fatalf("status %q and replay %q shown with polling = %t, playback = %t", current, replay, polling, playback)
 		}
-		if summarised := regexp.MustCompile(`id="outcome"`).Match(page); summarised != (evidence == "complete") {
-			t.Fatalf("status %q and evidence %q shown with outcome summary = %t", current, evidence, summarised)
+		if summarised := regexp.MustCompile(`id="outcome"`).Match(page); summarised != (replay == "ready") {
+			t.Fatalf("status %q and replay %q shown with outcome summary = %t", current, replay, summarised)
 		}
-		if current == status {
+		if replay == "ready" && !regexp.MustCompile(`<tr data-step="requested" data-observed-at="[^"]+" data-dwell="\d+"`).Match(page) {
+			t.Fatalf("ready page rows carry no playback timing: %s", page)
+		}
+		if done(page) {
 			return page
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("page status = %q after test deadline, want %q", current, status)
+			t.Fatalf("page status = %q, replay = %q after test deadline", current, replay)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

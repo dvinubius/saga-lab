@@ -234,3 +234,61 @@ func TestHistoryRowsShowEachBankOutcomesBalanceChange(t *testing.T) {
 		t.Fatalf("balances = %q, want %q", got, want)
 	}
 }
+
+func TestPlaybackDwellsForTheRealGapToTheNextRow(t *testing.T) {
+	start := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	at := func(ms int) time.Time { return start.Add(time.Duration(ms) * time.Millisecond) }
+	history := []historyEntry{
+		{Step: requested, IssuedMessageID: "debit-funds", ObservedAt: at(0)},
+		{Step: debitCommitted, AttemptID: "attempt-a1", MessageID: "funds-debited", CausationID: "debit-funds", ObservedAt: at(3)},
+		{Step: creditRequested, CausationID: "funds-debited", IssuedMessageID: "credit-funds", ObservedAt: at(1200)},
+		{Observation: creditConfirmed, CausationID: "credit-funds", ObservedAt: at(1205)},
+		{Observation: deliveryResumed, Service: messaging.BankB, ObservedAt: at(6185)},
+		{Step: creditCommitted, AttemptID: "attempt-b1", MessageID: "funds-credited", CausationID: "credit-funds", ObservedAt: at(6170)},
+		{Observation: deliveryPaused, Service: messaging.BankB, ObservedAt: at(6180)},
+		{Step: finished, CausationID: "funds-credited", ObservedAt: at(6190)},
+	}
+
+	type shown struct {
+		PlayedAt time.Time
+		Dwell    time.Duration
+		Gap      string
+	}
+	var got []shown
+	for _, row := range playback(historyRows(history)) {
+		got = append(got, shown{row.PlayedAt, row.Dwell, row.Gap})
+	}
+
+	ms := time.Millisecond
+	want := []shown{
+		{at(0), 700 * ms, "+0.003 s"},
+		{at(3), 1197 * ms, "+1.197 s"},
+		{at(1200), 700 * ms, "+0.005 s"},
+		{at(1205), 700 * ms, "+0.000 s"},
+		{at(1205), 4000 * ms, "+4.980 s"},
+		{at(6185), 700 * ms, "-0.015 s"},
+		{at(6170), 700 * ms, "+0.020 s"},
+		{at(6190), 700 * ms, ""},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("playback =\n%v\nwant\n%v", got, want)
+	}
+}
+
+func TestPlaybackCapsALongAdmissionWaitAndKeepsItsRealGap(t *testing.T) {
+	start := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	history := []historyEntry{
+		{Step: requested, Service: messaging.TransferService, ObservedAt: start},
+		{Observation: admitted, Service: messaging.TransferService, ObservedAt: start.Add(2500 * time.Millisecond), IssuedMessageID: "debit-funds"},
+		{Step: debitCommitted, Service: messaging.BankA, CausationID: "debit-funds", ObservedAt: start.Add(12500 * time.Millisecond)},
+	}
+
+	rows := playback(historyRows(history))
+
+	if got, want := []time.Duration{rows[0].Dwell, rows[1].Dwell, rows[2].Dwell}, []time.Duration{2500 * time.Millisecond, 4 * time.Second, 700 * time.Millisecond}; !slices.Equal(got, want) {
+		t.Errorf("dwells = %v, want %v", got, want)
+	}
+	if rows[1].Gap != "+10.000 s" {
+		t.Errorf("gap = %q, want the real gap", rows[1].Gap)
+	}
+}
