@@ -36,9 +36,9 @@ func (s scenario) Label() string {
 	case debitRedelivery:
 		return "Debit redelivery"
 	case creditRejection:
-		return "Credit rejection"
+		return "Credit rejection & refund"
 	case refundRedelivery:
-		return "Refund redelivery"
+		return "Credit rejection & refund redelivery"
 	}
 	return string(s)
 }

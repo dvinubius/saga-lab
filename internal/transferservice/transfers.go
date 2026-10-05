@@ -118,7 +118,7 @@ func (o observation) Label() string {
 	case nackRequested:
 		return "couldn’t acknowledge after commit"
 	case duplicateSuppressed:
-		return "repeat recognised; nothing applied"
+		return "redelivery rejected; nothing applied"
 	}
 	return string(o)
 }
