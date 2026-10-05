@@ -1,3 +1,7 @@
+CREATE TABLE IF NOT EXISTS visitors (
+    visitor_id TEXT PRIMARY KEY
+);
+
 CREATE TABLE IF NOT EXISTS transfers (
     transfer_id TEXT PRIMARY KEY,
     visitor_id TEXT NOT NULL,

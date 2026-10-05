@@ -42,3 +42,19 @@ func (c bankClient) balance(ctx context.Context, visitorID string) (int64, error
 	}
 	return account.Balance, nil
 }
+
+func (c bankClient) openAccount(ctx context.Context, visitorID string) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodPut, c.baseURL+"/accounts/"+url.PathEscape(visitorID), nil)
+	if err != nil {
+		return fmt.Errorf("%s open account request: %w", c.name, err)
+	}
+	response, err := c.http.Do(request)
+	if err != nil {
+		return fmt.Errorf("%s open account request: %w", c.name, err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("%s open account request: %s", c.name, response.Status)
+	}
+	return nil
+}
