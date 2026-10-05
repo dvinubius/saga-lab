@@ -10,14 +10,15 @@ import (
 type scenario string
 
 const (
-	happyPath       scenario = "happy_path"
-	debitRedelivery scenario = messaging.DebitRedelivery
-	creditRejection scenario = messaging.CreditRejection
+	happyPath        scenario = "happy_path"
+	debitRedelivery  scenario = messaging.DebitRedelivery
+	creditRejection  scenario = messaging.CreditRejection
+	refundRedelivery scenario = messaging.RefundRedelivery
 )
 
-var scenarios = []scenario{happyPath, debitRedelivery, creditRejection}
+var scenarios = []scenario{happyPath, debitRedelivery, creditRejection, refundRedelivery}
 
-var errUnknownScenario = errors.New("scenario must be one of: happy_path, debit_redelivery, credit_rejection")
+var errUnknownScenario = errors.New("scenario must be one of: happy_path, debit_redelivery, credit_rejection, refund_redelivery")
 
 func (s scenario) Label() string {
 	switch s {
@@ -27,6 +28,8 @@ func (s scenario) Label() string {
 		return "Debit redelivery"
 	case creditRejection:
 		return "Credit rejection"
+	case refundRedelivery:
+		return "Refund redelivery"
 	}
 	return string(s)
 }

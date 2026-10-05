@@ -12,6 +12,20 @@ func TestVisualisationReadiness(t *testing.T) {
 	duplicate := historyEntry{Observation: duplicateSuppressed, AttemptID: "second", CausationID: debitCommand}
 	steps := []historyEntry{requestedStep, debitStep, creditStep, finishedStep}
 
+	const refundCommand = "refund-command"
+	refundSteps := []historyEntry{
+		requestedStep,
+		{Step: debitCommitted, AttemptID: "debit", CausationID: debitCommand, IssuedMessageID: creditCommand},
+		{Step: creditRequested, IssuedMessageID: creditCommand},
+		{Step: creditRejected, AttemptID: "credit", CausationID: creditCommand},
+		{Step: refundRequested, IssuedMessageID: refundCommand},
+		{Step: refundCommitted, AttemptID: "first", CausationID: refundCommand},
+		{Step: transferRefunded},
+	}
+	refundNack := historyEntry{Observation: nackRequested, AttemptID: "first", CausationID: refundCommand}
+	refundDuplicate := historyEntry{Observation: duplicateSuppressed, AttemptID: "second", CausationID: refundCommand}
+	refundedWith := func(extra ...historyEntry) []historyEntry { return append(refundSteps[:7:7], extra...) }
+
 	tests := []struct {
 		name     string
 		scenario scenario
@@ -33,6 +47,14 @@ func TestVisualisationReadiness(t *testing.T) {
 		{"missing DuplicateSuppressed", debitRedelivery, completed, append(steps[:4:4], nack), false},
 		{"matching attempt IDs", debitRedelivery, completed, append(steps[:4:4], nack, historyEntry{Observation: duplicateSuppressed, AttemptID: "first", CausationID: debitCommand}), false},
 		{"NackRequested from another attempt", debitRedelivery, completed, append(steps[:4:4], historyEntry{Observation: nackRequested, AttemptID: "second", CausationID: debitCommand}, duplicate), false},
+		{"refund evidence arriving after refunded", refundRedelivery, refunded, refundedWith(refundNack, refundDuplicate), true},
+		{"refund redelivery refunded before any evidence", refundRedelivery, refunded, refundedWith(), false},
+		{"refund redelivery pending its refund with all evidence", refundRedelivery, refundPending, append(refundSteps[:5:5], refundNack, refundDuplicate), false},
+		{"out-of-order refund evidence", refundRedelivery, refunded, []historyEntry{refundSteps[0], refundSteps[1], refundSteps[2], refundSteps[3], refundSteps[4], refundDuplicate, refundSteps[5], refundNack, refundSteps[6]}, true},
+		{"missing refund NackRequested", refundRedelivery, refunded, refundedWith(refundDuplicate), false},
+		{"matching refund attempt IDs", refundRedelivery, refunded, refundedWith(refundNack, historyEntry{Observation: duplicateSuppressed, AttemptID: "first", CausationID: refundCommand}), false},
+		{"refund DuplicateSuppressed caused by DebitFunds", refundRedelivery, refunded, refundedWith(refundNack, historyEntry{Observation: duplicateSuppressed, AttemptID: "debit-again", CausationID: debitCommand}), false},
+		{"refund DuplicateSuppressed caused by CreditFunds", refundRedelivery, refunded, refundedWith(refundNack, historyEntry{Observation: duplicateSuppressed, AttemptID: "credit-again", CausationID: creditCommand}), false},
 		{"DuplicateSuppressed caused by CreditFunds", debitRedelivery, completed, append(steps[:4:4], nack, historyEntry{Observation: duplicateSuppressed, AttemptID: "credit-again", CausationID: creditCommand}), false},
 	}
 	for _, tt := range tests {

@@ -70,9 +70,8 @@ func TestUnknownScenariosAreRejectedBeforeAnyTransfer(t *testing.T) {
 	demo := startDemonstration(t)
 
 	for name, body := range map[string]string{
-		"unknown slug":    `{"amount": 25, "scenario": "chaos"}`,
-		"not yet offered": `{"amount": 25, "scenario": "refund_redelivery"}`,
-		"empty":           `{"amount": 25, "scenario": ""}`,
+		"unknown slug": `{"amount": 25, "scenario": "chaos"}`,
+		"empty":        `{"amount": 25, "scenario": ""}`,
 	} {
 		t.Run("API "+name, func(t *testing.T) {
 			r := demo.post(t, "/api/transfers", "application/json", body)
@@ -82,7 +81,7 @@ func TestUnknownScenariosAreRejectedBeforeAnyTransfer(t *testing.T) {
 			var problem struct {
 				Error string `json:"error"`
 			}
-			if err := json.Unmarshal(r.body, &problem); err != nil || !containsAll(problem.Error, "happy_path", "debit_redelivery", "credit_rejection") {
+			if err := json.Unmarshal(r.body, &problem); err != nil || !containsAll(problem.Error, "happy_path", "debit_redelivery", "credit_rejection", "refund_redelivery") {
 				t.Errorf("body %q does not list the accepted scenarios", r.body)
 			}
 		})

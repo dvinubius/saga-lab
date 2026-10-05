@@ -34,8 +34,9 @@ const (
 )
 
 const (
-	DebitRedelivery = "debit_redelivery"
-	CreditRejection = "credit_rejection"
+	DebitRedelivery  = "debit_redelivery"
+	CreditRejection  = "credit_rejection"
+	RefundRedelivery = "refund_redelivery"
 )
 
 const (

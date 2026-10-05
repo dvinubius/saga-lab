@@ -49,6 +49,8 @@ func about(e historyEntry, ackLost map[string]bool) string {
 		return "The debit command, although unacknowledged in order to trigger redelivery, was successful in terms of the commit to Bank A's outbox. The relay then published the result (message to Transfer Service), allowing the flow to continue."
 	case e.Step == refundRequested:
 		return "The refund is a new operation at Bank A that restores the source balance, not a rollback of Bank A's debit."
+	case e.Step == transferRefunded && ackLost[messaging.RefundFundsTopic]:
+		return "Bank A's FundsRefunded went out through its outbox although the acknowledgement of the refund command was lost, so the flow continued."
 	}
 	return ""
 }

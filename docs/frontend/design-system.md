@@ -325,7 +325,7 @@ because `ⓘ` is outside the vendored font subsets.
     both left-aligned, then the primary button, aligned to the right edge of
     the content column. A field is mono at
     `--text-mono-meta` on the page surface with a hairline border. A radio
-    choice (the scenario: Happy path, Debit redelivery, Credit rejection) is a borderless
+    choice (the scenario: Happy path, Debit redelivery, Credit rejection, Refund redelivery) is a borderless
     fieldset whose visually hidden legend names it; each option is a `.fact`
     label after its native radio. The selected radio's dot is the accent,
     through `accent-color`; the filled native radio marks the selection on its

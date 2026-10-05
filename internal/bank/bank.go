@@ -223,7 +223,7 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 	}
 	rejected := false
 	err := b.apply(msg, messaging.CreditFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
-		if command.Scenario == messaging.CreditRejection {
+		if command.Scenario == messaging.CreditRejection || command.Scenario == messaging.RefundRedelivery {
 			rejected = true
 			return enqueue(tx, command.TransferID, messaging.CreditRejectedTopic, messaging.CreditRejected{
 				TransferID: command.TransferID, Reason: "Credit refused by Bank B", ObservedAt: time.Now(),
@@ -258,19 +258,22 @@ func (b *Bank) refundFunds(msg *message.Message) error {
 		logger.Error("discard refund with non-positive amount", "transfer_id", command.TransferID, "amount", command.Amount)
 		return nil
 	}
-	return b.apply(msg, messaging.RefundFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
-		refunded, err := tx.Exec(ctx,
+	refunded := false
+	err := b.apply(msg, messaging.RefundFundsTopic, command.TransferID, func(ctx context.Context, tx pgx.Tx) error {
+		result, err := tx.Exec(ctx,
 			`UPDATE accounts SET balance = balance + $2 WHERE visitor_id = $1`,
 			command.VisitorID, command.Amount,
 		)
 		if err != nil {
 			return err
 		}
-		if refunded.RowsAffected() == 0 {
+		if result.RowsAffected() == 0 {
 			return pgx.ErrNoRows
 		}
+		refunded = true
 		return enqueue(tx, command.TransferID, messaging.FundsRefundedTopic, messaging.FundsRefunded{TransferID: command.TransferID, ObservedAt: time.Now()}, msg)
 	}, logger)
+	return b.loseAcknowledgementAfterCommit(msg, command.TransferID, command.Scenario, messaging.RefundRedelivery, refunded, err, logger)
 }
 
 func (b *Bank) apply(msg *message.Message, topic, transferID string, effect func(context.Context, pgx.Tx) error, logger *slog.Logger) error {
