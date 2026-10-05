@@ -20,11 +20,11 @@ func TestTransferTraceCoversAllServices(t *testing.T) {
 	if completed.TraceID == "" {
 		t.Fatal("completed transfer has no trace ID")
 	}
-	assertSteps(t, completed.History, "requested", "debit_committed", "credit_committed", "finished")
+	assertSteps(t, completed.History, "requested", "debit_committed", "credit_requested", "credit_committed", "finished")
 	debitFunds := completed.History[0].IssuedMessageID
 	fundsDebited := completed.History[1].MessageID
-	creditFunds := completed.History[1].IssuedMessageID
-	fundsCredited := completed.History[2].MessageID
+	creditFunds := completed.History[2].IssuedMessageID
+	fundsCredited := completed.History[3].MessageID
 
 	message := func(service, kind, topic, messageID, causationID string) span {
 		return span{Service: service, Kind: kind, Topic: topic, MessageID: messageID, CausationID: causationID, TransferID: accepted.TransferID}

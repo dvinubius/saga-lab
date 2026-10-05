@@ -22,8 +22,8 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 	if completed.Scenario != "happy_path" {
 		t.Errorf("scenario = %q, want happy_path", completed.Scenario)
 	}
-	assertSteps(t, completed.History, "requested", "debit_committed", "credit_committed", "finished")
-	assertServices(t, completed.History, "Transfer Service", "Bank A", "Bank B", "Transfer Service")
+	assertSteps(t, completed.History, "requested", "debit_committed", "credit_requested", "credit_committed", "finished")
+	assertServices(t, completed.History, "Transfer Service", "Bank A", "Transfer Service", "Bank B", "Transfer Service")
 	if !completed.VisualisationReady {
 		t.Error("visualisation_ready = false, want true")
 	}
@@ -33,11 +33,11 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 		}
 	}
 
-	requested, debit, credit, done := completed.History[0], completed.History[1], completed.History[2], completed.History[3]
+	requested, debit, creditRequested, credit, done := completed.History[0], completed.History[1], completed.History[2], completed.History[3], completed.History[4]
 	messageIDs := map[string]string{
 		"DebitFunds":    requested.IssuedMessageID,
 		"FundsDebited":  debit.MessageID,
-		"CreditFunds":   debit.IssuedMessageID,
+		"CreditFunds":   creditRequested.IssuedMessageID,
 		"FundsCredited": credit.MessageID,
 	}
 	seen := map[string]string{}
@@ -52,8 +52,11 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 	if debit.CausationID != requested.IssuedMessageID {
 		t.Errorf("debit_committed causation_id = %q, want DebitFunds %q issued when requested", debit.CausationID, requested.IssuedMessageID)
 	}
-	if credit.CausationID != debit.IssuedMessageID {
-		t.Errorf("credit_committed causation_id = %q, want CreditFunds %q issued when debit committed", credit.CausationID, debit.IssuedMessageID)
+	if creditRequested.CausationID != debit.MessageID {
+		t.Errorf("credit_requested causation_id = %q, want debit outcome %q", creditRequested.CausationID, debit.MessageID)
+	}
+	if credit.CausationID != creditRequested.IssuedMessageID {
+		t.Errorf("credit_committed causation_id = %q, want CreditFunds %q issued when credit requested", credit.CausationID, creditRequested.IssuedMessageID)
 	}
 	if done.CausationID != credit.MessageID {
 		t.Errorf("completed causation_id = %q, want credit outcome %q", done.CausationID, credit.MessageID)
@@ -169,7 +172,7 @@ func TestAnotherTransferRunsAfterCompletion(t *testing.T) {
 	}
 	completed := demo.awaitTransfer(t, second.TransferID, "completed")
 
-	assertSteps(t, completed.History, "requested", "debit_committed", "credit_committed", "finished")
+	assertSteps(t, completed.History, "requested", "debit_committed", "credit_requested", "credit_committed", "finished")
 	demo.assertBalances(t, 45, 55)
 	if transfers := demo.transfers(t); len(transfers) != 2 {
 		t.Errorf("transfers = %+v, want 2", transfers)

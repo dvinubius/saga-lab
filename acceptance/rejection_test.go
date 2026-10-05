@@ -17,9 +17,9 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 	if rejected.RejectionReason == "" {
 		t.Errorf("rejected transfer has no reason")
 	}
-	assertSteps(t, rejected.History, "requested", "debit_rejected")
-	assertServices(t, rejected.History, "Transfer Service", "Bank A")
-	requested, rejection := rejected.History[0], rejected.History[1]
+	assertSteps(t, rejected.History, "requested", "debit_rejected", "transfer_rejected")
+	assertServices(t, rejected.History, "Transfer Service", "Bank A", "Transfer Service")
+	requested, rejection, ended := rejected.History[0], rejected.History[1], rejected.History[2]
 	if rejection.MessageID == "" {
 		t.Errorf("DebitRejected message ID missing from history")
 	}
@@ -29,13 +29,16 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 	if rejection.IssuedMessageID != "" {
 		t.Errorf("debit rejection issued message %q, want none", rejection.IssuedMessageID)
 	}
+	if ended.CausationID != rejection.MessageID {
+		t.Errorf("transfer_rejected causation_id = %q, want debit rejection %q", ended.CausationID, rejection.MessageID)
+	}
 
 	transferPage := "/transfers/" + rejected.TransferID
 	page := demo.awaitPage(t, transferPage, "rejected")
 	if got := pageData(page, "rejection-reason"); got != rejected.RejectionReason {
 		t.Errorf("page reason = %q, want %q", got, rejected.RejectionReason)
 	}
-	if got, want := pageSteps(page), []string{"requested", "debit_rejected"}; !slices.Equal(got, want) {
+	if got, want := pageSteps(page), []string{"requested", "debit_rejected", "transfer_rejected"}; !slices.Equal(got, want) {
 		t.Errorf("page history steps = %q, want %q", got, want)
 	}
 	for range 3 {

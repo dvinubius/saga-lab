@@ -29,7 +29,7 @@ func TestRefreshingTheTransferPageNeverResubmits(t *testing.T) {
 	}
 	assertBalance(t, "Bank A page", pageBalance(t, page, "bank-a-balance"), 75)
 	assertBalance(t, "Bank B page", pageBalance(t, page, "bank-b-balance"), 25)
-	if got, want := pageSteps(page), []string{"requested", "debit_committed", "credit_committed", "finished"}; !slices.Equal(got, want) {
+	if got, want := pageSteps(page), []string{"requested", "debit_committed", "credit_requested", "credit_committed", "finished"}; !slices.Equal(got, want) {
 		t.Errorf("page history steps = %q, want %q", got, want)
 	}
 

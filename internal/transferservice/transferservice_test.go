@@ -71,7 +71,7 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 			name:      "FundsDebited",
 			handle:    transferservice.FundsDebited,
 			duplicate: debited,
-			want:      state{Status: "credit_pending", Steps: []string{"requested", "debit_committed"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic}},
+			want:      state{Status: "credit_pending", Steps: []string{"requested", "debit_committed", "credit_requested"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic}},
 		},
 		{
 			name:   "DebitRejected",
@@ -79,7 +79,7 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 			duplicate: func(id string) *message.Message {
 				return event(t, id, messaging.DebitRejected{TransferID: id, Reason: "Insufficient funds", ObservedAt: time.Now()})
 			},
-			want: state{Status: "rejected", Steps: []string{"requested", "debit_rejected"}, Outbox: []string{messaging.DebitFundsTopic}},
+			want: state{Status: "rejected", Steps: []string{"requested", "debit_rejected", "transfer_rejected"}, Outbox: []string{messaging.DebitFundsTopic}},
 		},
 		{
 			name:   "FundsCredited",
@@ -88,7 +88,7 @@ func TestDuplicateEventsAdvanceTheTransferOnce(t *testing.T) {
 			duplicate: func(id string) *message.Message {
 				return event(t, id, messaging.FundsCredited{TransferID: id, ObservedAt: time.Now()})
 			},
-			want: state{Status: "completed", Steps: []string{"requested", "debit_committed", "credit_committed", "finished"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic}},
+			want: state{Status: "completed", Steps: []string{"requested", "debit_committed", "credit_requested", "credit_committed", "finished"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic}},
 		},
 	}
 	for _, test := range tests {
@@ -161,6 +161,33 @@ func TestDuplicateObservationIsRecordedOnce(t *testing.T) {
 	}
 }
 
+func TestHistoryIsOrderedByObservationTime(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	s, err := transferservice.Open(context.Background(), db, transferservice.Config{}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatalf("open transfer service: %v", err)
+	}
+	id := submit(t, s)
+	debitedAt := time.Now()
+	if err := transferservice.FundsDebited(s, event(t, id, messaging.FundsDebited{TransferID: id, ObservedAt: debitedAt})); err != nil {
+		t.Fatalf("FundsDebited: %v", err)
+	}
+	nack := event(t, id, messaging.ProcessingObserved{
+		TransferID: id, Observation: messaging.NackRequested, Service: "Bank A", AttemptID: "attempt-1", ObservedAt: debitedAt,
+	})
+	if err := transferservice.ProcessingObserved(s, nack); err != nil {
+		t.Fatalf("ProcessingObserved: %v", err)
+	}
+
+	var got []string
+	for _, e := range transfer(t, s, id).History {
+		got = append(got, e.Step+e.Observation)
+	}
+	if want := []string{"requested", "debit_committed", "NackRequested", "credit_requested"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("history = %v, want %v", got, want)
+	}
+}
+
 func TestObservationForUnknownTransferIsIgnored(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	var logs bytes.Buffer
@@ -217,7 +244,7 @@ func TestFundsDebitedCommitsNothingWhenEnqueueFails(t *testing.T) {
 	if err := transferservice.FundsDebited(s, debited); err != nil {
 		t.Fatalf("FundsDebited: %v", err)
 	}
-	want := state{Status: "credit_pending", Steps: []string{"requested", "debit_committed"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic}}
+	want := state{Status: "credit_pending", Steps: []string{"requested", "debit_committed", "credit_requested"}, Outbox: []string{messaging.DebitFundsTopic, messaging.CreditFundsTopic}}
 	if after := snapshot(t, db, id); !reflect.DeepEqual(after, want) {
 		t.Fatalf("after handling: %+v, want %+v", after, want)
 	}

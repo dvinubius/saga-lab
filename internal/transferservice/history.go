@@ -13,16 +13,18 @@ type historyRow struct {
 	Lane    int
 	Cause   string
 	Attempt int
+	About   string
 }
 
 func historyRows(history []historyEntry) []historyRow {
-	history = slices.Clone(history)
-	slices.SortStableFunc(history, func(a, b historyEntry) int { return a.ObservedAt.Compare(b.ObservedAt) })
 	topics := messageTopics(history)
+	debitAckLost := slices.ContainsFunc(history, func(e historyEntry) bool {
+		return e.Observation == nackRequested && topics[e.CausationID] == messaging.DebitFundsTopic
+	})
 	attempts := map[string][]string{}
 	rows := make([]historyRow, len(history))
 	for i, e := range history {
-		rows[i] = historyRow{historyEntry: e, Lane: slices.Index(lanes, e.Service), Cause: topics[e.CausationID]}
+		rows[i] = historyRow{historyEntry: e, Lane: slices.Index(lanes, e.Service), Cause: topics[e.CausationID], About: about(e, debitAckLost)}
 		if e.AttemptID == "" {
 			continue
 		}
@@ -36,6 +38,16 @@ func historyRows(history []historyEntry) []historyRow {
 	return rows
 }
 
+func about(e historyEntry, debitAckLost bool) string {
+	switch {
+	case e.Observation == nackRequested:
+		return "We’re simulating the effects of a crash by requesting a redelivery (a Nack), and the broker delivers the message again."
+	case e.Step == creditRequested && debitAckLost:
+		return "The debit command, although unacknowledged in order to trigger redelivery, was successful in terms of the commit to Bank A's outbox. The relay then published the result (message to Transfer Service), allowing the flow to continue."
+	}
+	return ""
+}
+
 func messageTopics(history []historyEntry) map[string]string {
 	topics := map[string]string{}
 	for _, e := range history {
@@ -44,6 +56,7 @@ func messageTopics(history []historyEntry) map[string]string {
 			topics[e.IssuedMessageID] = messaging.DebitFundsTopic
 		case debitCommitted:
 			topics[e.MessageID] = messaging.FundsDebitedTopic
+		case creditRequested:
 			topics[e.IssuedMessageID] = messaging.CreditFundsTopic
 		case debitRejected:
 			topics[e.MessageID] = messaging.DebitRejectedTopic
