@@ -42,6 +42,9 @@ func TestBankBUnavailableCompletesAfterWaitingWithoutAConsumer(t *testing.T) {
 	completed := demo.awaitReadiness(t, accepted.TransferID, "completed")
 	demo.assertBalances(t, 75, 25)
 	assertSteps(t, completed.History, "requested", "debit_committed", "credit_requested", "credit_committed", "finished")
+	assertBalancePair(t, entry(t, completed.History, "debit_committed"), 100, 75)
+	assertBalancePair(t, entry(t, completed.History, "credit_committed"), 0, 25)
+	assertNoBalancePair(t, completed.History, "debit_committed", "credit_committed")
 	resumed := observations(completed.History, "DeliveryResumed")
 	if len(resumed) != 1 || resumed[0].Service != "Bank B" || resumed[0].ObservedAt.Sub(confirmation.ObservedAt) < 2500*time.Millisecond {
 		t.Fatalf("resumed = %+v, confirmation = %+v", resumed, confirmation)
