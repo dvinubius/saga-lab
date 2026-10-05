@@ -22,6 +22,12 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 	requested, rejection, ended := rejected.History[0], rejected.History[1], rejected.History[2]
 	assertBalancePair(t, rejection, 100, 100)
 	assertNoBalancePair(t, rejected.History, "debit_rejected")
+	assertOutcome(t, rejected, `{
+		"balances": {"bank_a": {"before": 100, "after": 100}, "bank_b": {"before": null, "after": null, "involved": false}},
+		"commands": {"debit": {"attempts": 1, "effects": 0}, "credit": null, "refund": null},
+		"duplicates_suppressed": 0,
+		"duplicate_effects": 0
+	}`)
 	if rejection.MessageID == "" {
 		t.Errorf("DebitRejected message ID missing from history")
 	}
@@ -45,6 +51,16 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 	}
 	if got := pageBalanceChange(page, "debit_rejected"); got != "100" {
 		t.Errorf("page debit_rejected balance = %q, want the unchanged 100", got)
+	}
+	for row, want := range map[string][]string{
+		"bank-a": {"Bank A", "100", "100"},
+		"bank-b": {"Bank B", "Not involved"},
+		"debit":  {"Debit", "1", "0"},
+		"credit": {"Credit", "—", "—"},
+	} {
+		if got := pageOutcome(page, row); !slices.Equal(got, want) {
+			t.Errorf("page outcome %s = %q, want %q", row, got, want)
+		}
 	}
 	for range 3 {
 		demo.get(t, transferPage)

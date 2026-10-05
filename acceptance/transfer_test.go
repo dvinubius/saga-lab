@@ -3,6 +3,7 @@ package acceptance_test
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 	"testing"
@@ -38,6 +39,7 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 	assertBalancePair(t, debit, 100, 75)
 	assertBalancePair(t, credit, 0, 25)
 	assertNoBalancePair(t, completed.History, "debit_committed", "credit_committed")
+	assertOutcome(t, completed, completedOutcome)
 	messageIDs := map[string]string{
 		"DebitFunds":    requested.IssuedMessageID,
 		"FundsDebited":  debit.MessageID,
@@ -81,7 +83,8 @@ type transfer struct {
 	TraceID         string         `json:"trace_id"`
 	History         []historyEntry `json:"history"`
 
-	VisualisationReady bool `json:"visualisation_ready"`
+	VisualisationReady bool            `json:"visualisation_ready"`
+	Outcome            json.RawMessage `json:"outcome"`
 }
 
 type historyEntry struct {
@@ -111,6 +114,28 @@ func assertNoBalancePair(t *testing.T, history []historyEntry, except ...string)
 		if !slices.Contains(except, e.Step) && (e.BalanceBefore != nil || e.BalanceAfter != nil) {
 			t.Errorf("%s%s balance pair = %s → %s, want none", e.Step, e.Observation, show(e.BalanceBefore), show(e.BalanceAfter))
 		}
+	}
+}
+
+const completedOutcome = `{
+	"balances": {"bank_a": {"before": 100, "after": 75}, "bank_b": {"before": 0, "after": 25, "involved": true}},
+	"commands": {"debit": {"attempts": 1, "effects": 1}, "credit": {"attempts": 1, "effects": 1}, "refund": null},
+	"duplicates_suppressed": 0,
+	"duplicate_effects": 0
+}`
+
+func assertOutcome(t *testing.T, tr transfer, want string) {
+	t.Helper()
+	var got, expected any
+	if err := json.Unmarshal(tr.Outcome, &got); err != nil {
+		t.Errorf("outcome %q: %v", tr.Outcome, err)
+		return
+	}
+	if err := json.Unmarshal([]byte(want), &expected); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, expected) {
+		t.Errorf("outcome = %s, want %s", tr.Outcome, want)
 	}
 }
 
@@ -146,6 +171,9 @@ func (d *visitorClient) transfer(t *testing.T, id string) transfer {
 	var current transfer
 	if err := json.Unmarshal(body, &current); err != nil {
 		t.Fatalf("decode transfer %q: %v", body, err)
+	}
+	if !current.VisualisationReady && current.Outcome != nil {
+		t.Fatalf("transfer %s has an outcome before it is ready: %s", id, current.Outcome)
 	}
 	return current
 }
