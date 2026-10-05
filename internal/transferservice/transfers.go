@@ -79,11 +79,18 @@ const (
 func (o observation) Label() string {
 	switch o {
 	case nackRequested:
-		return "Failed after commit; requeue requested"
+		return "couldn’t acknowledge after commit"
 	case duplicateSuppressed:
-		return "Repeat recognised; nothing applied"
+		return "repeat recognised; nothing applied"
 	}
 	return string(o)
+}
+
+func (o observation) About() string {
+	if o == nackRequested {
+		return "We’re simulating the effects of a crash by requesting a redelivery (a Nack), and the broker delivers the message again."
+	}
+	return ""
 }
 
 type transferSummary struct {

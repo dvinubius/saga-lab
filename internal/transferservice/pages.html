@@ -58,7 +58,9 @@
 
 {{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{.UTC.Format "15:04:05.000"}}</time>{{end}}
 
-{{define "history-entry"}}{{if .Step}}<span class="label">{{.Step.Label}}</span>{{else}}<span class="label"><span class="comment">// </span>{{.Observation.Label}}</span>{{end}}
+{{define "history-entry"}}{{if .Step}}<span class="label">{{.Step.Label}}</span>{{else}}<span class="label"><span class="comment">// </span>{{.Observation.Label}}</span>{{with .Observation.About}}<button class="about" type="button" popovertarget="about-{{$.AttemptID}}" aria-label="About this entry" title="About this entry" style="anchor-name: --about-{{$.AttemptID}}">
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6.5"/><path d="M8 7v4.5"/><circle cx="8" cy="4.75" r="0.9" fill="currentColor" stroke="none"/></svg>
+</button><div class="float note" id="about-{{$.AttemptID}}" popover style="position-anchor: --about-{{$.AttemptID}}">{{.}}</div>{{end}}{{end}}
 {{with .Cause}}<span class="meta">{{.}}{{with $.AttemptID}} · attempt {{$.Attempt}} · <code title="{{.}}">{{slice . 0 8}}</code>{{end}}</span>{{end}}{{end}}
 
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
@@ -141,7 +143,7 @@
 <section class="section in-depth">
   <h3 class="caps section-label">In depth</h3>
   <p class="links">
-    <a class="quiet-link" id="transfer-json" href="/api/transfers/{{.ID}}">View as JSON →</a>
+    <a class="quiet-link" id="transfer-json" href="/api/transfers/{{.ID}}" target="_blank">View as JSON →</a>
     {{with $.TraceURL}}<a class="quiet-link" id="trace-link" href="{{.}}" target="_blank">Explore the trace in Grafana →</a>{{end}}
   </p>
 </section>

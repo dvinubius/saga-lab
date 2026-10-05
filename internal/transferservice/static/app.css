@@ -254,3 +254,28 @@ button,.btn,a{transition:var(--hover-transition);}
 .history .meta{display:block;color:var(--text-muted);}
 .history [data-observation="NackRequested"] .label{color:var(--danger);}
 .history [data-observation="DuplicateSuppressed"] .label{color:var(--teal);font-weight:500;}
+.about{
+  display:inline-flex;
+  margin-left:6px;
+  padding:0;
+  border:0;
+  background:none;
+  color:var(--text-muted);
+  vertical-align:-2px;
+  cursor:pointer;
+}
+.about:hover,.about:focus-visible{color:var(--text-body);}
+.about svg{width:14px;height:14px;}
+
+.float{
+  --hairline:var(--float-hairline);
+  max-width:360px;
+  padding:12px 14px;
+  border:1px solid var(--text-muted);
+  border-radius:var(--radius-surface);
+  background:var(--surface-float);
+  font-family:var(--font-sans);
+}
+@supports (position-area:bottom){
+  .float{inset:auto;margin:6px 0 0;position-area:bottom span-right;}
+}
