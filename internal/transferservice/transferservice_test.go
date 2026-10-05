@@ -530,3 +530,31 @@ func TestNewVisitorRetriesUnavailableAccountOpening(t *testing.T) {
 		})
 	}
 }
+
+func TestUnavailableAccountOpeningDoesNotLogVisitorCookie(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	unavailable := httptest.NewServer(http.NotFoundHandler())
+	address := unavailable.URL
+	unavailable.Close()
+	config := bankConfig(t)
+	config.BankAURL = address
+	var logs bytes.Buffer
+	s, err := transferservice.Open(context.Background(), db, config, slog.New(slog.NewJSONHandler(&logs, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const secret = "visitor-cookie-secret"
+	request := httptest.NewRequest(http.MethodGet, "/api/transfers", nil)
+	request.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: secret})
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("unavailable account opening: status %d", response.Code)
+	}
+	if strings.Contains(logs.String(), secret) {
+		t.Error("connection failure logs contain the visitor cookie value")
+	}
+	if !strings.Contains(logs.String(), "connection refused") {
+		t.Error("connection failure logs lost the network cause")
+	}
+}
