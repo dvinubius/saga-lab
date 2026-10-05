@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/dvinubius/saga-lab/internal/messaging"
 )
 
 func TestHistoryRowsNameTheCauseAndNumberAttemptsPerCommand(t *testing.T) {
@@ -172,5 +174,18 @@ func TestDeliveryResumedExplainsTheMeasuredBrokerWait(t *testing.T) {
 	}
 	if history[1].Observation.Label() != "delivery resumed" {
 		t.Fatal("observation requires confirmation time to be labelled")
+	}
+}
+
+func TestAdmissionHistoryShowsWaitAndLinksTheDebit(t *testing.T) {
+	requestedAt := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	history := []historyEntry{
+		{Step: requested, Service: messaging.TransferService, ObservedAt: requestedAt},
+		{Observation: observation("Admitted"), Service: messaging.TransferService, ObservedAt: requestedAt.Add(3250 * time.Millisecond), IssuedMessageID: "admission-debit"},
+		{Step: debitCommitted, Service: messaging.BankA, CausationID: "admission-debit"},
+	}
+	rows := historyRows(history)
+	if rows[1].Label != "admitted after waiting 3.2 s for another visitor’s demo" || rows[1].Lane != 0 || rows[2].Cause != "DebitFunds" || rows[0].Cause != "" || rows[1].Cause != "" {
+		t.Fatalf("admission/debit rows = %+v / %+v", rows[1], rows[2])
 	}
 }

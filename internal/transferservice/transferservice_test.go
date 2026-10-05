@@ -363,19 +363,22 @@ func submit(t *testing.T, s *transferservice.Service) string {
 }
 
 type historyEntry struct {
-	Step        string    `json:"step"`
-	Observation string    `json:"observation"`
-	Service     string    `json:"service"`
-	AttemptID   string    `json:"attempt_id"`
-	MessageID   string    `json:"message_id"`
-	CausationID string    `json:"causation_id"`
-	ObservedAt  time.Time `json:"observed_at"`
+	IssuedMessageID string    `json:"issued_message_id"`
+	Step            string    `json:"step"`
+	Observation     string    `json:"observation"`
+	Service         string    `json:"service"`
+	AttemptID       string    `json:"attempt_id"`
+	MessageID       string    `json:"message_id"`
+	CausationID     string    `json:"causation_id"`
+	ObservedAt      time.Time `json:"observed_at"`
 }
 
 type transferJSON struct {
-	Status          string         `json:"status"`
-	RejectionReason string         `json:"rejection_reason"`
-	History         []historyEntry `json:"history"`
+	ID                 string         `json:"transfer_id"`
+	VisualisationReady bool           `json:"visualisation_ready"`
+	Status             string         `json:"status"`
+	RejectionReason    string         `json:"rejection_reason"`
+	History            []historyEntry `json:"history"`
 }
 
 func transfer(t *testing.T, s *transferservice.Service, id string) transferJSON {

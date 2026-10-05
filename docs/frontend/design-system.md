@@ -148,7 +148,9 @@ its text uses the same fact-label style as the other options. `CreditAccepted`
 is an observation in the Transfer Service lane labelled “the broker confirmed
 the credit command”; it takes no state hue and does not imply queue-insertion
 time. `DeliveryResumed` and `DeliveryPaused` are observations in Bank B's
-lane, without a state hue. Resumption displays the wait from the broker's
+lane, without a state hue. `Admitted` is an observation in the Transfer Service's
+lane, displaying the wait from request to admission only for a transfer that
+waited for another visitor. Resumption displays the wait from the broker's
 confirmation and has an info note explaining that the command waited in
 RabbitMQ with no consumer while Bank B continued serving other transfers.
 
@@ -330,6 +332,10 @@ because `ⓘ` is outside the vendored font subsets.
     palette. A transfer's status and its history steps take no hue:
     "Completed" and "Waiting for Bank A to debit" differ in words alone, and
     so do the Evidence row's "Being collected" and "Complete".
+    While awaiting admission, the status line says “Another visitor is trying
+    this demo. Yours will start automatically when it's your turn.” It uses
+    the ordinary status text, with no promised duration, spinner or state hue.
+    The transfer list uses the same label, and the pending form remains disabled.
 
     A state that does need a hue takes Brick for a failure and Teal
     otherwise, and keeps its words, so the hue is never the only signal. Not
