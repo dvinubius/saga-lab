@@ -33,7 +33,7 @@ func slugs(ss []scenario) []string {
 func (s scenario) Label() string {
 	switch s {
 	case happyPath:
-		return "Happy path (regular transfer)"
+		return "Happy path"
 	case debitRedelivery:
 		return "Debit redelivery"
 	case creditRejection:

@@ -71,7 +71,9 @@
 {{define "account"}}<dt>{{.Name}}</dt>
     <dd><data class="figure" id="{{.ID}}-balance" value="{{.Balance}}">{{.Balance}}</data> <span class="fact">credits</span></dd>{{end}}
 
-{{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{template "timestamp" .}}</time>{{end}}
+{{define "time"}}<time datetime="{{template "datetime" .}}">{{template "timestamp" .}}</time>{{end}}
+
+{{define "datetime"}}{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}{{end}}
 
 {{define "timestamp"}}{{.UTC.Format "15:04:05.000"}}{{end}}
 
@@ -86,11 +88,11 @@
 
 {{define "diagram"}}<svg class="diagram" width="600" height="132" viewBox="0 0 600 132" role="img" aria-label="The Transfer Service, the Message Broker, Bank A and Bank B">
     <defs><marker id="diagram-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M2 1l5 3-5 3"/></marker></defs>
-    <line data-edge="transfer-service broker" x1="160" y1="66" x2="278" y2="66"/>
-    <line data-edge="broker bank-a" x1="378" y1="66" x2="480" y2="24"/>
-    <line data-edge="broker bank-b" x1="378" y1="66" x2="480" y2="108"/>
+    <line data-edge="transfer-service broker" x1="160" y1="66" x2="266" y2="66"/>
+    <line data-edge="broker bank-a" x1="366" y1="66" x2="480" y2="24"/>
+    <line data-edge="broker bank-b" x1="366" y1="66" x2="480" y2="108"/>
     <g data-node="transfer-service"><rect x="0.5" y="46.5" width="159" height="39" rx="2"/><text x="80" y="66">Transfer Service</text></g>
-    <g data-node="broker"><rect x="278.5" y="42.5" width="99" height="47" rx="2"/><text><tspan x="328" y="58">Message</tspan><tspan x="328" y="74">Broker</tspan></text></g>
+    <g data-node="broker"><rect x="266.5" y="42.5" width="99" height="47" rx="2"/><text><tspan x="316" y="58">Message</tspan><tspan x="316" y="74">Broker</tspan></text></g>
     <g data-node="bank-a"><rect x="480.5" y="4.5" width="119" height="39" rx="2"/><text x="540" y="24">Bank A</text></g>
     <g data-node="bank-b"><rect x="480.5" y="88.5" width="119" height="39" rx="2"/><text x="540" y="108">Bank B</text></g>
     <text class="no-consumer" x="540" y="76">unavailable</text>
@@ -120,7 +122,6 @@
 
 <div class="columns transfer-row">
 <section class="card">
-  <h3 class="card-title">Transfer Bank A → Bank B</h3>
   <form class="transfer-form" method="post" action="/transfers">
     <label class="fact amount">Amount (credits)
       <input class="field" name="amount" value="{{.Amount}}" placeholder="Enter amount" inputmode="numeric" autocomplete="off"{{if .PendingID}} disabled{{end}}>
@@ -130,7 +131,7 @@
       {{range .Scenarios}}<label class="fact"><input type="radio" name="scenario" value="{{.}}"{{if eq . $.Scenario}} checked{{end}}>{{.Label}}</label>
       {{end}}
     </fieldset>
-    <button class="btn btn-primary"{{if .PendingID}} disabled{{end}}>Transfer</button>
+    <button class="btn btn-primary"{{if .PendingID}} disabled{{end}}>Transfer Bank A → Bank B</button>
   </form>
   {{with .Error}}<p class="error" id="amount-error">{{.}}</p>{{end}}
   {{with .ScenarioError}}<p class="error" id="scenario-error">{{.}}</p>{{end}}
@@ -164,7 +165,7 @@
 
 {{define "transfer"}}{{template "head"}}<title>Transfer {{.Transfer.ID}} · Saga Lab</title>
 {{if not .Transfer.VisualisationReady}}<meta http-equiv="refresh" content="1; url=/transfers/{{.Transfer.ID}}">{{end}}
-{{template "top"}}
+{{template "top" "centered wide"}}
 {{with .Transfer}}
 <div class="page-head">
 <a class="btn btn-secondary" href="/">← Back</a>
@@ -210,7 +211,7 @@
 </div>
 <div class="playback-details">
   <div class="timeline" aria-hidden="true"><div class="timeline-track"><span class="timeline-progress"></span></div></div>
-  <p class="fact"><time class="playback-time"></time> UTC · <span class="playback-gap"></span></p>
+  <p class="fact"><time class="playback-time"></time> · <span class="playback-gap"></span></p>
   <div class="playback-entry"></div>
   <p class="note playback-note"></p>
 </div>
@@ -234,9 +235,9 @@
 <section class="panel history-panel">
   <h3 class="caps panel-head">History</h3>
   <table class="table history">
-    <thead><tr><th class="caps">Observed (UTC)</th>{{range $.Lanes}}<th class="caps">{{.}}</th>{{end}}</tr></thead>
+    <thead><tr><th class="caps">Observed</th>{{range $.Lanes}}<th class="caps">{{.}}</th>{{end}}</tr></thead>
     <tbody>
-    {{range $row := $.History}}<tr{{if .Step}} data-step="{{.Step}}"{{else}} data-observation="{{.Observation}}"{{end}} data-observed-at="{{template "timestamp" .PlayedAt}}" data-dwell="{{.Dwell.Milliseconds}}"{{with .Gap}} data-gap="{{.}}"{{end}}{{with .Path}} data-path="{{.}}"{{end}}{{if .NoConsumer}} data-no-consumer{{end}}{{if .Continues}} class="continues"{{end}}>
+    {{range $row := $.History}}<tr{{if .Step}} data-step="{{.Step}}"{{else}} data-observation="{{.Observation}}"{{end}} data-observed-at="{{template "datetime" .PlayedAt}}" data-dwell="{{.Dwell.Milliseconds}}"{{with .Gap}} data-gap="{{.}}"{{end}}{{with .Path}} data-path="{{.}}"{{end}}{{if .NoConsumer}} data-no-consumer{{end}}{{if .Continues}} class="continues"{{end}}>
       <td>{{if not .ObservedAt.IsZero}}{{template "time" .ObservedAt}}{{end}}</td>
       {{range $lane, $_ := $.Lanes}}{{if eq $lane $row.Lane}}<td{{with $row.Tooltip}} title="{{.}}"{{end}}>{{template "history-entry" $row}}</td>{{else}}<td></td>{{end}}{{end}}
     </tr>
@@ -253,6 +254,7 @@
   </div>{{end}}
 </section>
 </div>
+<script src="/static/localtime.js" defer></script>
 {{if .VisualisationReady}}<script src="/static/playback.js" defer></script>{{end}}
 {{end}}
 

@@ -36,13 +36,14 @@ and its name drops: muted beside a display figure or in a summary line.
 reverse; `--accent-on-hover` is `#8A420C` / `#E49F64`. At most ~2% of a view,
 never on running text, never the sole carrier of a state. It is spent on: the
 primary button, the selected radio's dot, quiet-link rules, the product mark's
-hub, the footer wordmark's brackets, and text selection (`--accent-glyph`).
+hub, the footer wordmark's brackets, the active path or progress in a data
+mark, and text selection (`--accent-glyph`).
 
 **Hues.** Every hue is a light / dark pair:
 
 | Token | Light | Dark | For |
 | --- | --- | --- | --- |
-| `--teal` | `#087581` | `#5BC8D0` | data marks; a non-failure state; JSON values |
+| `--teal` | `#087581` | `#5BC8D0` | a non-failure state; JSON values |
 | `--violet` | `#6B5D91` | `#AFA3CF` | secondary data marks; JSON keys |
 | `--danger` | `#A03028` | `#E0756A` | errors; a failure state |
 
@@ -50,7 +51,8 @@ A state that needs a hue takes `--danger` for failure and `--teal` otherwise,
 and always keeps its words. In History a scenario may mark the entry showing
 its simulated fault in danger and the entry showing the system avoiding the
 fault's consequence in teal. A data mark (diagram, timeline) draws idle parts
-muted, active parts body, and the active path or progress in teal at 2px.
+muted, active parts body, and the active path or progress in the accent at
+2px.
 
 **Surfaces and edges.**
 
@@ -90,12 +92,12 @@ caps only through CSS.
 | display figure | mono 20px, 500, untracked, tabular |
 | figure label | mono 18px, muted |
 | lead prose | sans 16px |
-| card title, footer wordmark | sans 16px |
-| primary button | sans 15px caps, 0.08em |
+| footer wordmark | sans 16px |
+| primary button | sans 14px |
 | prose, buttons, errors | `--text-small` (13px) |
-| form labels and fields in a card | mono 13px |
+| fields in a card | mono 13px |
 | rows, facts, control labels, panel heads | `--text-mono-meta` (12px) |
-| column headings, strip labels, footer credit | `--text-mono-micro` (11px) |
+| column headings, strip labels, footer credit, timestamps in a row | `--text-mono-micro` (11px) |
 
 **Text roles** (`app.css`) carry their tier:
 
@@ -130,7 +132,7 @@ name themselves drops its head. A summary closes a panel as a footer strip on
 the head fill with a panel-edge rule above.
 
 **Card.** The page's main form sits in a card instead: `--surface-card`, no
-edge, no head, its title in sans.
+edge, no head; its primary button names it.
 
 **Stage.** An interactive visualization (playback) sits on the page, unframed.
 
@@ -144,7 +146,7 @@ rows not yet reached drop to `--disabled-opacity`.
 **Buttons.** All at `--row-height` (40px) unless noted, sans, never
 underlined.
 - Primary — accent fill, Paper text on light, Ink on dark, hover
-  `--accent-on-hover`. A form's one call to action: 15px caps, spans the form,
+  `--accent-on-hover`. A form's one call to action: 14px, spans the form,
   taller than `--row-height`.
 - Secondary — body text in a `--control-edge` outline, going to body on hover.
   Inside a row it is compact: 28px tall, 12px.
