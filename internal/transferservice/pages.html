@@ -48,7 +48,7 @@
     </svg>
   </button>
 </header>
-<main class="main">
+<main class="main{{with .}} {{.}}{{end}}">
 {{end}}
 
 {{define "foot"}}</main>
@@ -110,22 +110,24 @@
 
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
 {{if and .PendingID (not .Overlap) (not .TopUpRefused)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
-{{template "top"}}
+{{template "top" "centered"}}
 <section class="section">
 <h2 class="title">Inter-Bank Transfer</h2>
-<p class="note intro">A live demonstration of an orchestrated Saga: a Transfer Service moves fictional credits from Bank A to Bank B.</p>
-<p class="note intro">Pick a scenario to see how the Saga copes with redelivered messages, a rejected credit or an unavailable bank, then replay what happened.</p>
-<div class="columns">
-<section class="panel">
-  <h3 class="caps panel-head">Perform Transfer (A to B)</h3>
-  <div class="panel-body">
+<p class="note intro">A Transfer Service moves credits from Bank A to Bank B.</p>
+<p class="note intro">This is a live demo of an orchestrated Saga. The transfer scenarios illustrate what may go wrong and how the system gracefully handles faults while remaining consistent.</p>
+<p class="note intro">Pick a scenario, transfer and the execution.</p>
+</section>
+
+<div class="columns transfer-row">
+<section class="card">
+  <h3 class="card-title">Transfer Bank A → Bank B</h3>
   <form class="transfer-form" method="post" action="/transfers">
-    <label class="fact amount">Amount in credits
-      <input class="field" name="amount" value="{{.Amount}}" inputmode="numeric" autocomplete="off"{{if .PendingID}} disabled{{end}}>
+    <label class="fact amount">Amount (credits)
+      <input class="field" name="amount" value="{{.Amount}}" placeholder="Enter amount" inputmode="numeric" autocomplete="off"{{if .PendingID}} disabled{{end}}>
     </label>
     <fieldset class="scenarios"{{if .PendingID}} disabled{{end}}>
-      <legend class="sr-only">Scenario</legend>
-      {{range .Scenarios}}<label class="fact"><input type="radio" name="scenario" value="{{.}}"{{if eq . $.Scenario}} checked{{end}}>{{.Label}}</label>
+      <legend class="fact">Scenario</legend>
+      {{range .Scenarios}}<label class="fact"><input type="radio" name="scenario" value="{{.}}"{{if eq . $.Scenario}} checked{{end}}>{{.Label}}{{if eq . "happy_path"}} (no issues){{end}}</label>
       {{end}}
     </fieldset>
     <button class="btn btn-primary"{{if .PendingID}} disabled{{end}}>Transfer</button>
@@ -135,10 +137,9 @@
   {{if .Overlap}}<p class="error" id="overlap-error">This transfer was not started: another transfer is still pending.</p>{{end}}
   {{with .PendingID}}<p class="note">A new transfer can start once the pending one has finished.</p>
   <p><a class="quiet-link" id="pending-transfer" href="/transfers/{{.}}">Follow pending transfer →</a></p>{{end}}
-  </div>
 </section>
 
-<section class="panel credits">
+<section class="panel">
   <h3 class="caps panel-head">Your credits</h3>
   <dl class="accounts">
     <div class="account">{{template "account" (account "bank-a" "Bank A" .Balances.BankA)}}
@@ -149,17 +150,16 @@
   </dl>
 </section>
 </div>
-</section>
 
-{{with .Activity}}
 <section class="panel">
-  <h3 class="caps panel-head">Activity history</h3>
-  <ul class="rows">
-    {{range .}}<li>{{with .Transfer}}<a href="/transfers/{{.ID}}"><span>{{.Amount}} credits</span><span class="dim">{{.Scenario.Label}}</span><span class="dim">{{.Status.Label}}</span></a>{{else}}<div data-top-up><span>{{.TopUp}} credits</span><span class="dim">Top-up</span><span class="dim">Added to Bank A</span></div>{{end}}</li>
-    {{end}}
-  </ul>
+  <h3 class="caps panel-head">Transfer history</h3>
+  {{with .Transfers}}<table class="table transfers">
+    <thead><tr><th class="caps">Scenario</th><th class="caps">Amount</th><th class="caps">Result</th></tr></thead>
+    <tbody>
+    {{range .}}<tr><td><a href="/transfers/{{.ID}}">{{.Scenario.Label}}</a></td><td>{{.Amount}} credits</td><td>{{.Status.Label}}</td></tr>
+    {{end}}</tbody>
+  </table>{{else}}<p class="note panel-body" id="no-transfers">No transfers yet.</p>{{end}}
 </section>
-{{end}}
 {{template "foot"}}{{end}}
 
 {{define "transfer"}}{{template "head"}}<title>Transfer {{.Transfer.ID}} · Saga Lab</title>
@@ -170,7 +170,7 @@
 <a class="btn btn-secondary" href="/">← Back</a>
 <h2 class="title"><data id="transfer-scenario" value="{{.Scenario}}">{{.Scenario.Label}}</data></h2>
 </div>
-<div class="columns wide">
+<div class="columns">
 <section class="panel details">
   <h3 class="caps panel-head">Transfer details</h3>
   <dl class="facts">
