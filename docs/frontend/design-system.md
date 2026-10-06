@@ -46,7 +46,7 @@ colors, `--danger`, the code ramp, `--surface-float`, `--float-hairline`,
 Pages show live balances and statuses, so they are never stale: they are
 served `no-store`, and `fresh.js` reloads one the browser restores from its
 back/forward cache. Going back from a transfer to the home page shows the
-current balances and Transfers list; the amount field is not restored.
+current balances and Activity history; the amount field is not restored.
 
 Fonts are served with a year-long immutable cache; CSS and JS are not cached.
 A transfer page whose replay is not yet ready, and the home page while a
@@ -193,9 +193,14 @@ because `ⓘ` is outside the vendored font subsets.
 
    The frame is `--shell-width` (1180px) wide, as in hooklook. The content
    inside it is a single column of `--content-width` (600px), left-aligned
-   under the wordmark. On a transfer page the column opens with **← Back**
-   and the two balance cards in one row, the button first and vertically
-   centred, the cards sharing what is left. Sections sit 40px apart; the items in a section 14px
+   under the wordmark. The home page opens with its title, "Inter-Bank
+   Transfer", and under it two columns 40px apart: the transfer form,
+   labelled PERFORM TRANSFER (A TO B), and on the right, 220px wide, "Your
+   fictional credits" over the two balance cards stacked in a column. The
+   Activity history follows below a divider. On a transfer page the column opens with **← Back**
+   alone. Under it, the transfer's title and facts keep the full 600px, and
+   the two balance cards are stacked in a 220px column 40px to their right,
+   so like History they reach past the content column. Sections sit 40px apart; the items in a section 14px
    apart. Where two sections need a firmer break, a hairline centred in the
    gap divides them.
 
@@ -260,7 +265,7 @@ because `ⓘ` is outside the vendored font subsets.
    reloading itself closes it on the next reload.
 
 8. **A fill steps off its own ground, not off the page.** `--surface-shade` is
-   a fill whose ground is the page — the hover of a row in the Transfers list,
+   a fill whose ground is the page — the hover of a transfer row in the Activity history,
    and the current History row during playback.
    `--surface-shade-2` is a fill inside a filled region, and
    `--shade-hairline` the hairline on one; a filled region (hooklook's request
@@ -276,8 +281,8 @@ because `ⓘ` is outside the vendored font subsets.
    | --- | --- |
    | 30px (`--text-heading`) | a balance figure |
    | 24px sans | the product wordmark |
-   | 20px | the page title ("Transfer of 25 credits") |
-   | 16px | section labels (TRANSFERS, HISTORY), and the footer wordmark |
+   | 20px | the page title ("Inter-Bank Transfer", "Transfer of 25 credits") |
+   | 16px | section labels (PERFORM TRANSFER (A TO B), ACTIVITY HISTORY, HISTORY), and the footer wordmark |
 
    This is a record of what this app settled on, not a scale anything else
    has to adopt. A token is still the first thing to reach for where one fits;
@@ -299,7 +304,7 @@ because `ⓘ` is outside the vendored font subsets.
     | --- | --- | --- |
     | `.caps` | mono, 500, 0.12em, uppercase, body | section labels, card labels, table column headings; no size |
     | `.fact` | mono, `--text-mono-meta`, dim | a control label, a unit beside a figure |
-    | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's intro, the History explanation |
+    | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's "Your fictional credits", the History explanation |
     | `.dim` | dim, nothing else | a value inside a row that is already mono |
     | `.sr-only` | visually hidden | text for screen readers only |
 
@@ -318,6 +323,11 @@ because `ⓘ` is outside the vendored font subsets.
 
     A row that leads somewhere is a whole-row link whose hover is
     `--surface-shade`, applied instantly.
+
+    The home page's **Activity history** lists the visitor's transfers and
+    top-ups together, newest first. A transfer row reads amount, scenario,
+    status and links to the transfer; a top-up row reads amount, "Top-up",
+    "Added to Bank A" and leads nowhere, so it has no hover.
 
     In History, a bank's committed step is followed by the balance it
     reported, `· 100 → 75`, and a rejection by its unchanged balance, `· 0`.
@@ -357,7 +367,7 @@ because `ⓘ` is outside the vendored font subsets.
     While awaiting admission, the status line says “Another visitor is trying
     this demo. Yours will start automatically when it's your turn.” It uses
     the ordinary status text, with no promised duration, spinner or state hue.
-    The transfer list uses the same label, and the pending form remains disabled.
+    The Activity history uses the same label, and the pending form remains disabled.
 
     A state that does need a hue takes Brick for a failure and Teal
     otherwise, and keeps its words, so the hue is never the only signal. Not

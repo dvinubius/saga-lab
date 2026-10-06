@@ -68,7 +68,7 @@
 </html>
 {{end}}
 
-{{define "balances"}}<dl class="accounts">
+{{define "balances"}}<dl class="accounts stacked">
   <div class="account">{{template "account" (account "bank-a" "Bank A" .BankA)}}</div>
   <div class="account">{{template "account" (account "bank-b" "Bank B" .BankB)}}</div>
 </dl>
@@ -96,18 +96,10 @@
 {{if and .PendingID (not .Overlap) (not .TopUpRefused)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
 {{template "top"}}
 <section class="section">
-  <p class="note">Your fictional credits at each bank.</p>
-  <dl class="accounts">
-    <div class="account">{{template "account" (account "bank-a" "Bank A" .Balances.BankA)}}
-      <dd class="top-up"><form method="post" action="/top-ups"><button class="btn btn-secondary" id="top-up"{{if .PendingID}} disabled{{end}}>+100 credits</button></form>
-        {{if .TopUpRefused}}<p class="error" id="top-up-error">No credits were added: a transfer is still pending.</p>{{end}}</dd>
-    </div>
-    <div class="account">{{template "account" (account "bank-b" "Bank B" .Balances.BankB)}}</div>
-  </dl>
-</section>
-
+<h2 class="title">Inter-Bank Transfer</h2>
+<div class="columns">
 <section class="section">
-  <h2 class="caps section-label">Transfer from Bank A to Bank B</h2>
+  <h3 class="caps section-label">Perform Transfer (A to B)</h3>
   <form class="transfer-form" method="post" action="/transfers">
     <label class="fact">Amount in credits
       <input class="field" name="amount" value="{{.Amount}}" inputmode="numeric" autocomplete="off"{{if .PendingID}} disabled{{end}}>
@@ -126,12 +118,25 @@
   <p><a class="quiet-link" id="pending-transfer" href="/transfers/{{.}}">Follow pending transfer →</a></p>{{end}}
 </section>
 
-{{with .Transfers}}
+<section class="section">
+  <p class="note">Your fictional credits</p>
+  <dl class="accounts stacked">
+    <div class="account">{{template "account" (account "bank-a" "Bank A" .Balances.BankA)}}
+      <dd class="top-up"><form method="post" action="/top-ups"><button class="btn btn-secondary" id="top-up"{{if .PendingID}} disabled{{end}}>+100 credits</button></form>
+        {{if .TopUpRefused}}<p class="error" id="top-up-error">No credits were added: a transfer is still pending.</p>{{end}}</dd>
+    </div>
+    <div class="account">{{template "account" (account "bank-b" "Bank B" .Balances.BankB)}}</div>
+  </dl>
+</section>
+</div>
+</section>
+
+{{with .Activity}}
 <hr class="divider">
 <section class="section">
-  <h2 class="caps section-label">Transfers</h2>
+  <h3 class="caps section-label">Activity history</h3>
   <ul class="rows">
-    {{range .}}<li><a href="/transfers/{{.ID}}"><span>{{.Amount}} credits</span><span class="dim">{{.Scenario.Label}}</span><span class="dim">{{.Status.Label}}</span></a></li>
+    {{range .}}<li>{{with .Transfer}}<a href="/transfers/{{.ID}}"><span>{{.Amount}} credits</span><span class="dim">{{.Scenario.Label}}</span><span class="dim">{{.Status.Label}}</span></a>{{else}}<div data-top-up><span>{{.TopUp}} credits</span><span class="dim">Top-up</span><span class="dim">Added to Bank A</span></div>{{end}}</li>
     {{end}}
   </ul>
 </section>
@@ -141,12 +146,10 @@
 {{define "transfer"}}{{template "head"}}<title>Transfer {{.Transfer.ID}} · Saga Lab</title>
 {{if not .Transfer.VisualisationReady}}<meta http-equiv="refresh" content="1; url=/transfers/{{.Transfer.ID}}?live">{{end}}
 {{template "top"}}
-<div class="balances-row">
-  <a class="btn btn-secondary" href="/">← Back</a>
-  {{template "balances" .Balances}}
-</div>
+<a class="btn btn-secondary back" href="/">← Back</a>
 
 {{with .Transfer}}
+<div class="columns wide">
 <section class="section">
   <h2 class="title">Transfer of {{.Amount}} credits</h2>
   <dl class="facts">
@@ -176,6 +179,8 @@
     </div>{{end}}
   </dl>
 </section>
+{{template "balances" $.Balances}}
+</div>
 
 {{if .VisualisationReady}}<section class="section playback" id="playback"{{if $.Live}} data-autoplay{{end}}>
   <h3 class="caps section-label">Playback</h3>
