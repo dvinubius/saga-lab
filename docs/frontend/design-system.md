@@ -83,8 +83,8 @@ invent them. The one exception is a state that needs a hue (adaptation 14).
 text, never the sole carrier of a UI state. Several accent elements may share
 a view as long as none competes for the eye. Here the accent is spent on the
 **Transfer** button, the dot of the selected scenario radio, the rule under a
-quiet link (**Follow pending transfer →**, the links in a transfer's In depth
-section, **→ dinubarbu.com**), the hub of the product mark and the
+quiet link (**Follow pending transfer →**, a transfer's **JSON →** and
+**Grafana →** links, **→ dinubarbu.com**), the hub of the product mark and the
 brackets of the footer wordmark. A state that uses it always carries a text
 label too.
 
@@ -101,11 +101,9 @@ inner or outer. No gradients, textures or background imagery. Separation is
 1px hairlines (`#E6E6E6` light / `#2C2C2C` dark, non-text only) and flat
 neutral fills. Cards are a neutral fill (`--surface-card`) with no border and
 no shadow — the two balance cards (on the home page the Bank A card also
-holds the **+100 credits** button under its figure), a transfer's playback
-panel (adaptation 15), and its In depth section, which
-holds the links that leave the page for raw evidence (**View as JSON →** and
-**Explore the trace in Grafana →**, both of which open in a new tab). A section on a
-card keeps its own label and gap and takes the card's 16px × 18px padding.
+holds the **+100 credits** button under its figure) and a transfer's playback
+panel (adaptation 15). A section on a card keeps its own label and gap and
+takes the card's 16px × 18px padding.
 
 **Code and terminal surfaces** follow the theme — hooklook's departure from
 the brand, which keeps them dark in both. On dark pages code sits on Panel
@@ -140,13 +138,16 @@ text on dark (Paper on Ember Light is too faint). Its hover is
 `#E49F64` on dark. *Departure from hooklook,* which predates the upstream dark
 hover and goes to Paper instead. Secondary: body text in a 1px hairline
 outline that goes to body text on hover — **← Back** on the transfer page,
-directly under the balances, whose arrow points the way it goes, and
+whose arrow points the way it goes, and
 **+100 credits** in the home page's Bank A card, disabled while a transfer is
 pending (the pending note under the transfer form says why). A disabled
 secondary keeps its hairline on hover. Quiet link:
 body text over a 1px accent bottom border; inline it takes a trailing `→`
 (**Follow pending transfer →**), in the footer a leading
-one (**→ dinubarbu.com**), as in hooklook. Never underline a button. A
+one (**→ dinubarbu.com**), as in hooklook. The links that leave a transfer
+page for raw evidence sit at the end of the fact they belong to, in the row's
+mono, with the trailing `→`: **JSON →** after the Transfer ID and
+**Grafana →** after the Trace ID. Both open in a new tab. Never underline a button. A
 disabled control keeps its shape and drops to `--disabled-opacity` with
 `cursor: not-allowed`.
 
@@ -159,9 +160,11 @@ outline to the muted grey.
 `↳` `·` `→` `←` `×` `✓` `//` `[ ]`, all of which ship in the vendored font
 subsets. `×` and `✓` are a valence pair, used together, never as a lone
 decorative tick. Apart from the product mark (adaptation 3) and the playback diagram (adaptation 15), the only drawn icons are the theme switch's sun and moon, the
-GitHub mark in the footer, and the info mark after a History entry that has an
+GitHub mark in the footer, the info mark after a History entry that has an
 explanation (a circled "i", 14px, muted at rest and body on hover or focus),
-all drawn inline in the template in `currentColor`. The info mark is drawn
+and the playback controls' step, pause, play and replay icons (16px on a
+24-unit grid, stroke 2 with round caps and joins, unfilled), all drawn inline
+in the template in `currentColor`. The info mark is drawn
 because `ⓘ` is outside the vendored font subsets.
 
 ## Adaptations for this app
@@ -190,7 +193,9 @@ because `ⓘ` is outside the vendored font subsets.
 
    The frame is `--shell-width` (1180px) wide, as in hooklook. The content
    inside it is a single column of `--content-width` (600px), left-aligned
-   under the wordmark. Sections sit 40px apart; the items in a section 14px
+   under the wordmark. On a transfer page the column opens with **← Back**
+   and the two balance cards in one row, the button first and vertically
+   centred, the cards sharing what is left. Sections sit 40px apart; the items in a section 14px
    apart. Where two sections need a firmer break, a hairline centred in the
    gap divides them.
 
@@ -364,21 +369,44 @@ because `ⓘ` is outside the vendored font subsets.
     that fault would typically cause.
 
 15. **Playback.** Once a transfer's replay is ready, a playback panel sits
-    above History and plays the transfer once from the start, on every load
-    of the page. It is a card like In depth, labelled PLAYBACK, and holds:
+    above History. It plays the transfer once from the start only when the
+    replay became ready while the page was open: a page that is still
+    reloading itself reloads into `?live`, the ready page that this reaches
+    autoplays and drops `?live` from the address, so reloading it later does
+    not autoplay again. A page opened on a transfer whose replay is already
+    ready rests paused on the first entry, with the middle button on Play. It is a card labelled
+    PLAYBACK, as wide as the History table (1040px), so like History it
+    reaches past the 600px column. Under the label it has two columns, 40px
+    apart. The left one, 564px wide, holds the participant diagram, described
+    below, and under it only the controls, centred on the diagram. The right one holds the timeline,
+    across its full width, and under it the details, centred:
 
-    - the participant diagram, described below;
     - the current entry's real timestamp in UTC and its real gap to the next
       entry ("+4.980 s to the next entry", or "last entry"), as a `.fact`;
     - the current entry as History shows it — cause, attempt, title, label
       and balance change, with the scenario's Brick and Teal marks — in mono
       at `--text-mono-meta`;
     - the entry's explanation, if it has one, as a `.note`, in place of the
-      info mark;
-    - three secondary buttons: **← Step back**, **Pause** / **Play** /
-      **Replay**, **Step forward →**. Stepping pauses. At either end the step
-      that would leave the rows is disabled. At the end the panel rests on the
-      last entry and the middle button reads **Replay**.
+      info mark.
+
+    **The timeline** has one dot per History row, placed by when playback
+    reaches it — each row's start is the sum of the dwells before it — so a
+    long real gap reads as a long stretch, within the dwell's 700 ms to 4 s
+    bounds. Its track is a 1px muted line; the stretch already played is
+    Teal at 2px, up to the current dot. Dots are 7px, body when played and
+    muted when not; the current one is 11px and Teal, like the diagram's
+    travelled path. Like the path, it changes instantly with the entry, and
+    it is hidden from screen readers, which read the details.
+
+    The controls are three secondary buttons: two labelled **Step**, and
+    between them a square icon-only button that is Pause, Play or Replay. A
+    step button carries a drawn skip icon, a triangle pointing to a bar, on
+    the side it goes towards, and its `aria-label` and `title` say which way:
+    "Step back", "Step forward". The middle button shows two bars for Pause, a
+    triangle for Play and an anticlockwise arrow for Replay, and its
+    `aria-label` and `title` name the action. Stepping pauses. At either end the step
+    that would leave the rows is disabled. At the end the panel rests on the
+    last entry and the middle button is **Replay**.
 
     Each entry stays on screen for its real gap to the next, at least 700 ms
     and at most 4 s; the server computes this and the script only reads it.
@@ -392,11 +420,14 @@ because `ⓘ` is outside the vendored font subsets.
     While the replay is not ready there is no panel; the page reloads every
     second and shows the live History.
 
-    **The participant diagram** is drawn inline in the template as SVG at
-    the panel's full width: four nodes — Transfer Service, Broker, Bank A
+    **The participant diagram** is drawn inline in the template as SVG,
+    564 × 132: four nodes — Transfer Service, Message Broker, Bank A
     and Bank B — as 1px outlined boxes with 2px corners, like a surface, and
     their names in mono at `--text-mono-meta`, and three edges joining the
-    Broker to each of the others. Every message passes through the Broker,
+    Message Broker to each of the others. "Message Broker" is set on two
+    lines, and its box is 8px taller than the others to hold them. The
+    nodes span the diagram's full width: the Transfer Service at the left
+    edge, the banks at the right one. Every message passes through the Broker,
     so the Transfer Service sits on its left and the banks are stacked on
     its right. For the current entry it lights the path the entry's message
     travelled, which the server computes per row: sender → Broker →
@@ -412,7 +443,7 @@ because `ⓘ` is outside the vendored font subsets.
       because the path is a data mark; the accent is not spent.
 
     During the broker wait only the Broker is lit, and Bank B is marked "no
-    consumer" beside its box, in Brick like the waiting entry in History:
+    consumer" centred just above its box, in the gap between the banks, in Brick like the waiting entry in History:
     the words carry it, the hue only marks it. The path is static. It
     changes instantly with the entry and nothing moves along it, because a
     travelling mark would suggest that messages take hundreds of

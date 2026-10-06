@@ -336,6 +336,7 @@ type transferPage struct {
 	Lanes    []string
 	History  []historyRow
 	TraceURL string
+	Live     bool
 }
 
 func (s *Service) getHome(w http.ResponseWriter, r *http.Request) {
@@ -424,7 +425,7 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Balances are temporarily unavailable.", http.StatusBadGateway)
 		return
 	}
-	page := transferPage{Balances: b, Transfer: t, Lanes: lanes, History: playback(historyRows(t.History))}
+	page := transferPage{Balances: b, Transfer: t, Lanes: lanes, History: playback(historyRows(t.History)), Live: r.URL.Query().Has("live")}
 	if t.TraceID != "" {
 		page.TraceURL = s.traceURL(t.TraceID)
 	}
