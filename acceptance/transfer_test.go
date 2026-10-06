@@ -3,7 +3,9 @@ package acceptance_test
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -34,6 +36,10 @@ func TestTransferCompletesAfterBothBanksCommit(t *testing.T) {
 	}
 
 	requested, debit, creditRequested, credit, done := completed.History[0], completed.History[1], completed.History[2], completed.History[3], completed.History[4]
+	assertBalancePair(t, debit, 100, 75)
+	assertBalancePair(t, credit, 0, 25)
+	assertNoBalancePair(t, completed.History, "debit_committed", "credit_committed")
+	assertOutcomeSummary(t, completed, completedOutcomeSummary)
 	messageIDs := map[string]string{
 		"DebitFunds":    requested.IssuedMessageID,
 		"FundsDebited":  debit.MessageID,
@@ -77,7 +83,8 @@ type transfer struct {
 	TraceID         string         `json:"trace_id"`
 	History         []historyEntry `json:"history"`
 
-	VisualisationReady bool `json:"visualisation_ready"`
+	VisualisationReady bool            `json:"visualisation_ready"`
+	OutcomeSummary     json.RawMessage `json:"outcome"`
 }
 
 type historyEntry struct {
@@ -90,6 +97,53 @@ type historyEntry struct {
 	MessageID       string    `json:"message_id"`
 	CausationID     string    `json:"causation_id"`
 	IssuedMessageID string    `json:"issued_message_id"`
+	BalanceBefore   *int64    `json:"balance_before"`
+	BalanceAfter    *int64    `json:"balance_after"`
+}
+
+func assertBalancePair(t *testing.T, e historyEntry, before, after int64) {
+	t.Helper()
+	if e.BalanceBefore == nil || e.BalanceAfter == nil || *e.BalanceBefore != before || *e.BalanceAfter != after {
+		t.Errorf("%s balance pair = %s → %s, want %d → %d", e.Step, show(e.BalanceBefore), show(e.BalanceAfter), before, after)
+	}
+}
+
+func assertNoBalancePair(t *testing.T, history []historyEntry, except ...string) {
+	t.Helper()
+	for _, e := range history {
+		if !slices.Contains(except, e.Step) && (e.BalanceBefore != nil || e.BalanceAfter != nil) {
+			t.Errorf("%s%s balance pair = %s → %s, want none", e.Step, e.Observation, show(e.BalanceBefore), show(e.BalanceAfter))
+		}
+	}
+}
+
+const completedOutcomeSummary = `{
+	"balances": {"bank_a": {"before": 100, "after": 75}, "bank_b": {"before": 0, "after": 25, "involved": true}},
+	"commands": {"debit": {"attempts": 1, "effects": 1}, "credit": {"attempts": 1, "effects": 1}, "refund": null},
+	"duplicates_suppressed": 0,
+	"duplicate_effects": 0
+}`
+
+func assertOutcomeSummary(t *testing.T, tr transfer, want string) {
+	t.Helper()
+	var got, expected any
+	if err := json.Unmarshal(tr.OutcomeSummary, &got); err != nil {
+		t.Errorf("outcome %q: %v", tr.OutcomeSummary, err)
+		return
+	}
+	if err := json.Unmarshal([]byte(want), &expected); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, expected) {
+		t.Errorf("outcome = %s, want %s", tr.OutcomeSummary, want)
+	}
+}
+
+func show(balance *int64) string {
+	if balance == nil {
+		return "absent"
+	}
+	return strconv.FormatInt(*balance, 10)
 }
 
 func (d *visitorClient) submitTransfer(t *testing.T, body string) transfer {
@@ -117,6 +171,9 @@ func (d *visitorClient) transfer(t *testing.T, id string) transfer {
 	var current transfer
 	if err := json.Unmarshal(body, &current); err != nil {
 		t.Fatalf("decode transfer %q: %v", body, err)
+	}
+	if !current.VisualisationReady && current.OutcomeSummary != nil {
+		t.Fatalf("transfer %s has an outcome summary before it is ready: %s", id, current.OutcomeSummary)
 	}
 	return current
 }

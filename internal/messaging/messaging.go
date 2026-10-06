@@ -63,8 +63,10 @@ type AccountOperation struct {
 }
 
 type OperationCommitted struct {
-	TransferID string    `json:"transfer_id"`
-	ObservedAt time.Time `json:"observed_at"`
+	TransferID    string    `json:"transfer_id"`
+	ObservedAt    time.Time `json:"observed_at"`
+	BalanceBefore *int64    `json:"balance_before,omitempty"`
+	BalanceAfter  *int64    `json:"balance_after,omitempty"`
 }
 
 type ScenarioOperation struct {
@@ -77,9 +79,11 @@ type DebitFunds ScenarioOperation
 type FundsDebited OperationCommitted
 
 type OperationRejected struct {
-	TransferID string    `json:"transfer_id"`
-	Reason     string    `json:"reason"`
-	ObservedAt time.Time `json:"observed_at"`
+	TransferID    string    `json:"transfer_id"`
+	Reason        string    `json:"reason"`
+	ObservedAt    time.Time `json:"observed_at"`
+	BalanceBefore *int64    `json:"balance_before,omitempty"`
+	BalanceAfter  *int64    `json:"balance_after,omitempty"`
 }
 
 type DebitRejected OperationRejected

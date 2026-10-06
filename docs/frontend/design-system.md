@@ -32,21 +32,25 @@ embedded into the Transfer Service binary and served under `/static/`:
 | `app.css` | Values this app needs and the brand does not have, the shared text roles, and every component style. |
 | `theme.js` | The theme switch. |
 | `fresh.js` | Reloads a page the browser restores from its back/forward cache. |
+| `playback.js` | Steps a ready transfer page's playback through its History rows and lights each row's path in the diagram (adaptation 15). |
 | `fonts/` | The four subset `.woff2` files built by the design system's `build-webfonts.py`, with the two OFL licences. |
+| `favicon.svg` | The product mark on an Ink tile — dark in both themes, because a browser tab is not part of the page. |
+| `saga-lab-logo-row.png` | The 1920 × 1080 link preview for `og:image` and `twitter:image`: the mark beside the wordmark, on Ink. |
 
 The raw brand *values* in `brand.css` stay in step with upstream — Ink, Paper,
 Ember and the typefaces are the brand itself. Values this app adds live in
 `app.css`, where they are visibly this app's own: `--text-dim`, the data
 colors, `--danger`, the code ramp, `--surface-float`, `--float-hairline`,
-`--shade-hairline`, `--surface-shade-2`, and the layout sizes.
+`--shade-hairline`, `--surface-shade-2`, the panel and control tokens
+(adaptation 16), and the layout sizes.
 
 Pages show live balances and statuses, so they are never stale: they are
 served `no-store`, and `fresh.js` reloads one the browser restores from its
 back/forward cache. Going back from a transfer to the home page shows the
-current balances and Transfers list; the amount field is not restored.
+current balances and Activity history; the amount field is not restored.
 
 Fonts are served with a year-long immutable cache; CSS and JS are not cached.
-A transfer page whose evidence is not yet complete, and the home page while a
+A transfer page whose replay is not yet ready, and the home page while a
 transfer is pending, reload themselves once a second, and fonts fetched again on every reload would flash.
 Changing a font file therefore means renaming it.
 
@@ -67,21 +71,21 @@ light-theme / dark-theme pair, like the accent:
 | | Light | Dark | Role here |
 | --- | --- | --- | --- |
 | Ember | `#A8500F` | `#DE8A42` | brand, the primary action, quiet-link rules |
-| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; a state's hue (rule 14) |
+| Teal | `#087581` | `#5BC8D0` | primary data and syntax color; a state's hue, a scenario's avoided issue (adaptation 14); the playback diagram's travelled path (adaptation 15) |
 | Violet | `#6B5D91` | `#AFA3CF` | secondary data and syntax color — nothing spends it yet |
-| Brick | `#A03028` | `#E0756A` | `--danger`: a rejected value or refused submission (rule 13); a failed state's hue (rule 14) |
+| Brick | `#A03028` | `#E0756A` | `--danger`: a rejected value or refused submission (adaptation 13); a failed state's hue, a scenario's simulated fault (adaptation 14), Bank B's "unavailable" in the playback diagram (adaptation 15) |
 
 Stone, Ink and Paper carry the overwhelming majority of the interface. Teal
 and Violet are for syntax on code surfaces and for data marks (a chart, a
 timeline), and are declared so that the first of those does not have to
-invent them. The one exception is a state that needs a hue (rule 14).
+invent them. The one exception is a state that needs a hue (adaptation 14).
 
 **Accent dosage** is binding: at most ~2% of any composition, never on running
 text, never the sole carrier of a UI state. Several accent elements may share
 a view as long as none competes for the eye. Here the accent is spent on the
 **Transfer** button, the dot of the selected scenario radio, the rule under a
-quiet link (**Follow pending transfer →**, the links in a transfer's In depth
-section, **→ dinubarbu.com**), the hub of the product mark and the
+quiet link (**Follow pending transfer →**, a transfer's **JSON →** and
+**Grafana →** links, **→ dinubarbu.com**), the hub of the product mark and the
 brackets of the footer wordmark. A state that uses it always carries a text
 label too.
 
@@ -94,13 +98,11 @@ except the machine's own asides, which are lowercase; section labels are set
 in caps by CSS — see adaptation 10.
 
 **Shape.** 2px corners on controls and surfaces (adaptation 5). No shadows,
-inner or outer. No gradients, textures or background imagery. Separation is
+inner or outer. No gradients or textures; the one background image is the
+product mark behind the waiting playback (adaptation 15). Separation is
 1px hairlines (`#E6E6E6` light / `#2C2C2C` dark, non-text only) and flat
-neutral fills. Cards are a neutral fill (`--surface-card`) with no border and
-no shadow — the two balance cards, and a transfer's In depth section, which
-holds the links that leave the page for raw evidence (**View as JSON →** and
-**Explore the trace in Grafana →**, both of which open in a new tab). A section on a
-card keeps its own label and gap and takes the card's 16px × 18px padding.
+neutral fills. Every region of a page is a **panel** (adaptation 16): a
+framed surface with a header strip that names it.
 
 **Code and terminal surfaces** follow the theme — hooklook's departure from
 the brand, which keeps them dark in both. On dark pages code sits on Panel
@@ -121,38 +123,35 @@ Highlighted content is rendered as text through the template — captured bytes
 never reach the page as markup. An inline `<code>` inside a mono row (the
 transfer ID, the trace ID) takes no fill of its own.
 
-**Motion.** None is defined in the brand. Default to no animation; nothing
-bounces, pulses or spins. Hover changes on buttons and links — color,
-background, border — ease over 150ms (`--transition-state` from the brand,
-spent through `--hover-transition`). List rows change instantly. Something
-in progress says what it is waiting for in words, and the page reloads itself
-until it is done; there is no spinner.
+**Motion.** None is defined in the brand. Nothing bounces or pulses, and the
+one thing that spins is the waiting playback's spinner (adaptation 15).
+Hover changes on buttons and links — color, background, border — ease over
+150ms (`--transition-state` from the brand, spent through
+`--hover-transition`). List rows change instantly. Something in progress says
+what it is waiting for in words, and the page reloads itself until it is done.
+Playback (adaptation 15) steps from entry to entry, and each step changes
+instantly.
 
 **Buttons and links.** Primary: solid accent fill — Paper text on light, Ink
 text on dark (Paper on Ember Light is too faint). Its hover is
 `--accent-on-hover`: Ember Hover `#8A420C` on light, Ember Light Hover
 `#E49F64` on dark. *Departure from hooklook,* which predates the upstream dark
-hover and goes to Paper instead. Secondary: body text in a 1px hairline
-outline that goes to body text on hover — **← Back** on the transfer page,
-directly under the balances, whose arrow points the way it goes. Quiet link:
+hover and goes to Paper instead. Secondary: body text in a 1px
+`--control-edge` outline (`#ADADAD` light / `#555555` dark — firmer than a
+hairline, so it reads against the page and a panel alike) that goes to body
+text on hover — **← Back** on the transfer page, whose arrow points the way
+it goes, and **+100 credits** in the home page's Bank A row, disabled while a
+transfer is pending (the pending note under the transfer form says why). A
+disabled secondary keeps its edge on hover. The playback controls have their
+own style (adaptation 15). Quiet link:
 body text over a 1px accent bottom border; inline it takes a trailing `→`
 (**Follow pending transfer →**), in the footer a leading
-one (**→ dinubarbu.com**), as in hooklook. Never underline a button. A
+one (**→ dinubarbu.com**), as in hooklook. The links that leave a transfer
+page for raw evidence sit at the end of the fact they belong to, in the row's
+mono, with the trailing `→`: **JSON →** after the Transfer ID and
+**Grafana →** after the Trace ID. Both open in a new tab. Never underline a button. A
 disabled control keeps its shape and drops to `--disabled-opacity` with
 `cursor: not-allowed`.
-
-**Scenario choice.** The home form offers five radios in this order: Happy
-path, Debit redelivery, Credit rejection & refund, Bank B unavailable, and
-Credit rejection & refund redelivery. The selected radio uses the accent dot;
-its text uses the same fact-label style as the other options. `CreditConfirmed`
-is an observation in the Transfer Service lane labelled “the broker confirmed
-the credit command”; it takes no state hue and does not imply queue-insertion
-time. `DeliveryResumed` and `DeliveryPaused` are observations in Bank B's
-lane, without a state hue. `Admitted` is an observation in the Transfer Service's
-lane, displaying the wait from request to admission only for a transfer that
-waited for another visitor. Resumption displays the wait from the broker's
-confirmation and has an info note explaining that the command waited in
-RabbitMQ with no consumer while Bank B continued serving other transfers.
 
 **Focus.** The brand defines no focus style. Not the accent — a focus ring is
 a state the accent would then carry alone. `:focus-visible` is a 2px outline
@@ -162,10 +161,12 @@ outline to the muted grey.
 **Glyphs.** The brand has no icon system and no emoji: Unicode does icon duty —
 `↳` `·` `→` `←` `×` `✓` `//` `[ ]`, all of which ship in the vendored font
 subsets. `×` and `✓` are a valence pair, used together, never as a lone
-decorative tick. Apart from the product mark (adaptation 3), the only drawn icons are the theme switch's sun and moon, the
-GitHub mark in the footer, and the info mark after a History entry that has an
+decorative tick. Apart from the product mark (adaptation 3) and the playback diagram (adaptation 15), the only drawn icons are the theme switch's sun and moon, the
+GitHub mark in the footer, the info mark after a History entry that has an
 explanation (a circled "i", 14px, muted at rest and body on hover or focus),
-all drawn inline in the template in `currentColor`. The info mark is drawn
+and the playback controls' step, pause, play and replay icons (16px on a
+24-unit grid, stroke 2 with round caps and joins, unfilled), all drawn inline
+in the template in `currentColor`. The info mark is drawn
 because `ⓘ` is outside the vendored font subsets.
 
 ## Adaptations for this app
@@ -193,10 +194,24 @@ because `ⓘ` is outside the vendored font subsets.
    whole.
 
    The frame is `--shell-width` (1180px) wide, as in hooklook. The content
-   inside it is a single column of `--content-width` (600px), left-aligned
-   under the wordmark. Sections sit 40px apart; the items in a section 14px
-   apart. Where two sections need a firmer break, a hairline centred in the
-   gap divides them.
+   inside it is a single column of `--content-width` (680px), left-aligned
+   under the wordmark. The home page opens with its title, "Inter-Bank
+   Transfer", and two short `.note` paragraphs at 14px (at most 600px wide)
+   saying what the lab demonstrates and what a visitor can do. Under them,
+   two columns 40px apart: PERFORM TRANSFER (A TO B), 360px wide, holding
+   the form — the amount field, 100px, at the right end of its label's
+   row — and YOUR CREDITS, 220px wide and centred in the rest of the row,
+   holding a row per bank set like a transfer's balances panel
+   (adaptation 12): the name 18px mono and muted, the figure 20px mono.
+   The ACTIVITY HISTORY panel follows.
+
+   A transfer page opens with **← Back** and, 20px to its right, the
+   scenario's name as the page title. Under them, a 1040px row: the TRANSFER
+   DETAILS panel, 600px wide, and the balances panel, 320px wide and centred
+   in the rest of the row. Then the status line and, 14px under it, the
+   HISTORY panel, 1040px wide. Like History, the row reaches past the
+   content column. Sections sit 40px apart; the items in a section 14px
+   apart.
 
 3. **The product wordmark carries a mark**, hooklook-style. "Saga Lab" in
    Space Grotesk 500 at 24px with the wordmark's −0.018em tracking, in body
@@ -224,7 +239,7 @@ because `ⓘ` is outside the vendored font subsets.
    above.
 
 5. **Softened corners.** Controls — buttons, fields, the theme switch — take
-   `--radius-control`; surfaces — cards, code blocks, floats —
+   `--radius-control`; surfaces — panels, code blocks, floats —
    `--radius-surface`. Both are the brand's `--radius` (2px), which upstream
    adopted after hooklook introduced it. Rows in a list or table stay square:
    they are parted by hairlines, not boxed.
@@ -259,7 +274,8 @@ because `ⓘ` is outside the vendored font subsets.
    reloading itself closes it on the next reload.
 
 8. **A fill steps off its own ground, not off the page.** `--surface-shade` is
-   a fill whose ground is the page — the hover of a row in the Transfers list.
+   a fill whose ground is the page — the hover of a transfer row in the Activity history,
+   and the current History row during playback.
    `--surface-shade-2` is a fill inside a filled region, and
    `--shade-hairline` the hairline on one; a filled region (hooklook's request
    list) is not used here yet, but these are what it takes when it is.
@@ -272,10 +288,10 @@ because `ⓘ` is outside the vendored font subsets.
 
    | Size | Role |
    | --- | --- |
-   | 30px (`--text-heading`) | a balance figure |
    | 24px sans | the product wordmark |
-   | 20px | the page title ("Transfer of 25 credits") |
-   | 16px | section labels (TRANSFERS, HISTORY), and the footer wordmark |
+   | 20px | the page title ("Inter-Bank Transfer", a transfer's scenario), and a balance figure |
+   | 18px mono | a bank's name in YOUR CREDITS and a transfer's balances panel |
+   | 16px | the footer wordmark |
 
    This is a record of what this app settled on, not a scale anything else
    has to adopt. A token is still the first thing to reach for where one fits;
@@ -286,18 +302,19 @@ because `ⓘ` is outside the vendored font subsets.
     caps with 0.12em tracking separate a label from what sits beside it
     without spending brightness or color. `.caps` is the class; the template
     keeps the text in sentence case and the uppercasing is CSS, so a screen
-    reader is not handed shouting. `.caps` carries no size: a section label
-    adds `.section-label` (16px), a card label and a table column heading
-    take theirs from the component.
+    reader is not handed shouting. `.caps` carries no size: a panel head,
+    the status line's label, the Outcome
+    footer's label and a table column heading take theirs from the
+    component.
 
 11. **Shared roles live in `app.css`, and a role carries its tier** when its
     meaning implies one:
 
     | Role | Set as | Used for |
     | --- | --- | --- |
-    | `.caps` | mono, 500, 0.12em, uppercase, body | section labels, card labels, table column headings; no size |
+    | `.caps` | mono, 500, 0.12em, uppercase, body | panel heads, table column headings; no size |
     | `.fact` | mono, `--text-mono-meta`, dim | a control label, a unit beside a figure |
-    | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's intro, the History explanation |
+    | `.note` | inherited sans, `--text-small`, `--leading-small`, dim | prose meant to be read: the home page's introduction, the History explanation |
     | `.dim` | dim, nothing else | a value inside a row that is already mono |
     | `.sr-only` | visually hidden | text for screen readers only |
 
@@ -317,6 +334,37 @@ because `ⓘ` is outside the vendored font subsets.
     A row that leads somewhere is a whole-row link whose hover is
     `--surface-shade`, applied instantly.
 
+    The home page's **Activity history** lists the visitor's transfers and
+    top-ups together, newest first. A transfer row reads amount, scenario,
+    status and links to the transfer; a top-up row reads amount, "Top-up",
+    "Added to Bank A" and leads nowhere, so it has no hover.
+
+    In History, a bank's committed step is followed by the balance it
+    reported, `· 100 → 75`, and a rejection by its unchanged balance, `· 0`.
+    The figure is a value beside a label, so it is dim (`.dim`), and it takes
+    no hue: a refund restoring the source reads in its numbers alone.
+
+    In History, a bank's steps leave the bank out of the label, because the
+    column already names it: "Committed the debit", not "Bank A committed
+    the debit". The playback details show the full sentence, since they have
+    no column.
+
+    Once a transfer is ready, its outcome is shown in two places. The
+    **balances panel** on the right of TRANSFER DETAILS has no head: a row
+    per bank, its name (18px mono, muted) on the left and "100 → 75 credits"
+    on the right — the figures 20px mono, the before figure dim, the arrow
+    muted. Bank B after a debit rejection reads "Not involved". Until the
+    transfer is ready, the same panel shows each bank's current balance. A
+    value never reported is "—".
+
+    The **Outcome** footer closes the HISTORY panel, 16px under the table's
+    last hairline, on the header strip's fill with an edge above: OUTCOME,
+    then one line of items — "Debit 1 attempt, 1 effect", "Credit …",
+    "Refund …" only when a refund was issued, and "Duplicates suppressed 0".
+    The names are muted, the numbers body. A command never issued reads
+    "not issued". No count takes a hue: a redelivery stands out by its
+    numbers (2 attempts, 1 effect), not by color.
+
 13. **Form controls.** A field is mono at `--text-mono-meta` on the page
     surface with a hairline border, at `--row-height` (36px), like a button.
     A radio choice is a borderless fieldset whose visually hidden legend
@@ -325,18 +373,157 @@ because `ⓘ` is outside the vendored font subsets.
     native radio marks the selection on its own, so the accent never carries
     it alone. A rejected value or a refused submission is explained under
     the control in Brick, sans at `--text-small` — the text says what is
-    wrong; the color only marks it. A disabled field or radio choice, like a
+    wrong; the color only marks it. A top-up refused while a transfer is
+    pending is explained under **+100 credits**, inside the Bank A row. A disabled field or radio choice, like a
     disabled button, drops to `--disabled-opacity`.
 
 14. **Statuses are words, not colors.** The brand has one accent and no status
     palette. A transfer's status and its history steps take no hue:
-    "Completed" and "Waiting for Bank A to debit" differ in words alone, and
-    so do the Evidence row's "Being collected" and "Complete".
+    "Completed" and "Waiting for Bank A to debit" differ in words alone.
+
+    On a transfer page the status sits on its own line above the HISTORY
+    panel: STATUS in `.caps` at `--text-mono-micro`, dim, then the status in
+    mono, weight 500. A transfer rejected by Bank A adds the bank's reason:
+    "Rejected by Bank A (insufficient funds)". A refunded transfer gives
+    none — "Refunded after Bank B rejected the credit" already says why.
     While awaiting admission, the status line says “Another visitor is trying
     this demo. Yours will start automatically when it's your turn.” It uses
-    the ordinary status text, with no promised duration, spinner or state hue.
-    The transfer list uses the same label, and the pending form remains disabled.
+    the ordinary status text, with no promised duration or state hue.
+    The Activity history uses the same label, and the pending form remains disabled.
 
     A state that does need a hue takes Brick for a failure and Teal
     otherwise, and keeps its words, so the hue is never the only signal. Not
     the accent: it sits too close to Brick on the light theme.
+
+    In History, a scenario may spend the same pair on what it demonstrates:
+    Brick on the entry showing the fault or issue the scenario simulates,
+    Teal on the entry showing how the system correctly avoids the trouble
+    that fault would typically cause.
+
+15. **Playback.** The HISTORY panel opens with the playback, above the
+    History table, parted from it by a full-width hairline; its padding is
+    28px above, 16px at the sides and 32px below. It has two columns, 40px
+    apart. The left one, 564px wide, holds the participant diagram,
+    described below, and under it only the controls, centred on the diagram.
+    The right one holds the timeline, across its full width, and under it the
+    details, centred:
+
+    - the current entry's real timestamp in UTC and its real gap to the next
+      entry ("+4.980 s to the next entry", or "last entry"), as a `.fact`;
+    - the current entry as History shows it — cause, attempt, title, label
+      and balance change, with the scenario's Brick and Teal marks — in mono
+      at `--text-mono-meta`, with the bank named in the label;
+    - the entry's explanation, if it has one, as a `.note`, in place of the
+      info mark.
+
+    Playback never starts on its own: a ready page rests paused on the first
+    entry, with the middle button on Play.
+
+    **While the replay is not ready** the panel already has its final shape,
+    so nothing moves when it arrives. The diagram is drawn idle — every node
+    and edge muted, no arrows — and the three controls are disabled, the
+    middle one on Play. In place of the timeline and details, a 28px ring
+    spinner (a hairline ring with a body-text arc, turning every 0.8 s) sits
+    over the product mark, 150px and at 6% opacity, with "Preparing
+    playback" as a `.fact` under it. The page reloads every second, which
+    restarts the spinner. This is the one spinner in the app.
+
+    **The timeline** has one dot per History row, placed by when playback
+    reaches it — each row's start is the sum of the dwells before it — so a
+    long real gap reads as a long stretch, within the dwell's 700 ms to 4 s
+    bounds. Its track is a 1px muted line; the stretch already played is
+    Teal at 2px, up to the current dot. Dots are 7px, body when played and
+    muted when not; the current one is 11px and Teal, like the diagram's
+    travelled path. Like the path, it changes instantly with the entry, and
+    it is hidden from screen readers, which read the details.
+
+    **The controls** are three separate buttons, 12px apart: two labelled
+    **Step**, and between them a square icon-only button that is Pause, Play
+    or Replay. They are not secondaries. The Step buttons are tonal — a
+    `--control-fill` with no border, going to `--control-fill-hover` — and
+    the middle one is inverted neutral: a body-text fill with the icon in the
+    page color, going to dim on hover. Not the accent, which belongs to
+    **Transfer**. A step button carries a drawn skip icon, a triangle
+    pointing to a bar, on the side it goes towards, and its `aria-label` and
+    `title` say which way: "Step back", "Step forward". The middle button
+    shows two bars for Pause, a triangle for Play and an anticlockwise arrow
+    for Replay, and its `aria-label` and `title` name the action. Stepping
+    pauses. At either end the step that would leave the rows is disabled.
+    At the end the panel rests on the last entry and the middle button is
+    **Replay**.
+
+    Each entry stays on screen for its real gap to the next, at least 700 ms
+    and at most 4 s; the server computes this and the script only reads it.
+
+    History stays the complete record and follows the panel: the current row
+    takes `--surface-shade` on dark and Paper on light, where the panel is
+    white, rows not yet played drop to `--disabled-opacity`
+    (like a disabled control, adaptation 13), and played rows look normal. Every row
+    is played at the end. Two rows of one attempt still read as one: the
+    shading and dimming apply per row and leave their joint unchanged.
+
+    While the replay is not ready, the page reloads every second and shows
+    the live History under the waiting playback.
+
+    **The participant diagram** is drawn inline in the template as SVG,
+    564 × 132: four nodes — Transfer Service, Message Broker, Bank A
+    and Bank B — as 1px outlined boxes with 2px corners, like a surface, and
+    their names in mono at `--text-mono-meta`, and three edges joining the
+    Message Broker to each of the others. "Message Broker" is set on two
+    lines, and its box is 8px taller than the others to hold them. The
+    nodes span the diagram's full width: the Transfer Service at the left
+    edge, the banks at the right one. Every message passes through the Broker,
+    so the Transfer Service sits on its left and the banks are stacked on
+    its right. For the current entry it lights the path the entry's message
+    travelled, which the server computes per row: sender → Broker →
+    receiver for a Saga step; Transfer Service → Broker for the requested,
+    admitted and broker-confirmed entries; the bank → Broker for a lost
+    acknowledgement; Broker → the bank for a suppressed redelivery; Broker →
+    Bank B for delivery resuming.
+
+    - Idle nodes and edges are muted.
+    - The nodes on the path are body text.
+    - The travelled edges are Teal at 2px, with an open Teal chevron at the
+      receiving end, drawn like the arrowheads of the product mark. Teal
+      because the path is a data mark; the accent is not spent.
+
+    During the broker wait only the Broker is lit, and Bank B is marked
+    "unavailable" centred just above its box, in the gap between the banks, in Brick like the waiting entry in History:
+    the words carry it, the hue only marks it. The path is static. It
+    changes instantly with the entry and nothing moves along it, because a
+    travelling mark would suggest that messages take hundreds of
+    milliseconds to cross the network.
+
+16. **Panels.** Every region of a page is a panel: a 1px `--panel-edge`
+    frame with `--radius-surface` corners around a `--surface-panel` fill,
+    opening with a header strip that names it — `.caps` at
+    `--text-mono-meta`, a 20px line, 8px × 16px padding, on
+    `--surface-panel-head` over a `--panel-edge` rule. Prose and forms sit
+    in the panel's 16px padding (`.panel-body`); rows and tables run to its
+    edges, their first column indented 16px, and the last row of a list
+    drops its hairline against the frame. Inside a panel `--surface-shade`
+    becomes `--panel-shade`, so a hovered or current row still steps off its
+    ground (adaptation 8).
+
+    The one panel without a head is a transfer's balances panel, whose rows
+    name themselves (adaptation 12).
+
+    | Token | Light | Dark |
+    | --- | --- | --- |
+    | `--surface-panel` | `#FFFFFF` | `#191919` |
+    | `--surface-panel-head` | `#F2F2F2` | `#202020` |
+    | `--panel-edge` | `#DADADA` | `#333333` |
+    | `--panel-shade` | `#F4F4F4` | `#232323` |
+    | `--control-edge` | `#ADADAD` | `#555555` |
+    | `--control-fill` | `#EDEDED` | `#2A2A2A` |
+    | `--control-fill-hover` | `#E0E0E0` | `#343434` |
+
+    The panel fill is a step off the page in both themes — lighter on dark,
+    white on light — and subtler than the brand's `--surface-card`, which
+    the app no longer uses outside floats. The header strip and frame carry
+    the separation, so a panel needs no shadow.
+
+    TRANSFER DETAILS is 600px: Amount (its value body, weight 500),
+    Transfer ID and Trace ID, in a 100px name column; its rows sit on a 20px
+    line, so their 1px rules land on whole pixels, and it closes 4px under
+    its last row.

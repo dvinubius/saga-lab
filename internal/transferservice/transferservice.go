@@ -35,7 +35,14 @@ var pagesTemplate string
 //go:embed static
 var static embed.FS
 
-var pages = template.Must(template.New("pages").Parse(pagesTemplate))
+var pages = template.Must(template.New("pages").Funcs(template.FuncMap{
+	"account": func(id, name string, b accountBalance) any {
+		return struct {
+			ID, Name string
+			Balance  int64
+		}{id, name, b.Balance}
+	},
+}).Parse(pagesTemplate))
 
 type Config struct {
 	BankAURL   string
@@ -80,7 +87,7 @@ func Reset(ctx context.Context, settings service.Settings) error {
 	}
 	defer db.Close()
 	return pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS demonstration_slot, transfer_history, transfers, visitors`); err != nil {
+		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS demonstration_slot, transfer_history, transfers, top_ups, visitors`); err != nil {
 			return fmt.Errorf("drop transfers: %w", err)
 		}
 		if _, err := tx.Exec(ctx, schema); err != nil {
@@ -147,8 +154,10 @@ func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.getHome)
 	mux.HandleFunc("POST /transfers", s.postTransferForm)
+	mux.HandleFunc("POST /top-ups", s.postTopUpForm)
 	mux.HandleFunc("GET /transfers/{transferID}", s.getTransferPage)
 	mux.HandleFunc("GET /api/balances", s.getBalances)
+	mux.HandleFunc("POST /api/top-ups", s.postTopUp)
 	mux.HandleFunc("GET /api/transfers", s.getTransfers)
 	mux.HandleFunc("POST /api/transfers", s.postTransfer)
 	mux.HandleFunc("GET /api/transfers/{transferID}", s.getTransfer)
@@ -204,6 +213,45 @@ func (s *Service) getBalances(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Error("read balances", "error", err)
 		web.WriteError(w, http.StatusBadGateway, "balances unavailable", s.logger)
+		return
+	}
+	web.WriteJSON(w, http.StatusOK, b, s.logger)
+}
+
+func (s *Service) topUp(ctx context.Context) (balances, error) {
+	pending, err := s.pendingTransferID(ctx)
+	if err != nil {
+		return balances{}, fmt.Errorf("find pending transfer: %w", err)
+	}
+	if pending != "" {
+		return balances{}, pendingTransferError{PendingID: pending}
+	}
+	bankB, err := s.bankB.balance(ctx, visitor.ID(ctx))
+	if err != nil {
+		return balances{}, err
+	}
+	bankA, amount, err := s.bankA.topUp(ctx, visitor.ID(ctx))
+	if err != nil {
+		return balances{}, err
+	}
+	if _, err := s.db.Exec(ctx, `INSERT INTO top_ups (visitor_id, amount, topped_up_at) VALUES ($1, $2, $3)`, visitor.ID(ctx), amount, time.Now()); err != nil {
+		s.logger.Error("record top-up", "error", err)
+	}
+	return balances{BankA: accountBalance{bankA}, BankB: accountBalance{bankB}}, nil
+}
+
+func (s *Service) postTopUp(w http.ResponseWriter, r *http.Request) {
+	b, err := s.topUp(r.Context())
+	if pending, ok := errors.AsType[pendingTransferError](err); ok {
+		web.WriteJSON(w, http.StatusConflict, map[string]string{
+			"error":               "a transfer is still pending; top up once it has finished",
+			"pending_transfer_id": pending.PendingID,
+		}, s.logger)
+		return
+	}
+	if err != nil {
+		s.logger.Error("top up", "error", err)
+		web.WriteError(w, http.StatusBadGateway, "top-up unavailable", s.logger)
 		return
 	}
 	web.WriteJSON(w, http.StatusOK, b, s.logger)
@@ -275,6 +323,7 @@ func (s *Service) getTransfer(w http.ResponseWriter, r *http.Request) {
 type homePage struct {
 	Balances      balances
 	Transfers     []transferSummary
+	Activity      []activity
 	PendingID     string
 	Amount        string
 	Scenario      scenario
@@ -282,6 +331,7 @@ type homePage struct {
 	Error         string
 	ScenarioError string
 	Overlap       bool
+	TopUpRefused  bool
 }
 
 type transferPage struct {
@@ -306,6 +356,11 @@ func (s *Service) renderHome(w http.ResponseWriter, r *http.Request, status int,
 	if page.Transfers, err = s.list(r.Context()); err != nil {
 		s.logger.Error("list transfers", "error", err)
 		http.Error(w, "Transfers are temporarily unavailable.", http.StatusInternalServerError)
+		return
+	}
+	if page.Activity, err = s.activity(r.Context(), page.Transfers); err != nil {
+		s.logger.Error("list top-ups", "error", err)
+		http.Error(w, "Activity is temporarily unavailable.", http.StatusInternalServerError)
 		return
 	}
 	if i := slices.IndexFunc(page.Transfers, func(t transferSummary) bool { return t.Status.Pending() }); i >= 0 && page.PendingID == "" {
@@ -347,6 +402,20 @@ func (s *Service) postTransferForm(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/transfers/"+t.ID, http.StatusSeeOther)
 }
 
+func (s *Service) postTopUpForm(w http.ResponseWriter, r *http.Request) {
+	_, err := s.topUp(r.Context())
+	if pending, ok := errors.AsType[pendingTransferError](err); ok {
+		s.renderHome(w, r, http.StatusConflict, homePage{PendingID: pending.PendingID, TopUpRefused: true})
+		return
+	}
+	if err != nil {
+		s.logger.Error("top up", "error", err)
+		http.Error(w, "The top-up could not be applied.", http.StatusBadGateway)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
 func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 	t, err := s.find(r.Context(), r.PathValue("transferID"))
 	if errors.Is(err, errTransferNotFound) {
@@ -364,7 +433,7 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Balances are temporarily unavailable.", http.StatusBadGateway)
 		return
 	}
-	page := transferPage{Balances: b, Transfer: t, Lanes: lanes, History: historyRows(t.History)}
+	page := transferPage{Balances: b, Transfer: t, Lanes: lanes, History: playback(historyRows(t.History))}
 	if t.TraceID != "" {
 		page.TraceURL = s.traceURL(t.TraceID)
 	}
