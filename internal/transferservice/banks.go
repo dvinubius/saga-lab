@@ -29,13 +29,12 @@ func (c bankClient) balance(ctx context.Context, visitorID string) (int64, error
 	return account.Balance, err
 }
 
-func (c bankClient) topUp(ctx context.Context, visitorID string) (balance, amount int64, err error) {
+func (c bankClient) topUp(ctx context.Context, visitorID string) (int64, error) {
 	var account struct {
 		Balance int64 `json:"balance"`
-		Amount  int64 `json:"amount"`
 	}
-	err = c.account(ctx, http.MethodPost, accountPath(visitorID)+"/top-ups", "top-up", &account)
-	return account.Balance, account.Amount, err
+	err := c.account(ctx, http.MethodPost, accountPath(visitorID)+"/top-ups", "top-up", &account)
+	return account.Balance, err
 }
 
 func (c bankClient) account(ctx context.Context, method, path, operation string, into any) error {
