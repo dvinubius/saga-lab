@@ -26,6 +26,7 @@
 
   const showRow = (row) => {
     const content = row.querySelector("td:not(:first-child):not(:empty)").cloneNode(true);
+    content.querySelectorAll("[data-full]").forEach((label) => (label.textContent = label.dataset.full));
     const about = content.querySelector("[popover]");
     content.querySelectorAll(".about, [popover]").forEach((element) => element.remove());
     entry.replaceChildren(...content.childNodes);
@@ -91,9 +92,5 @@
   back.addEventListener("click", () => step(Math.max(position - 1, 0)));
   forward.addEventListener("click", () => step(Math.min(position + 1, rows.length)));
 
-  if ("autoplay" in panel.dataset) {
-    history.replaceState(null, "", location.pathname);
-    schedule();
-  }
   render();
 })();

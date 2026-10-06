@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -101,6 +102,16 @@ func (s step) Label() string {
 	return string(s)
 }
 
+func (s step) LaneLabel() string {
+	label := s.Label()
+	for _, bank := range []string{"Bank A ", "Bank B "} {
+		if rest, found := strings.CutPrefix(label, bank); found {
+			return strings.ToUpper(rest[:1]) + rest[1:]
+		}
+	}
+	return label
+}
+
 func (s step) LabelTail() string {
 	switch s {
 	case creditRequested:
@@ -157,6 +168,13 @@ type transferSummary struct {
 	Scenario    scenario  `json:"scenario"`
 	Status      status    `json:"status"`
 	RequestedAt time.Time `json:"requested_at"`
+}
+
+func (t transfer) StatusLabel() string {
+	if t.Status == rejected && t.RejectionReason != "" {
+		return fmt.Sprintf("%s (%s)", t.Status.Label(), strings.ToLower(t.RejectionReason))
+	}
+	return t.Status.Label()
 }
 
 type transfer struct {

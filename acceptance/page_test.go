@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -23,12 +24,13 @@ func TestRefreshingTheTransferPageNeverResubmits(t *testing.T) {
 	}
 	transferPage, id := r.location, match[1]
 
-	page := demo.awaitPage(t, transferPage, "completed")
+	page := demo.awaitReplay(t, transferPage)
+	if got := pageData(page, "transfer-status"); got != "completed" {
+		t.Errorf("page status = %q, want completed", got)
+	}
 	if got := pageData(page, "transfer-id"); got != id {
 		t.Errorf("page transfer ID = %q, want %q", got, id)
 	}
-	assertBalance(t, "Bank A page", pageBalance(t, page, "bank-a-balance"), 75)
-	assertBalance(t, "Bank B page", pageBalance(t, page, "bank-b-balance"), 25)
 	if got, want := pageSteps(page), []string{"requested", "debit_committed", "credit_requested", "credit_committed", "finished"}; !slices.Equal(got, want) {
 		t.Errorf("page history steps = %q, want %q", got, want)
 	}
@@ -38,22 +40,17 @@ func TestRefreshingTheTransferPageNeverResubmits(t *testing.T) {
 		}
 	}
 
-	for row, want := range map[string][]string{
-		"bank-a":                {"Bank A", "100", "75"},
-		"bank-b":                {"Bank B", "0", "25"},
-		"debit":                 {"Debit", "1", "1"},
-		"credit":                {"Credit", "1", "1"},
-		"refund":                {"Refund", "—", "—"},
-		"duplicates-suppressed": {"Duplicate deliveries suppressed", "0"},
-		"duplicate-effects":     {"Duplicate effects", "0"},
+	for row, want := range map[string]string{
+		"bank-a":                "Bank A 100 → 75 credits",
+		"bank-b":                "Bank B 0 → 25 credits",
+		"debit":                 "Debit 1 attempt, 1 effect",
+		"credit":                "Credit 1 attempt, 1 effect",
+		"refund":                "",
+		"duplicates-suppressed": "Duplicates suppressed 0",
 	} {
-		if got := pageOutcomeSummary(page, row); !slices.Equal(got, want) {
+		if got := pageOutcomeSummary(page, row); got != want {
 			t.Errorf("page outcome %s = %q, want %q", row, got, want)
 		}
-	}
-
-	if live := demo.get(t, transferPage+"?live"); !regexp.MustCompile(`id="playback" data-autoplay`).Match(live) {
-		t.Errorf("page reached by live refresh does not autoplay: %s", live)
 	}
 
 	before := demo.transfer(t, id)
@@ -97,11 +94,8 @@ func (d *visitorClient) awaitPageUntil(t *testing.T, path string, done func([]by
 		if polling == (replay == "ready") || playback != (replay == "ready") {
 			t.Fatalf("status %q and replay %q shown with polling = %t, playback = %t", current, replay, polling, playback)
 		}
-		if polling && !regexp.MustCompile(`<meta http-equiv="refresh" content="1; url=/transfers/[^"?]+\?live">`).Match(page) {
-			t.Fatalf("polling page does not refresh into live playback: %s", page)
-		}
-		if regexp.MustCompile(`data-autoplay`).Match(page) {
-			t.Fatalf("page opened directly autoplays: %s", page)
+		if polling && !regexp.MustCompile(`<meta http-equiv="refresh" content="1; url=/transfers/[^"?]+">`).Match(page) {
+			t.Fatalf("polling page does not refresh itself: %s", page)
 		}
 		if summarised := regexp.MustCompile(`id="outcome"`).Match(page); summarised != (replay == "ready") {
 			t.Fatalf("status %q and replay %q shown with outcome summary = %t", current, replay, summarised)
@@ -136,13 +130,25 @@ func pageBalanceChange(page []byte, step string) string {
 	return string(match[1])
 }
 
-func pageOutcomeSummary(page []byte, row string) []string {
-	segment := regexp.MustCompile(`data-outcome="` + row + `"(?s:.*?)</(?:tr|div)>`).Find(page)
-	var cells []string
-	for _, match := range regexp.MustCompile(`<(?:td|dt|dd)[^>]*>([^<]*)<`).FindAllSubmatch(segment, -1) {
-		cells = append(cells, string(match[1]))
+func pageOutcomeSummary(page []byte, row string) string {
+	segment := regexp.MustCompile(`data-outcome="` + row + `"[^>]*>(?s:(.*?))</(?:div|li)>`).FindSubmatch(page)
+	if segment == nil {
+		return ""
 	}
-	return cells
+	return pageText(segment[1])
+}
+
+func pageText(markup []byte) string {
+	text := regexp.MustCompile(`<[^>]*>`).ReplaceAll(markup, []byte(" "))
+	return strings.Join(strings.Fields(string(text)), " ")
+}
+
+func pageElementText(page []byte, id string) string {
+	match := regexp.MustCompile(`id="` + id + `"[^>]*>([^<]*)<`).FindSubmatch(page)
+	if match == nil {
+		return ""
+	}
+	return string(match[1])
 }
 
 func pageSteps(page []byte) []string {

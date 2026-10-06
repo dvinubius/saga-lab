@@ -42,9 +42,9 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 	}
 
 	transferPage := "/transfers/" + rejected.TransferID
-	page := demo.awaitPage(t, transferPage, "rejected")
-	if got := pageData(page, "rejection-reason"); got != rejected.RejectionReason {
-		t.Errorf("page reason = %q, want %q", got, rejected.RejectionReason)
+	page := demo.awaitReplay(t, transferPage)
+	if got := pageElementText(page, "transfer-status"); got != "Rejected by Bank A (insufficient funds)" {
+		t.Errorf("page status = %q, want the rejection with its reason", got)
 	}
 	if got, want := pageSteps(page), []string{"requested", "debit_rejected", "transfer_rejected"}; !slices.Equal(got, want) {
 		t.Errorf("page history steps = %q, want %q", got, want)
@@ -52,13 +52,14 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 	if got := pageBalanceChange(page, "debit_rejected"); got != "100" {
 		t.Errorf("page debit_rejected balance = %q, want the unchanged 100", got)
 	}
-	for row, want := range map[string][]string{
-		"bank-a": {"Bank A", "100", "100"},
-		"bank-b": {"Bank B", "Not involved"},
-		"debit":  {"Debit", "1", "0"},
-		"credit": {"Credit", "—", "—"},
+	for row, want := range map[string]string{
+		"bank-a": "Bank A 100 → 100 credits",
+		"bank-b": "Bank B Not involved",
+		"debit":  "Debit 1 attempt, 0 effects",
+		"credit": "Credit not issued",
+		"refund": "",
 	} {
-		if got := pageOutcomeSummary(page, row); !slices.Equal(got, want) {
+		if got := pageOutcomeSummary(page, row); got != want {
 			t.Errorf("page outcome %s = %q, want %q", row, got, want)
 		}
 	}
