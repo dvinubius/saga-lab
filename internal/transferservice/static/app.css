@@ -195,7 +195,12 @@ button,.btn,a{transition:var(--hover-transition);}
 .field:disabled{opacity:var(--disabled-opacity);cursor:not-allowed;}
 
 .accounts{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-.account,.in-depth,.account{display:flex;flex-direction:column;gap:6px;}
+.account,.in-depth,.playback{
+  padding:16px 18px;
+  background:var(--surface-card);
+  border-radius:var(--radius-surface);
+}
+.account{display:flex;flex-direction:column;gap:6px;}
 .account dt{font-size:var(--text-mono-meta);}
 .links{display:flex;justify-content:space-between}
 .account dd{display:flex;align-items:baseline;gap:10px;}
