@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/theme.js"></script>
 <script src="/static/fresh.js"></script>
+<script src="/static/diagram-view.js"></script>
 {{end}}
 
 {{define "top"}}</head>
@@ -48,7 +49,7 @@
     </svg>
   </button>
 </header>
-<main class="main">
+<main class="main{{with .}} {{.}}{{end}}">
 {{end}}
 
 {{define "foot"}}</main>
@@ -71,7 +72,9 @@
 {{define "account"}}<dt>{{.Name}}</dt>
     <dd><data class="figure" id="{{.ID}}-balance" value="{{.Balance}}">{{.Balance}}</data> <span class="fact">credits</span></dd>{{end}}
 
-{{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{template "timestamp" .}}</time>{{end}}
+{{define "time"}}<time datetime="{{template "datetime" .}}">{{template "timestamp" .}}</time>{{end}}
+
+{{define "datetime"}}{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}{{end}}
 
 {{define "timestamp"}}{{.UTC.Format "15:04:05.000"}}{{end}}
 
@@ -84,61 +87,151 @@
 {{define "history-entry"}}{{if not .Continues}}{{with .Cause}}<span class="meta">{{.}}{{if gt $.Attempt 1}} · attempt {{$.Attempt}}{{end}}{{if $.AboutCause}}{{template "about" $}}{{end}}</span>{{end}}{{end}}{{with .Observation.Title}}<span class="meta">{{.}}</span>{{end}}
 {{if .Step}}<span class="label"{{if ne .Step.Label .Step.LaneLabel}} data-full="{{.Step.Label}}"{{end}}>{{.Step.LaneLabel}}</span>{{with .Balance}}<span class="dim balance"> · {{.}}</span>{{end}}{{template "about" .}}{{with .Step.LabelTail}}<span class="label">{{.}}</span>{{end}}{{else}}<span class="label">{{.Label}}</span>{{if not .AboutCause}}{{template "about" .}}{{end}}{{end}}{{end}}
 
-{{define "diagram"}}<svg class="diagram" width="564" height="132" viewBox="0 0 564 132" role="img" aria-label="The Transfer Service, the Message Broker, Bank A and Bank B">
-    <defs><marker id="diagram-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M2 1l5 3-5 3"/></marker></defs>
-    <line data-edge="transfer-service broker" x1="160" y1="66" x2="260" y2="66"/>
-    <line data-edge="broker bank-a" x1="360" y1="66" x2="444" y2="24"/>
-    <line data-edge="broker bank-b" x1="360" y1="66" x2="444" y2="108"/>
-    <g data-node="transfer-service"><rect x="0.5" y="46.5" width="159" height="39" rx="2"/><text x="80" y="66">Transfer Service</text></g>
-    <g data-node="broker"><rect x="260.5" y="42.5" width="99" height="47" rx="2"/><text><tspan x="310" y="58">Message</tspan><tspan x="310" y="74">Broker</tspan></text></g>
-    <g data-node="bank-a"><rect x="444.5" y="4.5" width="119" height="39" rx="2"/><text x="504" y="24">Bank A</text></g>
-    <g data-node="bank-b"><rect x="444.5" y="88.5" width="119" height="39" rx="2"/><text x="504" y="108">Bank B</text></g>
-    <text class="no-consumer" x="504" y="76">unavailable</text>
-  </svg>{{end}}
+{{define "diagram"}}<svg class="diagram-glyphs" width="0" height="0" aria-hidden="true" focusable="false">
+    <symbol id="g-orchestrator" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="5" cy="12" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="19" cy="19" r="2.5"/><circle cx="19" cy="12" r="2.5"/>
+      <path d="M7.5 11 16.6 6.1M7.5 12h9M7.5 13l9.1 4.9"/>
+    </symbol>
+    <symbol id="g-bank" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 9 12 3.5 21 9Z"/><path d="M5.5 11.5v6M10 11.5v6M14 11.5v6M18.5 11.5v6"/><path d="M3.5 20.5h17"/>
+    </symbol>
+  </svg>
+
+  <svg class="diagram" data-diagram="overview" data-graph="overview" width="600" height="256" viewBox="0 -28 600 256" role="img" aria-label="The Transfer Service, the Message Broker, Bank A and Bank B">
+    <path data-edge="client transfer-service" d="M80 19V55"/>
+    <path data-edge="transfer-service broker" d="M160 100H235"/>
+    <path data-edge="broker bank-a" d="M365 100C430 100 440 36 506 36"/>
+    <path data-edge="broker bank-b" d="M365 100C430 100 440 156 506 156"/>
+    <text class="caption request" x="88" y="29">User request</text>
+    <g data-node="transfer-service">
+      <rect x="0.5" y="55.5" width="159" height="89" rx="2"/>
+      <use href="#g-orchestrator" x="66" y="70" width="28" height="28"/>
+      <text x="80" y="118">Transfer Service</text>
+    </g>
+    <g data-node="broker">
+      <path class="pipe" d="M244 82H356A8 18 0 0 1 356 118H244A8 18 0 0 1 244 82Z"/>
+      <path class="pipe" d="M356 82A8 18 0 0 0 356 118"/>
+      <path class="slots" d="M270 82A8 18 0 0 0 270 118M294 82A8 18 0 0 0 294 118M318 82A8 18 0 0 0 318 118M342 82A8 18 0 0 0 342 118"/>
+      <text x="300" y="138">Message Broker</text>
+    </g>
+    <g data-node="bank-a"><use href="#g-bank" x="514" y="16" width="40" height="40"/><text x="534" y="70">Bank A</text></g>
+    <g data-node="bank-b"><use href="#g-bank" x="514" y="136" width="40" height="40"/><text x="534" y="190">Bank B</text></g>
+    <g class="fail" data-fail="bank-a"><path class="fail-line" pathLength="1" d="M506 36C485.3 36 470.1 42.3 457 51"/><path class="fail-bar" d="M460.8 56.8 453.1 45.1"/></g>
+    <text class="no-consumer" x="534" y="122">unavailable</text>
+    <circle data-park="broker" cx="300" cy="100" r="0"/>
+    <g class="head envelope"><rect x="-8.5" y="-6" width="17" height="12" rx="1"/><path d="M-8.5 -6 0 1 8.5 -6"/></g>
+  </svg>
+
+  <svg class="diagram" data-diagram="detailed" data-graph="detailed" width="600" height="256" viewBox="0 -10 600 256" role="img" aria-label="The Transfer Service with its saga state, the Message Broker's queues, Bank A and Bank B with their balances">
+    <path data-route="client>transfer-service" d="M95 4V40"/>
+    <path data-route="transfer-service>broker@bank-a" d="M190 95H375"/>
+    <path data-route="transfer-service>broker@bank-b" d="M190 185H375"/>
+    <path data-route="broker>transfer-service" d="M275 140H190"/>
+    <path data-route="broker>bank-a" d="M375 95H480"/>
+    <path data-route="broker>bank-b" d="M375 185H480"/>
+    <path data-route="bank-a>broker@transfer-service" d="M520 123V130Q520 140 510 140H275"/>
+    <path data-route="bank-b>broker@transfer-service" d="M520 157V150Q520 140 510 140H275"/>
+    <text class="caption request" x="103" y="14">User request</text>
+    <g data-node="transfer-service">
+      <rect x="0.5" y="40.5" width="189" height="190" rx="2"/>
+      <text x="95" y="60">Transfer Service</text>
+      <path class="sm-edge" d="M44 95H94M102 95H152M40 99V136M98 99V191M102 195H152"/>
+      <g data-sm="debit"><circle cx="40" cy="95" r="4"/><text x="40" y="109">debit</text></g>
+      <g data-sm="credit"><circle cx="98" cy="95" r="4"/><text x="98" y="109">credit</text></g>
+      <g data-sm="done"><circle cx="156" cy="95" r="4"/><text x="156" y="109">done</text></g>
+      <g data-sm="rejected"><circle cx="40" cy="140" r="4"/><text x="40" y="154">rejected</text></g>
+      <g data-sm="credit-rejected" hidden><circle cx="98" cy="140" r="4"/><text class="side"><tspan x="106" y="134">credit</tspan><tspan x="106" y="146">rejected</tspan></text></g>
+      <g data-sm="refund"><circle cx="98" cy="195" r="4"/><text x="98" y="209">refund</text></g>
+      <g data-sm="refunded"><circle cx="156" cy="195" r="4"/><text x="156" y="209">refunded</text></g>
+    </g>
+    <g data-node="broker">
+      <rect x="250.5" y="40.5" width="149" height="190" rx="2"/>
+      <text x="325" y="58">Message Broker</text>
+      <path class="pipe" d="M269 86H381A6 9 0 0 1 381 104H269A6 9 0 0 1 269 86Z"/><path class="pipe" d="M381 86A6 9 0 0 0 381 104"/>
+      <path class="pipe" d="M269 131H381A6 9 0 0 1 381 149H269A6 9 0 0 1 269 131Z"/><path class="pipe" d="M269 131A6 9 0 0 0 269 149"/>
+      <path class="pipe" d="M269 176H381A6 9 0 0 1 381 194H269A6 9 0 0 1 269 176Z"/><path class="pipe" d="M381 176A6 9 0 0 0 381 194"/>
+      <text class="caption" x="325" y="116">Bank A</text>
+      <text class="caption" x="325" y="161">Transfer Service</text>
+      <text class="caption" x="325" y="206">Bank B</text>
+    </g>
+    <g data-node="bank-a">
+      <rect x="480.5" y="52.5" width="119" height="70" rx="2"/>
+      <use href="#g-bank" x="490" y="62" width="22" height="22"/>
+      <text class="name" x="520" y="73">Bank A</text>
+      <text class="balance" data-balance="bank-a" x="490" y="105">—</text>
+    </g>
+    <g data-node="bank-b">
+      <rect x="480.5" y="157.5" width="119" height="70" rx="2"/>
+      <use href="#g-bank" x="490" y="167" width="22" height="22"/>
+      <text class="name" x="520" y="178">Bank B</text>
+      <text class="balance" data-balance="bank-b" x="490" y="210">—</text>
+    </g>
+    <g class="fail" data-fail="bank-a"><path class="fail-line" pathLength="1" d="M480 95H444"/><path class="fail-bar" d="M444 88V102"/></g>
+    <text class="no-consumer caption" x="440" y="201">no consumer</text>
+    <circle data-park="broker" cx="375" cy="185" r="0"/>
+    <rect class="head token" x="-7" y="-4.5" width="14" height="9" rx="1"/>
+  </svg>
+
+  <div class="seq" data-diagram="sequence">
+    <svg class="seq-head" width="600" height="56" viewBox="0 0 600 56" aria-hidden="true" focusable="false">
+      <g data-node="transfer-service"><use href="#g-orchestrator" x="64" y="4" width="22" height="22"/><text x="75" y="42">Transfer Service</text></g>
+      <g data-node="broker"><path class="pipe" d="M221 7H249A4 8 0 0 1 249 23H221A4 8 0 0 1 221 7Z"/><path class="pipe" d="M249 7A4 8 0 0 0 249 23"/><text x="235" y="42">Message Broker</text></g>
+      <g data-node="bank-a"><use href="#g-bank" x="389" y="4" width="22" height="22"/><text x="400" y="42">Bank A</text></g>
+      <g data-node="bank-b"><use href="#g-bank" x="524" y="4" width="22" height="22"/><text x="535" y="42">Bank B</text></g>
+    </svg>
+    <div class="seq-window"><svg class="seq-body" width="600" height="0"></svg></div>
+  </div>{{end}}
 
 {{define "playback-controls"}}<div class="playback-controls">
-    <button class="btn btn-secondary" type="button"{{if .}} disabled{{end}} data-control="back" aria-label="Step back" title="Step back"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 5v14L8 12z"/><path d="M6 5v14"/></svg>Step</button>
+    <button class="btn btn-secondary btn-icon" type="button"{{if .}} disabled{{end}} data-control="reset" aria-label="Back to the first step" title="Back to the first step"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14L4 12z"/><path d="M20 5v14l-8-7z"/></svg></button>
+    <button class="btn btn-secondary btn-icon" type="button"{{if .}} disabled{{end}} data-control="back" aria-label="Step back" title="Step back"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 5v14L8 12z"/><path d="M6 5v14"/></svg></button>
     <button class="btn btn-secondary btn-icon" type="button"{{if .}} disabled{{end}} data-control="play" data-state="play" aria-label="Play" title="Play">
       <svg data-icon="pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14M16 5v14"/></svg>
       <svg data-icon="play" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4.5v15L19 12z"/></svg>
       <svg data-icon="replay" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12a8 8 0 1 0 2.34-5.66L4 9"/><path d="M4 4.5V9h4.5"/></svg>
     </button>
-    <button class="btn btn-secondary" type="button"{{if .}} disabled{{end}} data-control="forward" aria-label="Step forward" title="Step forward">Step<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 5v14l10-7z"/><path d="M18 5v14"/></svg></button>
+    <button class="btn btn-secondary btn-icon" type="button"{{if .}} disabled{{end}} data-control="forward" aria-label="Step forward" title="Step forward"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 5v14l10-7z"/><path d="M18 5v14"/></svg></button>
+    <fieldset class="diagram-views">
+      <legend class="sr-only">Diagram</legend>
+      <label class="fact"><input type="radio" name="diagram-view" value="overview" checked>Overview</label>
+      <label class="fact"><input type="radio" name="diagram-view" value="detailed">Detailed</label>
+      <label class="fact"><input type="radio" name="diagram-view" value="sequence">Sequence</label>
+    </fieldset>
   </div>{{end}}
 
 {{define "command-inline"}}{{with .}}<b>{{.Attempts}}</b> attempt{{if ne .Attempts 1}}s{{end}}, <b>{{.Effects}}</b> effect{{if ne .Effects 1}}s{{end}}{{else}}not issued{{end}}{{end}}
 
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
 {{if and .PendingID (not .Overlap) (not .TopUpRefused)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
-{{template "top"}}
+{{template "top" "centered"}}
 <section class="section">
 <h2 class="title">Inter-Bank Transfer</h2>
-<p class="note intro">A live demonstration of an orchestrated Saga: a Transfer Service moves fictional credits from Bank A to Bank B.</p>
-<p class="note intro">Pick a scenario to see how the Saga copes with redelivered messages, a rejected credit or an unavailable bank, then replay what happened.</p>
-<div class="columns">
-<section class="panel">
-  <h3 class="caps panel-head">Perform Transfer (A to B)</h3>
-  <div class="panel-body">
+<p class="note intro">A Transfer Service moves credits from Bank A to Bank B.</p>
+<p class="note intro">This is a live demo of an orchestrated Saga. The transfer scenarios illustrate what may go wrong and how the system gracefully handles faults while remaining consistent.</p>
+<p class="note intro">Pick a scenario, transfer and the execution.</p>
+</section>
+
+<div class="columns transfer-row">
+<section class="card">
   <form class="transfer-form" method="post" action="/transfers">
-    <label class="fact amount">Amount in credits
-      <input class="field" name="amount" value="{{.Amount}}" inputmode="numeric" autocomplete="off"{{if .PendingID}} disabled{{end}}>
+    <label class="fact amount">Amount (credits)
+      <input class="field" name="amount" value="{{.Amount}}" placeholder="Enter amount" inputmode="numeric" autocomplete="off"{{if .PendingID}} disabled{{end}}>
     </label>
     <fieldset class="scenarios"{{if .PendingID}} disabled{{end}}>
-      <legend class="sr-only">Scenario</legend>
+      <legend class="fact">Scenario</legend>
       {{range .Scenarios}}<label class="fact"><input type="radio" name="scenario" value="{{.}}"{{if eq . $.Scenario}} checked{{end}}>{{.Label}}</label>
       {{end}}
     </fieldset>
-    <button class="btn btn-primary"{{if .PendingID}} disabled{{end}}>Transfer</button>
+    <button class="btn btn-primary"{{if .PendingID}} disabled{{end}}>Transfer Bank A → Bank B</button>
   </form>
   {{with .Error}}<p class="error" id="amount-error">{{.}}</p>{{end}}
   {{with .ScenarioError}}<p class="error" id="scenario-error">{{.}}</p>{{end}}
   {{if .Overlap}}<p class="error" id="overlap-error">This transfer was not started: another transfer is still pending.</p>{{end}}
   {{with .PendingID}}<p class="note">A new transfer can start once the pending one has finished.</p>
   <p><a class="quiet-link" id="pending-transfer" href="/transfers/{{.}}">Follow pending transfer →</a></p>{{end}}
-  </div>
 </section>
 
-<section class="panel credits">
+<section class="panel">
   <h3 class="caps panel-head">Your credits</h3>
   <dl class="accounts">
     <div class="account">{{template "account" (account "bank-a" "Bank A" .Balances.BankA)}}
@@ -149,30 +242,29 @@
   </dl>
 </section>
 </div>
-</section>
 
-{{with .Activity}}
 <section class="panel">
-  <h3 class="caps panel-head">Activity history</h3>
-  <ul class="rows">
-    {{range .}}<li>{{with .Transfer}}<a href="/transfers/{{.ID}}"><span>{{.Amount}} credits</span><span class="dim">{{.Scenario.Label}}</span><span class="dim">{{.Status.Label}}</span></a>{{else}}<div data-top-up><span>{{.TopUp}} credits</span><span class="dim">Top-up</span><span class="dim">Added to Bank A</span></div>{{end}}</li>
-    {{end}}
-  </ul>
+  <h3 class="caps panel-head">Transfer history</h3>
+  {{with .Transfers}}<table class="table transfers">
+    <thead><tr><th class="caps">Scenario</th><th class="caps">Amount</th><th class="caps">Result</th></tr></thead>
+    <tbody>
+    {{range .}}<tr><td><a href="/transfers/{{.ID}}">{{.Scenario.Label}}</a></td><td>{{.Amount}} credits</td><td>{{.Status.Label}}</td></tr>
+    {{end}}</tbody>
+  </table>{{else}}<p class="note panel-body" id="no-transfers">No transfers yet.</p>{{end}}
 </section>
-{{end}}
 {{template "foot"}}{{end}}
 
 {{define "transfer"}}{{template "head"}}<title>Transfer {{.Transfer.ID}} · Saga Lab</title>
 {{if not .Transfer.VisualisationReady}}<meta http-equiv="refresh" content="1; url=/transfers/{{.Transfer.ID}}">{{end}}
-{{template "top"}}
+{{template "top" "centered wide"}}
 {{with .Transfer}}
 <div class="page-head">
 <a class="btn btn-secondary" href="/">← Back</a>
 <h2 class="title"><data id="transfer-scenario" value="{{.Scenario}}">{{.Scenario.Label}}</data></h2>
 </div>
-<div class="columns wide">
+<div class="columns">
 <section class="panel details">
-  <h3 class="caps panel-head">Transfer details</h3>
+  <div class="panel-head details-head"><h3 class="caps">Transfer details</h3><data class="pill" id="transfer-status" value="{{.Status}}">{{.StatusLabel}}</data></div>
   <dl class="facts">
     <div class="amount">
       <dt>Amount</dt>
@@ -202,42 +294,41 @@
 </div>
 
 <div class="section">
-<p class="status-line"><span class="caps">Status</span><data id="transfer-status" value="{{.Status}}">{{.StatusLabel}}</data></p>
+{{if .VisualisationReady}}<div class="playback" id="playback">
+<data id="transfer-replay" value="ready" hidden></data>
+<div class="playback-stage">
+{{template "diagram"}}
+{{template "playback-controls" false}}
+</div>
+<div class="playback-details">
+  <div class="timeline" aria-hidden="true"><div class="timeline-track"><span class="timeline-progress"></span></div></div>
+  <p class="fact"><time class="playback-time"></time> · <span class="playback-gap"></span></p>
+  <div class="playback-entry"></div>
+  <p class="note playback-note"></p>
+</div>
+</div>{{else}}<div class="playback" aria-busy="true">
+<div class="playback-stage">
+{{template "diagram"}}
+{{template "playback-controls" true}}
+</div>
+<div class="playback-wait">
+  <svg class="watermark" viewBox="0.5 0.5 23 23" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+    <rect x="15.5" y="1.5" width="7" height="7" rx="1.75"/>
+    <rect x="1.5" y="15.5" width="7" height="7" rx="1.75"/>
+    <path d="M12.5 5H9a4 4 0 0 0-4 4v3M7 10l-2 2-2-2"/>
+    <path d="M11.5 19H15a4 4 0 0 0 4-4v-3M17 14l2-2 2 2"/>
+    <circle cx="12" cy="12" r="2"/>
+  </svg>
+  <span class="spinner" aria-hidden="true"></span>
+  <p class="fact"><data id="transfer-replay" value="{{if .Status.Pending}}pending{{else}}preparing{{end}}">Preparing playback</data></p>
+</div>
+</div>{{end}}
 <section class="panel history-panel">
   <h3 class="caps panel-head">History</h3>
-  {{if .VisualisationReady}}<div class="playback" id="playback">
-  <data id="transfer-replay" value="ready" hidden></data>
-  <div class="playback-stage">
-  {{template "diagram"}}
-  {{template "playback-controls" false}}
-  </div>
-  <div class="playback-details">
-    <div class="timeline" aria-hidden="true"><div class="timeline-track"><span class="timeline-progress"></span></div></div>
-    <p class="fact"><time class="playback-time"></time> UTC · <span class="playback-gap"></span></p>
-    <div class="playback-entry"></div>
-    <p class="note playback-note"></p>
-  </div>
-  </div>{{else}}<div class="playback" aria-busy="true">
-  <div class="playback-stage">
-  {{template "diagram"}}
-  {{template "playback-controls" true}}
-  </div>
-  <div class="playback-wait">
-    <svg class="watermark" viewBox="0.5 0.5 23 23" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-      <rect x="15.5" y="1.5" width="7" height="7" rx="1.75"/>
-      <rect x="1.5" y="15.5" width="7" height="7" rx="1.75"/>
-      <path d="M12.5 5H9a4 4 0 0 0-4 4v3M7 10l-2 2-2-2"/>
-      <path d="M11.5 19H15a4 4 0 0 0 4-4v-3M17 14l2-2 2 2"/>
-      <circle cx="12" cy="12" r="2"/>
-    </svg>
-    <span class="spinner" aria-hidden="true"></span>
-    <p class="fact"><data id="transfer-replay" value="{{if .Status.Pending}}pending{{else}}preparing{{end}}">Preparing playback</data></p>
-  </div>
-  </div>{{end}}
   <table class="table history">
-    <thead><tr><th class="caps">Observed (UTC)</th>{{range $.Lanes}}<th class="caps">{{.}}</th>{{end}}</tr></thead>
+    <thead><tr><th class="caps">Observed</th>{{range $.Lanes}}<th class="caps">{{.}}</th>{{end}}</tr></thead>
     <tbody>
-    {{range $row := $.History}}<tr{{if .Step}} data-step="{{.Step}}"{{else}} data-observation="{{.Observation}}"{{end}} data-observed-at="{{template "timestamp" .PlayedAt}}" data-dwell="{{.Dwell.Milliseconds}}"{{with .Gap}} data-gap="{{.}}"{{end}}{{with .Path}} data-path="{{.}}"{{end}}{{if .NoConsumer}} data-no-consumer{{end}}{{if .Continues}} class="continues"{{end}}>
+    {{range $row := $.History}}<tr{{if .Step}} data-step="{{.Step}}"{{else}} data-observation="{{.Observation}}"{{end}} data-observed-at="{{template "datetime" .PlayedAt}}" data-dwell="{{.Dwell.Milliseconds}}"{{with .Gap}} data-gap="{{.}}"{{end}}{{with .Path}} data-path="{{.}}"{{end}}{{if .NoConsumer}} data-no-consumer{{end}}{{if .Continues}} class="continues"{{end}}>
       <td>{{if not .ObservedAt.IsZero}}{{template "time" .ObservedAt}}{{end}}</td>
       {{range $lane, $_ := $.Lanes}}{{if eq $lane $row.Lane}}<td{{with $row.Tooltip}} title="{{.}}"{{end}}>{{template "history-entry" $row}}</td>{{else}}<td></td>{{end}}{{end}}
     </tr>
@@ -254,6 +345,7 @@
   </div>{{end}}
 </section>
 </div>
+<script src="/static/localtime.js" defer></script>
 {{if .VisualisationReady}}<script src="/static/playback.js" defer></script>{{end}}
 {{end}}
 

@@ -20,14 +20,7 @@ ALTER TABLE transfers ADD COLUMN IF NOT EXISTS scenario TEXT NOT NULL DEFAULT 'h
 
 CREATE INDEX IF NOT EXISTS transfers_by_visitor ON transfers (visitor_id, requested_at);
 
-CREATE TABLE IF NOT EXISTS top_ups (
-    top_up_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    visitor_id TEXT NOT NULL,
-    amount BIGINT NOT NULL CHECK (amount > 0),
-    topped_up_at TIMESTAMPTZ NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS top_ups_by_visitor ON top_ups (visitor_id, topped_up_at);
+DROP TABLE IF EXISTS top_ups;
 
 CREATE TABLE IF NOT EXISTS transfer_history (
     entry_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
