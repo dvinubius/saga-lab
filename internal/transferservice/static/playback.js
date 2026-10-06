@@ -32,7 +32,7 @@
     entry.replaceChildren(...content.childNodes);
     entry.dataset.observation = row.dataset.observation || "";
     note.textContent = about ? about.textContent : "";
-    time.textContent = row.dataset.observedAt;
+    time.textContent = localTime(row.dataset.observedAt);
     gap.textContent = row.dataset.gap ? `${row.dataset.gap} to the next entry` : "last entry";
     const path = row.dataset.path ? row.dataset.path.split(" ") : [];
     diagram.querySelectorAll("[data-node]").forEach((node) => node.toggleAttribute("data-lit", path.includes(node.dataset.node)));
