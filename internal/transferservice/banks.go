@@ -22,26 +22,32 @@ func newBankClient(name, baseURL string) bankClient {
 }
 
 func (c bankClient) balance(ctx context.Context, visitorID string) (int64, error) {
-	return c.accountBalance(ctx, http.MethodGet, accountPath(visitorID), "balance")
-}
-
-func (c bankClient) topUp(ctx context.Context, visitorID string) (int64, error) {
-	return c.accountBalance(ctx, http.MethodPost, accountPath(visitorID)+"/top-ups", "top-up")
-}
-
-func (c bankClient) accountBalance(ctx context.Context, method, path, operation string) (int64, error) {
-	response, err := c.accountRequest(ctx, method, path, operation, http.StatusOK)
-	if err != nil {
-		return 0, err
-	}
-	defer response.Body.Close()
 	var account struct {
 		Balance int64 `json:"balance"`
 	}
-	if err := json.NewDecoder(response.Body).Decode(&account); err != nil {
-		return 0, fmt.Errorf("%s %s response: %w", c.name, operation, err)
+	err := c.account(ctx, http.MethodGet, accountPath(visitorID), "balance", &account)
+	return account.Balance, err
+}
+
+func (c bankClient) topUp(ctx context.Context, visitorID string) (balance, amount int64, err error) {
+	var account struct {
+		Balance int64 `json:"balance"`
+		Amount  int64 `json:"amount"`
 	}
-	return account.Balance, nil
+	err = c.account(ctx, http.MethodPost, accountPath(visitorID)+"/top-ups", "top-up", &account)
+	return account.Balance, account.Amount, err
+}
+
+func (c bankClient) account(ctx context.Context, method, path, operation string, into any) error {
+	response, err := c.accountRequest(ctx, method, path, operation, http.StatusOK)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if err := json.NewDecoder(response.Body).Decode(into); err != nil {
+		return fmt.Errorf("%s %s response: %w", c.name, operation, err)
+	}
+	return nil
 }
 
 func (c bankClient) openAccount(ctx context.Context, visitorID string) error {

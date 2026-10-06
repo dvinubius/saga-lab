@@ -180,7 +180,7 @@ button,.btn,a{transition:var(--hover-transition);}
 .btn-primary:not(:disabled):hover{background:var(--accent-on-hover);}
 .btn-secondary{border-color:var(--hairline);color:var(--text-body);}
 .btn-secondary:not(:disabled):hover{border-color:var(--text-body);}
-.balances-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:120px;}
+.back{align-self:flex-start;}
 
 .field{
   height:var(--row-height);
@@ -197,6 +197,9 @@ button,.btn,a{transition:var(--hover-transition);}
 .field:disabled{opacity:var(--disabled-opacity);cursor:not-allowed;}
 
 .accounts{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.accounts.stacked{grid-template-columns:1fr;}
+.columns{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:40px;align-items:start;}
+.columns.wide{width:calc(var(--content-width) + 260px);grid-template-columns:var(--content-width) 220px;}
 .account,.playback{
   padding:16px 18px;
   background:var(--surface-card);
@@ -233,13 +236,14 @@ button,.btn,a{transition:var(--hover-transition);}
 }
 .rows{list-style:none;padding:0;}
 .rows li{border-bottom:1px solid var(--hairline);}
-.rows a,.facts div{
+.rows li>*,.facts div{
   display:grid;
   grid-template-columns:160px minmax(0,1fr);
   gap:18px;
   padding:6px 12px;
 }
-.rows a{grid-template-columns:160px 160px minmax(0,1fr);color:var(--text-body);text-decoration:none;transition:none;}
+.rows li>*{grid-template-columns:160px 160px minmax(0,1fr);}
+.rows a{color:var(--text-body);text-decoration:none;transition:none;}
 .rows a:hover{background:var(--surface-shade);color:var(--text-body);}
 .facts div{border-bottom:1px solid var(--hairline);}
 .facts dd{color:var(--text-dim);}

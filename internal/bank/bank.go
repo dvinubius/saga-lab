@@ -390,7 +390,10 @@ func (b *Bank) openAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bank) topUp(w http.ResponseWriter, r *http.Request) {
-	a := account{VisitorID: r.PathValue("visitorID")}
+	a := struct {
+		account
+		Amount int64 `json:"amount"`
+	}{account{VisitorID: r.PathValue("visitorID")}, b.topUpAmount}
 	var err error
 	a.Balance, err = increaseBalance(r.Context(), b.db, a.VisitorID, b.topUpAmount)
 	if errors.Is(err, pgx.ErrNoRows) {

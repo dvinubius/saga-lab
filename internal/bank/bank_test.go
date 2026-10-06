@@ -70,12 +70,13 @@ func TestBankATopUpAddsItsConfiguredAmount(t *testing.T) {
 	var account struct {
 		VisitorID string `json:"visitor_id"`
 		Balance   int64  `json:"balance"`
+		Amount    int64  `json:"amount"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&account); err != nil {
 		t.Fatalf("decode account: %v", err)
 	}
-	if account.VisitorID != "test-visitor" || account.Balance != 200 {
-		t.Fatalf("top-up returned %+v, want test-visitor with 200", account)
+	if account.VisitorID != "test-visitor" || account.Balance != 200 || account.Amount != 100 {
+		t.Fatalf("top-up returned %+v, want test-visitor with 200 after adding 100", account)
 	}
 	if got := balance(t, b, "test-visitor"); got != 200 {
 		t.Fatalf("balance after top-up = %d, want 200", got)

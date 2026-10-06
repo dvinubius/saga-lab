@@ -44,6 +44,9 @@ func TestVisitorTopsUpBankA(t *testing.T) {
 		page := visitor.get(t, "/")
 		assertBalance(t, "Bank A", pageBalance(t, page, "bank-a-balance"), 200)
 		assertBalance(t, "Bank B", pageBalance(t, page, "bank-b-balance"), 0)
+		if got := regexp.MustCompile(`<div data-top-up><span>(\d+) credits</span>`).FindAllSubmatch(page, -1); len(got) != 1 || string(got[0][1]) != "100" {
+			t.Errorf("activity history top-ups = %q, want one of 100 credits", got)
+		}
 	})
 }
 
