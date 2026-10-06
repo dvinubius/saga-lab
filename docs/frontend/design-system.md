@@ -36,8 +36,8 @@ and its name drops: muted beside a display figure or in a summary line.
 reverse; `--accent-on-hover` is `#8A420C` / `#E49F64`. At most ~2% of a view,
 never on running text, never the sole carrier of a state. It is spent on: the
 primary button, the selected radio's dot, quiet-link rules, the product mark's
-hub, the footer wordmark's brackets, the active path or progress in a data
-mark, and text selection (`--accent-glyph`).
+hub, the footer wordmark's brackets, and text selection (`--accent-glyph`).
+Data marks never take it.
 
 **Hues.** Every hue is a light / dark pair:
 
@@ -51,8 +51,10 @@ A state that needs a hue takes `--danger` for failure and `--teal` otherwise,
 and always keeps its words. In History a scenario may mark the entry showing
 its simulated fault in danger and the entry showing the system avoiding the
 fault's consequence in teal. A data mark (diagram, timeline) draws idle parts
-muted, active parts body, and the active path or progress in the accent at
-2px.
+muted, active parts body, and the active path or progress in body at 2px. In
+the playback diagram the same hues mark the paths of those entries — a fault
+in danger, its avoidance in teal — and a hued mark from a past step drops to
+55% opacity. A moving message keeps body color whatever its path's hue.
 
 **Surfaces and edges.**
 
@@ -134,7 +136,12 @@ the head fill with a panel-edge rule above.
 **Card.** The page's main form sits in a card instead: `--surface-card`, no
 edge, no head; its primary button names it.
 
-**Stage.** An interactive visualization (playback) sits on the page, unframed.
+**Stage.** An interactive visualization (playback) sits on the page, unframed,
+below a hairline that parts it from the panels above. The diagram and the
+playback details share a row, the details centered against the diagram; the
+controls run below the diagram: first step, step back, play, step forward,
+then the view strip at the far end. The diagram has three views of equal
+height — Overview, Detailed and Sequence — so switching moves nothing else.
 
 **Rows.** Lists and tables are rows parted by hairlines, mono at
 `--text-mono-meta` with `--leading-code`. Names body, values dim; column
@@ -151,8 +158,11 @@ underlined.
 - Secondary — body text in a `--control-edge` outline, going to body on hover.
   Inside a row it is compact: 28px tall, 12px.
 - Tonal — `--control-fill`, no edge, going to `--control-fill-hover`.
-- Inverted — body fill, page-colored icon, going to dim on hover; the one
-  emphasised control in a neutral group.
+- Tonal outlined — `--control-fill` inside a `--control-edge` outline, going
+  to `--control-fill-hover` and a body outline; playback controls.
+- Segmented strip — a row of joined choices with no radio dots, each boxed in
+  `--panel-edge`; the active one takes `--control-fill`, a `--control-edge`
+  outline and body text at 500, the others dim text that goes to body on hover.
 - Icon-only — square, with `aria-label` and `title` naming the action.
 - Quiet link — body text over a 1px accent bottom border; inline it takes a
   trailing `→`, in the footer a leading one.
@@ -197,8 +207,17 @@ not-allowed`, and keeps its edge on hover.
 
 ## Motion
 
-None beyond hover transitions and the waiting spinner. Nothing bounces,
-pulses or travels; stepped changes (playback) are instant.
+Hover transitions, the waiting spinner, and playback. Nothing bounces or
+pulses.
+
+Playback runs on one clock. Each step's motion takes three quarters of its
+dwell, clamped to 0.45–1.4 s; playback slows both by 1.75 except for a step
+spent waiting. A message's path draws itself hop by hop with cubic ease-in-out
+while the message rides its tip, and a node lights as the message arrives. A
+failure draws a short danger stub along the edge it could not take, ending in
+a perpendicular bar. The timeline fills continuously. Pause freezes all of it;
+stepping forward animates; stepping back is instant. Node and state color
+changes ease over 220 ms.
 
 ## Glyphs and icons
 
@@ -208,3 +227,9 @@ valence pair, never a lone decorative tick. Draw an icon only when no glyph
 fits or the glyph is outside the subsets: inline SVG in `currentColor`; control
 icons 16px on a 24-unit grid, stroke 2, round caps and joins, unfilled. The
 product mark is body text with an accent hub.
+
+Diagram glyphs, drawn the same way at stroke 1.6: the Transfer Service as an
+orchestrator fanning out to four nodes, the broker and its queues as a
+horizontal cylinder (the message-channel pipe), a bank as a pedimented
+building with columns. A message is an envelope in Overview and a filled token
+in Detailed.
