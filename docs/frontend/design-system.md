@@ -47,7 +47,7 @@ colors, `--danger`, the code ramp, `--surface-float`, `--float-hairline`,
 Pages show live balances and statuses, so they are never stale: they are
 served `no-store`, and `fresh.js` reloads one the browser restores from its
 back/forward cache. Going back from a transfer to the home page shows the
-current balances and Activity history; the amount field is not restored.
+current balances and Transfer history; the amount field is not restored.
 
 Fonts are served with a year-long immutable cache; CSS and JS are not cached.
 A transfer page whose replay is not yet ready, and the home page while a
@@ -187,23 +187,35 @@ because `ⓘ` is outside the vendored font subsets.
    the muted `↳ dvinubius` credit with the GitHub mark dead centre — linking
    to the source — and the quiet `→ dinubarbu.com` link on the right.
 
-   *Departure from hooklook:* hooklook's frame is exactly one viewport high
-   and its workspace scrolls inside it. Saga Lab's pages are documents, so the
-   frame is *at least* one viewport high: the footer sits at the bottom of a
-   short page and below the content of a long one, and the page scrolls as a
-   whole.
+   As in hooklook, the top bar and the footer are always visible and the
+   content scrolls between them. *Departure from hooklook:* hooklook's frame
+   is exactly one viewport high and its workspace scrolls inside it; Saga
+   Lab's page scrolls as a whole, under a sticky top bar and over a sticky
+   footer, both on the page fill. The frame is at least one viewport high,
+   so the footer sits at the bottom of a short page.
 
    The frame is `--shell-width` (1180px) wide, as in hooklook. The content
-   inside it is a single column of `--content-width` (680px), left-aligned
-   under the wordmark. The home page opens with its title, "Inter-Bank
-   Transfer", and two short `.note` paragraphs at 14px (at most 600px wide)
-   saying what the lab demonstrates and what a visitor can do. Under them,
-   two columns 40px apart: PERFORM TRANSFER (A TO B), 360px wide, holding
-   the form — the amount field, 100px, at the right end of its label's
-   row — and YOUR CREDITS, 220px wide and centred in the rest of the row,
-   holding a row per bank set like a transfer's balances panel
-   (adaptation 12): the name 18px mono and muted, the figure 20px mono.
-   The ACTIVITY HISTORY panel follows.
+   inside it is a single column of `--content-width` (680px): centred on the
+   home page, left-aligned under the wordmark on a transfer page.
+
+   The home page opens with its title, "Inter-Bank Transfer", 12px over
+   short `.note` paragraphs at 14px (at most 600px wide) saying what the lab
+   demonstrates and what a visitor can do. 40px under them, a row of
+   two columns 40px apart, aligned at the top: the transfer form, filling the
+   rest of the row, and YOUR CREDITS, 240px wide, holding a row per bank set
+   like a transfer's balances panel (adaptation 12): the name 18px mono and
+   muted, the figure 20px mono, and under Bank A's row **+100 credits**,
+   right-aligned. 40px under the row, TRANSFER HISTORY spans the column.
+
+   The transfer form is a **card**, not a panel: one `--surface-card` fill
+   with no edge and no header strip, 24px padding, its parts 18px apart. It
+   opens with its title, "Transfer Bank A → Bank B", in sans at 16px, weight
+   500. "Amount (credits)" sits 8px above its field, whose placeholder reads
+   "Enter amount"; labels and field are
+   13px. The field, the scenario options and the **Transfer** button span the
+   card; the button is 15px, uppercased in CSS and tracked 0.08em, with 12px × 24px padding, 12px further from the
+   options than the form's 12px gap, taller than
+   `--row-height`.
 
    A transfer page opens with **← Back** and, 20px to its right, the
    scenario's name as the page title. Under them, a 1040px row: the TRANSFER
@@ -274,7 +286,7 @@ because `ⓘ` is outside the vendored font subsets.
    reloading itself closes it on the next reload.
 
 8. **A fill steps off its own ground, not off the page.** `--surface-shade` is
-   a fill whose ground is the page — the hover of a transfer row in the Activity history,
+   a fill whose ground is the page — the hover of a transfer row in the Transfer history,
    and the current History row during playback.
    `--surface-shade-2` is a fill inside a filled region, and
    `--shade-hairline` the hairline on one; a filled region (hooklook's request
@@ -289,9 +301,10 @@ because `ⓘ` is outside the vendored font subsets.
    | Size | Role |
    | --- | --- |
    | 24px sans | the product wordmark |
-   | 20px | the page title ("Inter-Bank Transfer", a transfer's scenario), and a balance figure |
+   | 32px | the home page title, "Inter-Bank Transfer" |
+   | 20px | a transfer's page title (its scenario), and a balance figure |
    | 18px mono | a bank's name in YOUR CREDITS and a transfer's balances panel |
-   | 16px | the footer wordmark |
+   | 16px | the footer wordmark, the transfer card's title |
 
    This is a record of what this app settled on, not a scale anything else
    has to adopt. A token is still the first thing to reach for where one fits;
@@ -334,10 +347,11 @@ because `ⓘ` is outside the vendored font subsets.
     A row that leads somewhere is a whole-row link whose hover is
     `--surface-shade`, applied instantly.
 
-    The home page's **Activity history** lists the visitor's transfers and
-    top-ups together, newest first. A transfer row reads amount, scenario,
-    status and links to the transfer; a top-up row reads amount, "Top-up",
-    "Added to Bank A" and leads nowhere, so it has no hover.
+    The home page's **Transfer history** lists the visitor's transfers,
+    newest first, as a table headed SCENARIO, AMOUNT, RESULT. Each row is a
+    whole-row link to the transfer: the scenario cell's link is stretched
+    over the row. Top-ups are not listed. With no transfers yet the panel
+    holds "No transfers yet." as a `.note`.
 
     In History, a bank's committed step is followed by the balance it
     reported, `· 100 → 75`, and a rejection by its unchanged balance, `· 0`.
@@ -360,15 +374,18 @@ because `ⓘ` is outside the vendored font subsets.
     The **Outcome** footer closes the HISTORY panel, 16px under the table's
     last hairline, on the header strip's fill with an edge above: OUTCOME,
     then one line of items — "Debit 1 attempt, 1 effect", "Credit …",
-    "Refund …" only when a refund was issued, and "Duplicates suppressed 0".
-    The names are muted, the numbers body. A command never issued reads
+    "Refund …" only when a refund was issued, and "Duplicates suppressed 0",
+    parted by History's ` · `, dim. The names are muted, the numbers body. A command never issued reads
     "not issued". No count takes a hue: a redelivery stands out by its
     numbers (2 attempts, 1 effect), not by color.
 
 13. **Form controls.** A field is mono at `--text-mono-meta` on the page
     surface with a hairline border, at `--row-height` (36px), like a button.
-    A radio choice is a borderless fieldset whose visually hidden legend
-    names it; each option is a `.fact` label after its native radio. The
+    A radio choice is a borderless fieldset whose legend names it as a
+    `.fact`, 8px above the options; each option is a `.fact` label after its
+    native radio, boxed by a `--panel-edge` border at 8px × 12px, 8px from
+    the next; the selected option's border steps up to `--control-edge`. In the transfer form the happy path reads "Happy path (no
+    issues)"; elsewhere it is "Happy path". The
     selected radio's dot is the accent, through `accent-color`; the filled
     native radio marks the selection on its own, so the accent never carries
     it alone. A rejected value or a refused submission is explained under
@@ -389,7 +406,7 @@ because `ⓘ` is outside the vendored font subsets.
     While awaiting admission, the status line says “Another visitor is trying
     this demo. Yours will start automatically when it's your turn.” It uses
     the ordinary status text, with no promised duration or state hue.
-    The Activity history uses the same label, and the pending form remains disabled.
+    The Transfer history uses the same label, and the pending form remains disabled.
 
     A state that does need a hue takes Brick for a failure and Teal
     otherwise, and keeps its words, so the hue is never the only signal. Not
@@ -520,7 +537,7 @@ because `ⓘ` is outside the vendored font subsets.
 
     The panel fill is a step off the page in both themes — lighter on dark,
     white on light — and subtler than the brand's `--surface-card`, which
-    the app no longer uses outside floats. The header strip and frame carry
+    the app uses only in floats and the home page's transfer card. The header strip and frame carry
     the separation, so a panel needs no shadow.
 
     TRANSFER DETAILS is 600px: Amount (its value body, weight 500),

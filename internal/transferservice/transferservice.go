@@ -87,7 +87,7 @@ func Reset(ctx context.Context, settings service.Settings) error {
 	}
 	defer db.Close()
 	return pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS demonstration_slot, transfer_history, transfers, top_ups, visitors`); err != nil {
+		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS demonstration_slot, transfer_history, transfers, visitors`); err != nil {
 			return fmt.Errorf("drop transfers: %w", err)
 		}
 		if _, err := tx.Exec(ctx, schema); err != nil {
@@ -230,12 +230,9 @@ func (s *Service) topUp(ctx context.Context) (balances, error) {
 	if err != nil {
 		return balances{}, err
 	}
-	bankA, amount, err := s.bankA.topUp(ctx, visitor.ID(ctx))
+	bankA, err := s.bankA.topUp(ctx, visitor.ID(ctx))
 	if err != nil {
 		return balances{}, err
-	}
-	if _, err := s.db.Exec(ctx, `INSERT INTO top_ups (visitor_id, amount, topped_up_at) VALUES ($1, $2, $3)`, visitor.ID(ctx), amount, time.Now()); err != nil {
-		s.logger.Error("record top-up", "error", err)
 	}
 	return balances{BankA: accountBalance{bankA}, BankB: accountBalance{bankB}}, nil
 }
@@ -323,7 +320,6 @@ func (s *Service) getTransfer(w http.ResponseWriter, r *http.Request) {
 type homePage struct {
 	Balances      balances
 	Transfers     []transferSummary
-	Activity      []activity
 	PendingID     string
 	Amount        string
 	Scenario      scenario
@@ -356,11 +352,6 @@ func (s *Service) renderHome(w http.ResponseWriter, r *http.Request, status int,
 	if page.Transfers, err = s.list(r.Context()); err != nil {
 		s.logger.Error("list transfers", "error", err)
 		http.Error(w, "Transfers are temporarily unavailable.", http.StatusInternalServerError)
-		return
-	}
-	if page.Activity, err = s.activity(r.Context(), page.Transfers); err != nil {
-		s.logger.Error("list top-ups", "error", err)
-		http.Error(w, "Activity is temporarily unavailable.", http.StatusInternalServerError)
 		return
 	}
 	if i := slices.IndexFunc(page.Transfers, func(t transferSummary) bool { return t.Status.Pending() }); i >= 0 && page.PendingID == "" {
