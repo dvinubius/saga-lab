@@ -139,10 +139,12 @@
 {{template "foot"}}{{end}}
 
 {{define "transfer"}}{{template "head"}}<title>Transfer {{.Transfer.ID}} · Saga Lab</title>
-{{if not .Transfer.VisualisationReady}}<meta http-equiv="refresh" content="1">{{end}}
+{{if not .Transfer.VisualisationReady}}<meta http-equiv="refresh" content="1; url=/transfers/{{.Transfer.ID}}?live">{{end}}
 {{template "top"}}
-{{template "balances" .Balances}}
-<a class="btn btn-secondary back" href="/">← Back</a>
+<div class="balances-row">
+  <a class="btn btn-secondary" href="/">← Back</a>
+  {{template "balances" .Balances}}
+</div>
 
 {{with .Transfer}}
 <section class="section">
@@ -150,7 +152,7 @@
   <dl class="facts">
     <div>
       <dt>Transfer ID</dt>
-      <dd><code><data id="transfer-id" value="{{.ID}}">{{.ID}}</data></code></dd>
+      <dd class="linked"><code><data id="transfer-id" value="{{.ID}}">{{.ID}}</data></code><a class="quiet-link" id="transfer-json" href="/api/transfers/{{.ID}}" target="_blank">JSON →</a></dd>
     </div>
     <div>
       <dt>Scenario</dt>
@@ -170,39 +172,42 @@
     </div>{{end}}
     {{with .TraceID}}<div>
       <dt>Trace ID</dt>
-      <dd><code><data id="trace-id" value="{{.}}">{{.}}</data></code></dd>
+      <dd class="linked"><code><data id="trace-id" value="{{.}}">{{.}}</data></code>{{with $.TraceURL}}<a class="quiet-link" id="trace-link" href="{{.}}" target="_blank">Grafana →</a>{{end}}</dd>
     </div>{{end}}
   </dl>
 </section>
 
-<section class="section in-depth">
-  <h3 class="caps section-label">In depth</h3>
-  <p class="links">
-    <a class="quiet-link" id="transfer-json" href="/api/transfers/{{.ID}}" target="_blank">View as JSON →</a>
-    {{with $.TraceURL}}<a class="quiet-link" id="trace-link" href="{{.}}" target="_blank">Explore the trace in Grafana →</a>{{end}}
-  </p>
-</section>
-
-{{if .VisualisationReady}}<section class="section playback" id="playback">
+{{if .VisualisationReady}}<section class="section playback" id="playback"{{if $.Live}} data-autoplay{{end}}>
   <h3 class="caps section-label">Playback</h3>
-  <svg class="diagram" width="564" height="132" viewBox="0 0 564 132" role="img" aria-label="The Transfer Service, the Broker, Bank A and Bank B">
+  <div class="playback-body">
+  <div class="playback-stage">
+  <svg class="diagram" width="564" height="132" viewBox="0 0 564 132" role="img" aria-label="The Transfer Service, the Message Broker, Bank A and Bank B">
     <defs><marker id="diagram-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M2 1l5 3-5 3"/></marker></defs>
-    <line data-edge="transfer-service broker" x1="150" y1="66" x2="190" y2="66"/>
-    <line data-edge="broker bank-a" x1="280" y1="66" x2="340" y2="24"/>
-    <line data-edge="broker bank-b" x1="280" y1="66" x2="340" y2="108"/>
-    <g data-node="transfer-service"><rect x="0.5" y="46.5" width="149" height="39" rx="2"/><text x="75" y="66">Transfer Service</text></g>
-    <g data-node="broker"><rect x="190.5" y="46.5" width="89" height="39" rx="2"/><text x="235" y="66">Broker</text></g>
-    <g data-node="bank-a"><rect x="340.5" y="4.5" width="109" height="39" rx="2"/><text x="395" y="24">Bank A</text></g>
-    <g data-node="bank-b"><rect x="340.5" y="88.5" width="109" height="39" rx="2"/><text x="395" y="108">Bank B</text></g>
-    <text class="no-consumer" x="462" y="108">no consumer</text>
+    <line data-edge="transfer-service broker" x1="160" y1="66" x2="260" y2="66"/>
+    <line data-edge="broker bank-a" x1="360" y1="66" x2="444" y2="24"/>
+    <line data-edge="broker bank-b" x1="360" y1="66" x2="444" y2="108"/>
+    <g data-node="transfer-service"><rect x="0.5" y="46.5" width="159" height="39" rx="2"/><text x="80" y="66">Transfer Service</text></g>
+    <g data-node="broker"><rect x="260.5" y="42.5" width="99" height="47" rx="2"/><text><tspan x="310" y="58">Message</tspan><tspan x="310" y="74">Broker</tspan></text></g>
+    <g data-node="bank-a"><rect x="444.5" y="4.5" width="119" height="39" rx="2"/><text x="504" y="24">Bank A</text></g>
+    <g data-node="bank-b"><rect x="444.5" y="88.5" width="119" height="39" rx="2"/><text x="504" y="108">Bank B</text></g>
+    <text class="no-consumer" x="504" y="76">no consumer</text>
   </svg>
-  <p class="fact"><time class="playback-time"></time> UTC · <span class="playback-gap"></span></p>
-  <div class="playback-entry"></div>
-  <p class="note playback-note"></p>
   <div class="playback-controls">
-    <button class="btn btn-secondary" type="button" data-control="back">← Step back</button>
-    <button class="btn btn-secondary" type="button" data-control="play">Pause</button>
-    <button class="btn btn-secondary" type="button" data-control="forward">Step forward →</button>
+    <button class="btn btn-secondary" type="button" data-control="back" aria-label="Step back" title="Step back"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 5v14L8 12z"/><path d="M6 5v14"/></svg>Step</button>
+    <button class="btn btn-secondary btn-icon" type="button" data-control="play" data-state="pause" aria-label="Pause" title="Pause">
+      <svg data-icon="pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14M16 5v14"/></svg>
+      <svg data-icon="play" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4.5v15L19 12z"/></svg>
+      <svg data-icon="replay" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12a8 8 0 1 0 2.34-5.66L4 9"/><path d="M4 4.5V9h4.5"/></svg>
+    </button>
+    <button class="btn btn-secondary" type="button" data-control="forward" aria-label="Step forward" title="Step forward">Step<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 5v14l10-7z"/><path d="M18 5v14"/></svg></button>
+  </div>
+  </div>
+  <div class="playback-details">
+    <div class="timeline" aria-hidden="true"><div class="timeline-track"><span class="timeline-progress"></span></div></div>
+    <p class="fact"><time class="playback-time"></time> UTC · <span class="playback-gap"></span></p>
+    <div class="playback-entry"></div>
+    <p class="note playback-note"></p>
+  </div>
   </div>
 </section>
 <script src="/static/playback.js" defer></script>{{end}}

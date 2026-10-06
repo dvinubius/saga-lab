@@ -52,6 +52,10 @@ func TestRefreshingTheTransferPageNeverResubmits(t *testing.T) {
 		}
 	}
 
+	if live := demo.get(t, transferPage+"?live"); !regexp.MustCompile(`id="playback" data-autoplay`).Match(live) {
+		t.Errorf("page reached by live refresh does not autoplay: %s", live)
+	}
+
 	before := demo.transfer(t, id)
 	for range 3 {
 		demo.get(t, transferPage)
@@ -92,6 +96,12 @@ func (d *visitorClient) awaitPageUntil(t *testing.T, path string, done func([]by
 		}
 		if polling == (replay == "ready") || playback != (replay == "ready") {
 			t.Fatalf("status %q and replay %q shown with polling = %t, playback = %t", current, replay, polling, playback)
+		}
+		if polling && !regexp.MustCompile(`<meta http-equiv="refresh" content="1; url=/transfers/[^"?]+\?live">`).Match(page) {
+			t.Fatalf("polling page does not refresh into live playback: %s", page)
+		}
+		if regexp.MustCompile(`data-autoplay`).Match(page) {
+			t.Fatalf("page opened directly autoplays: %s", page)
 		}
 		if summarised := regexp.MustCompile(`id="outcome"`).Match(page); summarised != (replay == "ready") {
 			t.Fatalf("status %q and replay %q shown with outcome summary = %t", current, replay, summarised)
