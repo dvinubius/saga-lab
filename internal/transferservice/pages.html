@@ -84,16 +84,16 @@
 {{define "history-entry"}}{{if not .Continues}}{{with .Cause}}<span class="meta">{{.}}{{if gt $.Attempt 1}} · attempt {{$.Attempt}}{{end}}{{if $.AboutCause}}{{template "about" $}}{{end}}</span>{{end}}{{end}}{{with .Observation.Title}}<span class="meta">{{.}}</span>{{end}}
 {{if .Step}}<span class="label"{{if ne .Step.Label .Step.LaneLabel}} data-full="{{.Step.Label}}"{{end}}>{{.Step.LaneLabel}}</span>{{with .Balance}}<span class="dim balance"> · {{.}}</span>{{end}}{{template "about" .}}{{with .Step.LabelTail}}<span class="label">{{.}}</span>{{end}}{{else}}<span class="label">{{.Label}}</span>{{if not .AboutCause}}{{template "about" .}}{{end}}{{end}}{{end}}
 
-{{define "diagram"}}<svg class="diagram" width="564" height="132" viewBox="0 0 564 132" role="img" aria-label="The Transfer Service, the Message Broker, Bank A and Bank B">
+{{define "diagram"}}<svg class="diagram" width="600" height="132" viewBox="0 0 600 132" role="img" aria-label="The Transfer Service, the Message Broker, Bank A and Bank B">
     <defs><marker id="diagram-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M2 1l5 3-5 3"/></marker></defs>
-    <line data-edge="transfer-service broker" x1="160" y1="66" x2="260" y2="66"/>
-    <line data-edge="broker bank-a" x1="360" y1="66" x2="444" y2="24"/>
-    <line data-edge="broker bank-b" x1="360" y1="66" x2="444" y2="108"/>
+    <line data-edge="transfer-service broker" x1="160" y1="66" x2="278" y2="66"/>
+    <line data-edge="broker bank-a" x1="378" y1="66" x2="480" y2="24"/>
+    <line data-edge="broker bank-b" x1="378" y1="66" x2="480" y2="108"/>
     <g data-node="transfer-service"><rect x="0.5" y="46.5" width="159" height="39" rx="2"/><text x="80" y="66">Transfer Service</text></g>
-    <g data-node="broker"><rect x="260.5" y="42.5" width="99" height="47" rx="2"/><text><tspan x="310" y="58">Message</tspan><tspan x="310" y="74">Broker</tspan></text></g>
-    <g data-node="bank-a"><rect x="444.5" y="4.5" width="119" height="39" rx="2"/><text x="504" y="24">Bank A</text></g>
-    <g data-node="bank-b"><rect x="444.5" y="88.5" width="119" height="39" rx="2"/><text x="504" y="108">Bank B</text></g>
-    <text class="no-consumer" x="504" y="76">unavailable</text>
+    <g data-node="broker"><rect x="278.5" y="42.5" width="99" height="47" rx="2"/><text><tspan x="328" y="58">Message</tspan><tspan x="328" y="74">Broker</tspan></text></g>
+    <g data-node="bank-a"><rect x="480.5" y="4.5" width="119" height="39" rx="2"/><text x="540" y="24">Bank A</text></g>
+    <g data-node="bank-b"><rect x="480.5" y="88.5" width="119" height="39" rx="2"/><text x="540" y="108">Bank B</text></g>
+    <text class="no-consumer" x="540" y="76">unavailable</text>
   </svg>{{end}}
 
 {{define "playback-controls"}}<div class="playback-controls">
@@ -127,7 +127,7 @@
     </label>
     <fieldset class="scenarios"{{if .PendingID}} disabled{{end}}>
       <legend class="fact">Scenario</legend>
-      {{range .Scenarios}}<label class="fact"><input type="radio" name="scenario" value="{{.}}"{{if eq . $.Scenario}} checked{{end}}>{{.Label}}{{if eq . "happy_path"}} (no issues){{end}}</label>
+      {{range .Scenarios}}<label class="fact"><input type="radio" name="scenario" value="{{.}}"{{if eq . $.Scenario}} checked{{end}}>{{.Label}}</label>
       {{end}}
     </fieldset>
     <button class="btn btn-primary"{{if .PendingID}} disabled{{end}}>Transfer</button>
@@ -172,7 +172,7 @@
 </div>
 <div class="columns">
 <section class="panel details">
-  <h3 class="caps panel-head">Transfer details</h3>
+  <div class="panel-head details-head"><h3 class="caps">Transfer details</h3><data class="pill" id="transfer-status" value="{{.Status}}">{{.StatusLabel}}</data></div>
   <dl class="facts">
     <div class="amount">
       <dt>Amount</dt>
@@ -202,38 +202,37 @@
 </div>
 
 <div class="section">
-<p class="status-line"><span class="caps">Status</span><data id="transfer-status" value="{{.Status}}">{{.StatusLabel}}</data></p>
+{{if .VisualisationReady}}<div class="playback" id="playback">
+<data id="transfer-replay" value="ready" hidden></data>
+<div class="playback-stage">
+{{template "diagram"}}
+{{template "playback-controls" false}}
+</div>
+<div class="playback-details">
+  <div class="timeline" aria-hidden="true"><div class="timeline-track"><span class="timeline-progress"></span></div></div>
+  <p class="fact"><time class="playback-time"></time> UTC · <span class="playback-gap"></span></p>
+  <div class="playback-entry"></div>
+  <p class="note playback-note"></p>
+</div>
+</div>{{else}}<div class="playback" aria-busy="true">
+<div class="playback-stage">
+{{template "diagram"}}
+{{template "playback-controls" true}}
+</div>
+<div class="playback-wait">
+  <svg class="watermark" viewBox="0.5 0.5 23 23" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+    <rect x="15.5" y="1.5" width="7" height="7" rx="1.75"/>
+    <rect x="1.5" y="15.5" width="7" height="7" rx="1.75"/>
+    <path d="M12.5 5H9a4 4 0 0 0-4 4v3M7 10l-2 2-2-2"/>
+    <path d="M11.5 19H15a4 4 0 0 0 4-4v-3M17 14l2-2 2 2"/>
+    <circle cx="12" cy="12" r="2"/>
+  </svg>
+  <span class="spinner" aria-hidden="true"></span>
+  <p class="fact"><data id="transfer-replay" value="{{if .Status.Pending}}pending{{else}}preparing{{end}}">Preparing playback</data></p>
+</div>
+</div>{{end}}
 <section class="panel history-panel">
   <h3 class="caps panel-head">History</h3>
-  {{if .VisualisationReady}}<div class="playback" id="playback">
-  <data id="transfer-replay" value="ready" hidden></data>
-  <div class="playback-stage">
-  {{template "diagram"}}
-  {{template "playback-controls" false}}
-  </div>
-  <div class="playback-details">
-    <div class="timeline" aria-hidden="true"><div class="timeline-track"><span class="timeline-progress"></span></div></div>
-    <p class="fact"><time class="playback-time"></time> UTC · <span class="playback-gap"></span></p>
-    <div class="playback-entry"></div>
-    <p class="note playback-note"></p>
-  </div>
-  </div>{{else}}<div class="playback" aria-busy="true">
-  <div class="playback-stage">
-  {{template "diagram"}}
-  {{template "playback-controls" true}}
-  </div>
-  <div class="playback-wait">
-    <svg class="watermark" viewBox="0.5 0.5 23 23" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-      <rect x="15.5" y="1.5" width="7" height="7" rx="1.75"/>
-      <rect x="1.5" y="15.5" width="7" height="7" rx="1.75"/>
-      <path d="M12.5 5H9a4 4 0 0 0-4 4v3M7 10l-2 2-2-2"/>
-      <path d="M11.5 19H15a4 4 0 0 0 4-4v-3M17 14l2-2 2 2"/>
-      <circle cx="12" cy="12" r="2"/>
-    </svg>
-    <span class="spinner" aria-hidden="true"></span>
-    <p class="fact"><data id="transfer-replay" value="{{if .Status.Pending}}pending{{else}}preparing{{end}}">Preparing playback</data></p>
-  </div>
-  </div>{{end}}
   <table class="table history">
     <thead><tr><th class="caps">Observed (UTC)</th>{{range $.Lanes}}<th class="caps">{{.}}</th>{{end}}</tr></thead>
     <tbody>

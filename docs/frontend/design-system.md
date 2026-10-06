@@ -219,9 +219,9 @@ because `ⓘ` is outside the vendored font subsets.
 
    A transfer page opens with **← Back** and, 20px to its right, the
    scenario's name as the page title. Under them, a 1040px row: the TRANSFER
-   DETAILS panel, 600px wide, and the balances panel, 320px wide and centred
-   in the rest of the row. Then the status line and, 14px under it, the
-   HISTORY panel, 1040px wide. Like History, the row reaches past the
+   DETAILS panel, 600px wide, and the balances panel, filling the rest of
+   the row in both directions, its rows centred vertically. Then the playback and the HISTORY panel, 1040px wide, 14px
+   apart. Like History, the row reaches past the
    content column. Sections sit 40px apart; the items in a section 14px
    apart.
 
@@ -254,7 +254,8 @@ because `ⓘ` is outside the vendored font subsets.
    `--radius-control`; surfaces — panels, code blocks, floats —
    `--radius-surface`. Both are the brand's `--radius` (2px), which upstream
    adopted after hooklook introduced it. Rows in a list or table stay square:
-   they are parted by hairlines, not boxed.
+   they are parted by hairlines, not boxed. The one rounder shape is the
+   status pill (adaptation 14).
 
 6. **Three text tiers on the page, not two.** With only body and muted,
    everything that was not primary fell the whole way to muted — running prose
@@ -316,7 +317,7 @@ because `ⓘ` is outside the vendored font subsets.
     without spending brightness or color. `.caps` is the class; the template
     keeps the text in sentence case and the uppercasing is CSS, so a screen
     reader is not handed shouting. `.caps` carries no size: a panel head,
-    the status line's label, the Outcome
+    the Outcome
     footer's label and a table column heading take theirs from the
     component.
 
@@ -384,8 +385,8 @@ because `ⓘ` is outside the vendored font subsets.
     A radio choice is a borderless fieldset whose legend names it as a
     `.fact`, 8px above the options; each option is a `.fact` label after its
     native radio, boxed by a `--panel-edge` border at 8px × 12px, 8px from
-    the next; the selected option's border steps up to `--control-edge`. In the transfer form the happy path reads "Happy path (no
-    issues)"; elsewhere it is "Happy path". The
+    the next; the selected option's border steps up to `--control-edge`. The happy
+    path reads "Happy path (regular transfer)" everywhere. The
     selected radio's dot is the accent, through `accent-color`; the filled
     native radio marks the selection on its own, so the accent never carries
     it alone. A rejected value or a refused submission is explained under
@@ -398,12 +399,15 @@ because `ⓘ` is outside the vendored font subsets.
     palette. A transfer's status and its history steps take no hue:
     "Completed" and "Waiting for Bank A to debit" differ in words alone.
 
-    On a transfer page the status sits on its own line above the HISTORY
-    panel: STATUS in `.caps` at `--text-mono-micro`, dim, then the status in
-    mono, weight 500. A transfer rejected by Bank A adds the bank's reason:
+    On a transfer page the status sits at the right end of the TRANSFER
+    DETAILS head, with no label, as a **pill**: mono at `--text-mono-meta`,
+    weight 500, body, inside a 1px `--text-muted` border with 10px corners
+    and 10px side padding, 20px tall like the head's line. The border is
+    what catches the eye; it takes no hue. A status too long for one line
+    wraps inside the pill, right-aligned. A transfer rejected by Bank A adds the bank's reason:
     "Rejected by Bank A (insufficient funds)". A refunded transfer gives
     none — "Refunded after Bank B rejected the credit" already says why.
-    While awaiting admission, the status line says “Another visitor is trying
+    While awaiting admission, the status says “Another visitor is trying
     this demo. Yours will start automatically when it's your turn.” It uses
     the ordinary status text, with no promised duration or state hue.
     The Transfer history uses the same label, and the pending form remains disabled.
@@ -417,11 +421,11 @@ because `ⓘ` is outside the vendored font subsets.
     Teal on the entry showing how the system correctly avoids the trouble
     that fault would typically cause.
 
-15. **Playback.** The HISTORY panel opens with the playback, above the
-    History table, parted from it by a full-width hairline; its padding is
-    28px above, 16px at the sides and 32px below. It has two columns, 40px
-    apart. The left one, 564px wide, holds the participant diagram,
-    described below, and under it only the controls, centred on the diagram.
+15. **Playback.** The playback sits on the page, between the details row
+    and the HISTORY panel, 1040px wide, outside any panel; its padding is
+    16px at the sides and 32px below, none above. It has two columns, 40px
+    apart. The left one, 600px wide, holds the participant diagram,
+    described below, and under it only the controls, at its left edge.
     The right one holds the timeline, across its full width, and under it the
     details, centred:
 
@@ -483,7 +487,7 @@ because `ⓘ` is outside the vendored font subsets.
     the live History under the waiting playback.
 
     **The participant diagram** is drawn inline in the template as SVG,
-    564 × 132: four nodes — Transfer Service, Message Broker, Bank A
+    600 × 132: four nodes — Transfer Service, Message Broker, Bank A
     and Bank B — as 1px outlined boxes with 2px corners, like a surface, and
     their names in mono at `--text-mono-meta`, and three edges joining the
     Message Broker to each of the others. "Message Broker" is set on two
