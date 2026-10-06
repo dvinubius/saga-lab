@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -101,6 +102,16 @@ func (s step) Label() string {
 	return string(s)
 }
 
+func (s step) LaneLabel() string {
+	label := s.Label()
+	for _, bank := range []string{"Bank A ", "Bank B "} {
+		if rest, found := strings.CutPrefix(label, bank); found {
+			return strings.ToUpper(rest[:1]) + rest[1:]
+		}
+	}
+	return label
+}
+
 func (s step) LabelTail() string {
 	switch s {
 	case creditRequested:
@@ -120,6 +131,7 @@ const (
 	creditConfirmed     observation = messaging.CreditConfirmed
 	deliveryResumed     observation = messaging.DeliveryResumed
 	deliveryPaused      observation = messaging.DeliveryPaused
+	deliveryWaiting     observation = "DeliveryWaiting"
 )
 
 func (o observation) Label() string {
@@ -127,17 +139,27 @@ func (o observation) Label() string {
 	case admitted:
 		return "admitted"
 	case nackRequested:
-		return "couldn’t acknowledge after commit"
+		return "Couldn’t acknowledge after commit"
 	case creditConfirmed:
-		return "the broker confirmed the credit command"
+		return "broker confirmed command"
 	case deliveryResumed:
-		return "delivery resumed"
-	case deliveryPaused:
-		return "delivery paused again"
+		return "Command delivered"
+	case deliveryWaiting:
+		return "Command delivery waiting"
 	case duplicateSuppressed:
-		return "redelivery rejected; nothing applied"
+		return "Redelivery rejected; nothing applied"
 	}
 	return string(o)
+}
+
+func (o observation) Title() string {
+	switch o {
+	case deliveryWaiting:
+		return "Service unavailable"
+	case deliveryResumed:
+		return "Service back up"
+	}
+	return ""
 }
 
 type transferSummary struct {
@@ -148,13 +170,21 @@ type transferSummary struct {
 	RequestedAt time.Time `json:"requested_at"`
 }
 
+func (t transfer) StatusLabel() string {
+	if t.Status == rejected && t.RejectionReason != "" {
+		return fmt.Sprintf("%s (%s)", t.Status.Label(), strings.ToLower(t.RejectionReason))
+	}
+	return t.Status.Label()
+}
+
 type transfer struct {
 	transferSummary
 	RejectionReason string         `json:"rejection_reason,omitempty"`
 	TraceID         string         `json:"trace_id,omitempty"`
 	History         []historyEntry `json:"history,omitempty"`
 
-	VisualisationReady bool `json:"visualisation_ready"`
+	VisualisationReady bool            `json:"visualisation_ready"`
+	OutcomeSummary     *outcomeSummary `json:"outcome,omitempty"`
 }
 
 type historyEntry struct {
@@ -167,6 +197,8 @@ type historyEntry struct {
 	MessageID       string      `json:"message_id,omitempty"`
 	CausationID     string      `json:"causation_id,omitempty"`
 	IssuedMessageID string      `json:"issued_message_id,omitempty"`
+	BalanceBefore   *int64      `json:"balance_before,omitempty"`
+	BalanceAfter    *int64      `json:"balance_after,omitempty"`
 }
 
 const foreignKeyViolation = "23503"
@@ -304,7 +336,7 @@ func (s *Service) fundsDebited(msg *message.Message) error {
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: debitCommitted, Service: messaging.BankA, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
-			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), BalanceBefore: event.BalanceBefore, BalanceAfter: event.BalanceAfter,
 		}); err != nil {
 			return err
 		}
@@ -368,7 +400,7 @@ func (s *Service) debitRejected(msg *message.Message) error {
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: debitRejected, Service: messaging.BankA, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
-			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), BalanceBefore: event.BalanceBefore, BalanceAfter: event.BalanceAfter,
 		}); err != nil {
 			return err
 		}
@@ -408,7 +440,7 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: creditCommitted, Service: messaging.BankB, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
-			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), BalanceBefore: event.BalanceBefore, BalanceAfter: event.BalanceAfter,
 		}); err != nil {
 			return err
 		}
@@ -450,7 +482,7 @@ func (s *Service) creditRejected(msg *message.Message) error {
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: creditRejected, Service: messaging.BankB, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
-			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), BalanceBefore: event.BalanceBefore, BalanceAfter: event.BalanceAfter,
 		}); err != nil {
 			return err
 		}
@@ -487,7 +519,7 @@ func (s *Service) fundsRefunded(msg *message.Message) error {
 		}
 		if err := record(ctx, tx, event.TransferID, historyEntry{
 			Step: refundCommitted, Service: messaging.BankA, ObservedAt: event.ObservedAt, AttemptID: messaging.ProducerAttemptID(msg),
-			MessageID: msg.UUID, CausationID: messaging.CausationID(msg),
+			MessageID: msg.UUID, CausationID: messaging.CausationID(msg), BalanceBefore: event.BalanceBefore, BalanceAfter: event.BalanceAfter,
 		}); err != nil {
 			return err
 		}
@@ -554,10 +586,10 @@ func currentStatus(ctx context.Context, tx pgx.Tx, transferID string) (string, e
 
 func record(ctx context.Context, tx pgx.Tx, transferID string, entry historyEntry) error {
 	_, err := tx.Exec(ctx,
-		`INSERT INTO transfer_history (transfer_id, step, observation, service, observed_at, attempt_id, message_id, causation_id, issued_message_id)
-		 VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4, $5, NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''))
+		`INSERT INTO transfer_history (transfer_id, step, observation, service, observed_at, attempt_id, message_id, causation_id, issued_message_id, balance_before, balance_after)
+		 VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4, $5, NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), $10, $11)
 		 ON CONFLICT (message_id) DO NOTHING`,
-		transferID, entry.Step, entry.Observation, entry.Service, entry.ObservedAt, entry.AttemptID, entry.MessageID, entry.CausationID, entry.IssuedMessageID,
+		transferID, entry.Step, entry.Observation, entry.Service, entry.ObservedAt, entry.AttemptID, entry.MessageID, entry.CausationID, entry.IssuedMessageID, entry.BalanceBefore, entry.BalanceAfter,
 	)
 	return err
 }
@@ -576,7 +608,7 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	}
 	rows, err := s.db.Query(ctx,
 		`SELECT COALESCE(step, ''), COALESCE(observation, ''), service, COALESCE(attempt_id, ''), observed_at, recorded_at,
-		        COALESCE(message_id, ''), COALESCE(causation_id, ''), COALESCE(issued_message_id, '')
+		        COALESCE(message_id, ''), COALESCE(causation_id, ''), COALESCE(issued_message_id, ''), balance_before, balance_after
 		 FROM transfer_history WHERE transfer_id = $1 ORDER BY observed_at, entry_id`,
 		id,
 	)
@@ -585,10 +617,14 @@ func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	}
 	t.History, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (historyEntry, error) {
 		var e historyEntry
-		err := row.Scan(&e.Step, &e.Observation, &e.Service, &e.AttemptID, &e.ObservedAt, &e.RecordedAt, &e.MessageID, &e.CausationID, &e.IssuedMessageID)
+		err := row.Scan(&e.Step, &e.Observation, &e.Service, &e.AttemptID, &e.ObservedAt, &e.RecordedAt, &e.MessageID, &e.CausationID, &e.IssuedMessageID, &e.BalanceBefore, &e.BalanceAfter)
 		return e, err
 	})
 	t.VisualisationReady = visualisationReady(t.Scenario, t.Status, t.History)
+	if t.VisualisationReady {
+		s := summariseOutcome(t.History)
+		t.OutcomeSummary = &s
+	}
 	return t, err
 }
 

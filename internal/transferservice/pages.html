@@ -3,6 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A live demonstration of orchestrated Sagas: a Transfer Service coordinates transfers of fictional credits between two independently owned banks.">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="Saga Lab">
+<meta property="og:title" content="Saga Lab · Dinu Barbu">
+<meta property="og:description" content="A live demonstration of orchestrated Sagas: a Transfer Service coordinates transfers of fictional credits between two independently owned banks.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://saga.dinubarbu.com/">
+<meta property="og:image" content="https://saga.dinubarbu.com/static/saga-lab-logo-row.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1920">
+<meta property="og:image:height" content="1080">
+<meta property="og:image:alt" content="Saga Lab logo beside the wordmark on a dark background">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Saga Lab · Dinu Barbu">
+<meta name="twitter:description" content="A live demonstration of orchestrated Sagas: a Transfer Service coordinates transfers of fictional credits between two independently owned banks.">
+<meta name="twitter:image" content="https://saga.dinubarbu.com/static/saga-lab-logo-row.png">
+<meta name="twitter:image:alt" content="Saga Lab logo beside the wordmark on a dark background">
 <link rel="stylesheet" href="/static/brand.css">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/theme.js"></script>
@@ -51,39 +68,59 @@
 </html>
 {{end}}
 
-{{define "balances"}}<dl class="accounts">
-  <div class="account">
-    <dt class="caps">Bank A</dt>
-    <dd><data class="figure" id="bank-a-balance" value="{{.BankA.Balance}}">{{.BankA.Balance}}</data> <span class="fact">credits</span></dd>
-  </div>
-  <div class="account">
-    <dt class="caps">Bank B</dt>
-    <dd><data class="figure" id="bank-b-balance" value="{{.BankB.Balance}}">{{.BankB.Balance}}</data> <span class="fact">credits</span></dd>
-  </div>
-</dl>
-{{end}}
+{{define "account"}}<dt>{{.Name}}</dt>
+    <dd><data class="figure" id="{{.ID}}-balance" value="{{.Balance}}">{{.Balance}}</data> <span class="fact">credits</span></dd>{{end}}
 
-{{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{.UTC.Format "15:04:05.000"}}</time>{{end}}
+{{define "time"}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05.000000Z07:00"}}">{{template "timestamp" .}}</time>{{end}}
 
-{{define "about"}}{{with .About}}<button class="about" type="button" popovertarget="about-{{$.Step}}{{$.AttemptID}}" aria-label="About this entry" title="About this entry" style="anchor-name: --about-{{$.Step}}{{$.AttemptID}}">
+{{define "timestamp"}}{{.UTC.Format "15:04:05.000"}}{{end}}
+
+{{define "about"}}{{with .About}}<button class="about" type="button" popovertarget="about-{{$.Step}}{{$.Observation}}{{$.AttemptID}}" aria-label="About this entry" title="About this entry" style="anchor-name: --about-{{$.Step}}{{$.Observation}}{{$.AttemptID}}">
   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6.5"/><path d="M8 7v4.5"/><circle cx="8" cy="4.75" r="0.9" fill="currentColor" stroke="none"/></svg>
-</button><div class="float note" id="about-{{$.Step}}{{$.AttemptID}}" popover style="position-anchor: --about-{{$.Step}}{{$.AttemptID}}">{{.}}</div>{{end}}{{end}}
+</button><div class="float note" id="about-{{$.Step}}{{$.Observation}}{{$.AttemptID}}" popover style="position-anchor: --about-{{$.Step}}{{$.Observation}}{{$.AttemptID}}">{{.}}</div>{{end}}{{end}}
 
-{{define "history-entry"}}{{if not .Continues}}{{with .Cause}}<span class="meta">{{.}}{{if gt $.Attempt 1}} · attempt {{$.Attempt}}{{end}}</span>{{end}}{{end}}
-{{if .Step}}<span class="label">{{.Step.Label}}</span>{{template "about" .}}{{with .Step.LabelTail}}<span class="label">{{.}}</span>{{end}}{{else}}<span class="label">{{.Label}}</span>{{template "about" .}}{{end}}{{end}}
+{{define "summary-value"}}{{with .}}{{.}}{{else}}—{{end}}{{end}}
+
+{{define "history-entry"}}{{if not .Continues}}{{with .Cause}}<span class="meta">{{.}}{{if gt $.Attempt 1}} · attempt {{$.Attempt}}{{end}}{{if $.AboutCause}}{{template "about" $}}{{end}}</span>{{end}}{{end}}{{with .Observation.Title}}<span class="meta">{{.}}</span>{{end}}
+{{if .Step}}<span class="label"{{if ne .Step.Label .Step.LaneLabel}} data-full="{{.Step.Label}}"{{end}}>{{.Step.LaneLabel}}</span>{{with .Balance}}<span class="dim balance"> · {{.}}</span>{{end}}{{template "about" .}}{{with .Step.LabelTail}}<span class="label">{{.}}</span>{{end}}{{else}}<span class="label">{{.Label}}</span>{{if not .AboutCause}}{{template "about" .}}{{end}}{{end}}{{end}}
+
+{{define "diagram"}}<svg class="diagram" width="564" height="132" viewBox="0 0 564 132" role="img" aria-label="The Transfer Service, the Message Broker, Bank A and Bank B">
+    <defs><marker id="diagram-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M2 1l5 3-5 3"/></marker></defs>
+    <line data-edge="transfer-service broker" x1="160" y1="66" x2="260" y2="66"/>
+    <line data-edge="broker bank-a" x1="360" y1="66" x2="444" y2="24"/>
+    <line data-edge="broker bank-b" x1="360" y1="66" x2="444" y2="108"/>
+    <g data-node="transfer-service"><rect x="0.5" y="46.5" width="159" height="39" rx="2"/><text x="80" y="66">Transfer Service</text></g>
+    <g data-node="broker"><rect x="260.5" y="42.5" width="99" height="47" rx="2"/><text><tspan x="310" y="58">Message</tspan><tspan x="310" y="74">Broker</tspan></text></g>
+    <g data-node="bank-a"><rect x="444.5" y="4.5" width="119" height="39" rx="2"/><text x="504" y="24">Bank A</text></g>
+    <g data-node="bank-b"><rect x="444.5" y="88.5" width="119" height="39" rx="2"/><text x="504" y="108">Bank B</text></g>
+    <text class="no-consumer" x="504" y="76">unavailable</text>
+  </svg>{{end}}
+
+{{define "playback-controls"}}<div class="playback-controls">
+    <button class="btn btn-secondary" type="button"{{if .}} disabled{{end}} data-control="back" aria-label="Step back" title="Step back"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 5v14L8 12z"/><path d="M6 5v14"/></svg>Step</button>
+    <button class="btn btn-secondary btn-icon" type="button"{{if .}} disabled{{end}} data-control="play" data-state="play" aria-label="Play" title="Play">
+      <svg data-icon="pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14M16 5v14"/></svg>
+      <svg data-icon="play" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4.5v15L19 12z"/></svg>
+      <svg data-icon="replay" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12a8 8 0 1 0 2.34-5.66L4 9"/><path d="M4 4.5V9h4.5"/></svg>
+    </button>
+    <button class="btn btn-secondary" type="button"{{if .}} disabled{{end}} data-control="forward" aria-label="Step forward" title="Step forward">Step<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 5v14l10-7z"/><path d="M18 5v14"/></svg></button>
+  </div>{{end}}
+
+{{define "command-inline"}}{{with .}}<b>{{.Attempts}}</b> attempt{{if ne .Attempts 1}}s{{end}}, <b>{{.Effects}}</b> effect{{if ne .Effects 1}}s{{end}}{{else}}not issued{{end}}{{end}}
 
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
-{{if and .PendingID (not .Overlap)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
+{{if and .PendingID (not .Overlap) (not .TopUpRefused)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
 {{template "top"}}
 <section class="section">
-  <p class="note">Your fictional credits at each bank.</p>
-  {{template "balances" .Balances}}
-</section>
-
-<section class="section">
-  <h2 class="caps section-label">Transfer from Bank A to Bank B</h2>
+<h2 class="title">Inter-Bank Transfer</h2>
+<p class="note intro">A live demonstration of an orchestrated Saga: a Transfer Service moves fictional credits from Bank A to Bank B.</p>
+<p class="note intro">Pick a scenario to see how the Saga copes with redelivered messages, a rejected credit or an unavailable bank, then replay what happened.</p>
+<div class="columns">
+<section class="panel">
+  <h3 class="caps panel-head">Perform Transfer (A to B)</h3>
+  <div class="panel-body">
   <form class="transfer-form" method="post" action="/transfers">
-    <label class="fact">Amount in credits
+    <label class="fact amount">Amount in credits
       <input class="field" name="amount" value="{{.Amount}}" inputmode="numeric" autocomplete="off"{{if .PendingID}} disabled{{end}}>
     </label>
     <fieldset class="scenarios"{{if .PendingID}} disabled{{end}}>
@@ -98,14 +135,27 @@
   {{if .Overlap}}<p class="error" id="overlap-error">This transfer was not started: another transfer is still pending.</p>{{end}}
   {{with .PendingID}}<p class="note">A new transfer can start once the pending one has finished.</p>
   <p><a class="quiet-link" id="pending-transfer" href="/transfers/{{.}}">Follow pending transfer →</a></p>{{end}}
+  </div>
 </section>
 
-{{with .Transfers}}
-<hr class="divider">
-<section class="section">
-  <h2 class="caps section-label">Transfers</h2>
+<section class="panel credits">
+  <h3 class="caps panel-head">Your credits</h3>
+  <dl class="accounts">
+    <div class="account">{{template "account" (account "bank-a" "Bank A" .Balances.BankA)}}
+      <dd class="top-up"><form method="post" action="/top-ups"><button class="btn btn-secondary" id="top-up"{{if .PendingID}} disabled{{end}}>+100 credits</button></form>
+        {{if .TopUpRefused}}<p class="error" id="top-up-error">No credits were added: a transfer is still pending.</p>{{end}}</dd>
+    </div>
+    <div class="account">{{template "account" (account "bank-b" "Bank B" .Balances.BankB)}}</div>
+  </dl>
+</section>
+</div>
+</section>
+
+{{with .Activity}}
+<section class="panel">
+  <h3 class="caps panel-head">Activity history</h3>
   <ul class="rows">
-    {{range .}}<li><a href="/transfers/{{.ID}}"><span>{{.Amount}} credits</span><span class="dim">{{.Scenario.Label}}</span><span class="dim">{{.Status.Label}}</span></a></li>
+    {{range .}}<li>{{with .Transfer}}<a href="/transfers/{{.ID}}"><span>{{.Amount}} credits</span><span class="dim">{{.Scenario.Label}}</span><span class="dim">{{.Status.Label}}</span></a>{{else}}<div data-top-up><span>{{.TopUp}} credits</span><span class="dim">Top-up</span><span class="dim">Added to Bank A</span></div>{{end}}</li>
     {{end}}
   </ul>
 </section>
@@ -113,63 +163,98 @@
 {{template "foot"}}{{end}}
 
 {{define "transfer"}}{{template "head"}}<title>Transfer {{.Transfer.ID}} · Saga Lab</title>
-{{if not .Transfer.VisualisationReady}}<meta http-equiv="refresh" content="1">{{end}}
+{{if not .Transfer.VisualisationReady}}<meta http-equiv="refresh" content="1; url=/transfers/{{.Transfer.ID}}">{{end}}
 {{template "top"}}
-{{template "balances" .Balances}}
-<a class="btn btn-secondary back" href="/">← Back</a>
-
 {{with .Transfer}}
-<section class="section">
-  <h2 class="title">Transfer of {{.Amount}} credits</h2>
+<div class="page-head">
+<a class="btn btn-secondary" href="/">← Back</a>
+<h2 class="title"><data id="transfer-scenario" value="{{.Scenario}}">{{.Scenario.Label}}</data></h2>
+</div>
+<div class="columns wide">
+<section class="panel details">
+  <h3 class="caps panel-head">Transfer details</h3>
   <dl class="facts">
+    <div class="amount">
+      <dt>Amount</dt>
+      <dd><data id="transfer-amount" value="{{.Amount}}">{{.Amount}} credits</data></dd>
+    </div>
     <div>
       <dt>Transfer ID</dt>
-      <dd><code><data id="transfer-id" value="{{.ID}}">{{.ID}}</data></code></dd>
+      <dd class="linked"><code><data id="transfer-id" value="{{.ID}}">{{.ID}}</data></code><a class="quiet-link" id="transfer-json" href="/api/transfers/{{.ID}}" target="_blank">JSON →</a></dd>
     </div>
-    <div>
-      <dt>Scenario</dt>
-      <dd><data id="transfer-scenario" value="{{.Scenario}}">{{.Scenario.Label}}</data></dd>
-    </div>
-    <div>
-      <dt>Status</dt>
-      <dd><data id="transfer-status" value="{{.Status}}">{{.Status.Label}}</data></dd>
-    </div>
-    {{if not .Status.Pending}}<div>
-      <dt>Evidence</dt>
-      <dd>{{if .VisualisationReady}}<data id="transfer-evidence" value="complete">Complete</data>{{else}}<data id="transfer-evidence" value="collecting">Being collected</data>{{end}}</dd>
-    </div>{{end}}
-    {{with .RejectionReason}}<div>
-      <dt>Reason</dt>
-      <dd><data id="rejection-reason" value="{{.}}">{{.}}</data></dd>
-    </div>{{end}}
     {{with .TraceID}}<div>
       <dt>Trace ID</dt>
-      <dd><code><data id="trace-id" value="{{.}}">{{.}}</data></code></dd>
+      <dd class="linked"><code><data id="trace-id" value="{{.}}">{{.}}</data></code>{{with $.TraceURL}}<a class="quiet-link" id="trace-link" href="{{.}}" target="_blank">Grafana →</a>{{end}}</dd>
     </div>{{end}}
   </dl>
 </section>
+{{with .OutcomeSummary}}<section class="panel balances" aria-label="Balances change">
+  <dl class="changes">
+    <div data-outcome="bank-a"><dt>Bank A</dt><dd><span class="figure before">{{template "summary-value" .Balances.BankA.Before}}</span><span class="arrow">→</span><span class="figure">{{template "summary-value" .Balances.BankA.After}}</span><span class="fact">credits</span></dd></div>
+    <div data-outcome="bank-b"><dt>Bank B</dt>{{if .Balances.BankB.Involved}}<dd><span class="figure before">{{template "summary-value" .Balances.BankB.Before}}</span><span class="arrow">→</span><span class="figure">{{template "summary-value" .Balances.BankB.After}}</span><span class="fact">credits</span></dd>{{else}}<dd class="fact">Not involved</dd>{{end}}</div>
+  </dl>
+</section>{{else}}<section class="panel balances" aria-label="Your credits">
+  <dl class="changes">
+    <div><dt>Bank A</dt><dd><data class="figure" id="bank-a-balance" value="{{$.Balances.BankA}}">{{$.Balances.BankA}}</data><span class="fact">credits</span></dd></div>
+    <div><dt>Bank B</dt><dd><data class="figure" id="bank-b-balance" value="{{$.Balances.BankB}}">{{$.Balances.BankB}}</data><span class="fact">credits</span></dd></div>
+  </dl>
+</section>{{end}}
+</div>
 
-<section class="section in-depth">
-  <h3 class="caps section-label">In depth</h3>
-  <p class="links">
-    <a class="quiet-link" id="transfer-json" href="/api/transfers/{{.ID}}" target="_blank">View as JSON →</a>
-    {{with $.TraceURL}}<a class="quiet-link" id="trace-link" href="{{.}}" target="_blank">Explore the trace in Grafana →</a>{{end}}
-  </p>
-</section>
-
-<section class="section">
-  <h3 class="caps section-label">History</h3>
+<div class="section">
+<p class="status-line"><span class="caps">Status</span><data id="transfer-status" value="{{.Status}}">{{.StatusLabel}}</data></p>
+<section class="panel history-panel">
+  <h3 class="caps panel-head">History</h3>
+  {{if .VisualisationReady}}<div class="playback" id="playback">
+  <data id="transfer-replay" value="ready" hidden></data>
+  <div class="playback-stage">
+  {{template "diagram"}}
+  {{template "playback-controls" false}}
+  </div>
+  <div class="playback-details">
+    <div class="timeline" aria-hidden="true"><div class="timeline-track"><span class="timeline-progress"></span></div></div>
+    <p class="fact"><time class="playback-time"></time> UTC · <span class="playback-gap"></span></p>
+    <div class="playback-entry"></div>
+    <p class="note playback-note"></p>
+  </div>
+  </div>{{else}}<div class="playback" aria-busy="true">
+  <div class="playback-stage">
+  {{template "diagram"}}
+  {{template "playback-controls" true}}
+  </div>
+  <div class="playback-wait">
+    <svg class="watermark" viewBox="0.5 0.5 23 23" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+      <rect x="15.5" y="1.5" width="7" height="7" rx="1.75"/>
+      <rect x="1.5" y="15.5" width="7" height="7" rx="1.75"/>
+      <path d="M12.5 5H9a4 4 0 0 0-4 4v3M7 10l-2 2-2-2"/>
+      <path d="M11.5 19H15a4 4 0 0 0 4-4v-3M17 14l2-2 2 2"/>
+      <circle cx="12" cy="12" r="2"/>
+    </svg>
+    <span class="spinner" aria-hidden="true"></span>
+    <p class="fact"><data id="transfer-replay" value="{{if .Status.Pending}}pending{{else}}preparing{{end}}">Preparing playback</data></p>
+  </div>
+  </div>{{end}}
   <table class="table history">
     <thead><tr><th class="caps">Observed (UTC)</th>{{range $.Lanes}}<th class="caps">{{.}}</th>{{end}}</tr></thead>
     <tbody>
-    {{range $row := $.History}}<tr{{if .Step}} data-step="{{.Step}}"{{else}} data-observation="{{.Observation}}"{{end}}{{if .Continues}} class="continues"{{end}}>
-      <td>{{template "time" .ObservedAt}}</td>
-      {{range $lane, $_ := $.Lanes}}{{if eq $lane $row.Lane}}<td{{with $row.AttemptID}} title="{{.}}"{{end}}>{{template "history-entry" $row}}</td>{{else}}<td></td>{{end}}{{end}}
+    {{range $row := $.History}}<tr{{if .Step}} data-step="{{.Step}}"{{else}} data-observation="{{.Observation}}"{{end}} data-observed-at="{{template "timestamp" .PlayedAt}}" data-dwell="{{.Dwell.Milliseconds}}"{{with .Gap}} data-gap="{{.}}"{{end}}{{with .Path}} data-path="{{.}}"{{end}}{{if .NoConsumer}} data-no-consumer{{end}}{{if .Continues}} class="continues"{{end}}>
+      <td>{{if not .ObservedAt.IsZero}}{{template "time" .ObservedAt}}{{end}}</td>
+      {{range $lane, $_ := $.Lanes}}{{if eq $lane $row.Lane}}<td{{with $row.Tooltip}} title="{{.}}"{{end}}>{{template "history-entry" $row}}</td>{{else}}<td></td>{{end}}{{end}}
     </tr>
     {{end}}</tbody>
   </table>
-  <p class="note">Each column is a service, and each row is one entry it reported, in the order the entries were observed. Recorded times are left out.</p>
+  {{with .OutcomeSummary}}<div class="outcome" id="outcome">
+    <h4 class="caps">Outcome</h4>
+    <ul>
+      <li data-outcome="debit"><span class="name">Debit</span> {{template "command-inline" .Commands.Debit}}</li>
+      <li data-outcome="credit"><span class="name">Credit</span> {{template "command-inline" .Commands.Credit}}</li>
+      {{with .Commands.Refund}}<li data-outcome="refund"><span class="name">Refund</span> {{template "command-inline" .}}</li>{{end}}
+      <li data-outcome="duplicates-suppressed"><span class="name">Duplicates suppressed</span> <b>{{.DuplicatesSuppressed}}</b></li>
+    </ul>
+  </div>{{end}}
 </section>
+</div>
+{{if .VisualisationReady}}<script src="/static/playback.js" defer></script>{{end}}
 {{end}}
 
 {{template "foot"}}{{end}}

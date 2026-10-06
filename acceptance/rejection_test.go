@@ -20,6 +20,14 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 	assertSteps(t, rejected.History, "requested", "debit_rejected", "transfer_rejected")
 	assertServices(t, rejected.History, "Transfer Service", "Bank A", "Transfer Service")
 	requested, rejection, ended := rejected.History[0], rejected.History[1], rejected.History[2]
+	assertBalancePair(t, rejection, 100, 100)
+	assertNoBalancePair(t, rejected.History, "debit_rejected")
+	assertOutcomeSummary(t, rejected, `{
+		"balances": {"bank_a": {"before": 100, "after": 100}, "bank_b": {"before": null, "after": null, "involved": false}},
+		"commands": {"debit": {"attempts": 1, "effects": 0}, "credit": null, "refund": null},
+		"duplicates_suppressed": 0,
+		"duplicate_effects": 0
+	}`)
 	if rejection.MessageID == "" {
 		t.Errorf("DebitRejected message ID missing from history")
 	}
@@ -34,12 +42,26 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 	}
 
 	transferPage := "/transfers/" + rejected.TransferID
-	page := demo.awaitPage(t, transferPage, "rejected")
-	if got := pageData(page, "rejection-reason"); got != rejected.RejectionReason {
-		t.Errorf("page reason = %q, want %q", got, rejected.RejectionReason)
+	page := demo.awaitReplay(t, transferPage)
+	if got := pageElementText(page, "transfer-status"); got != "Rejected by Bank A (insufficient funds)" {
+		t.Errorf("page status = %q, want the rejection with its reason", got)
 	}
 	if got, want := pageSteps(page), []string{"requested", "debit_rejected", "transfer_rejected"}; !slices.Equal(got, want) {
 		t.Errorf("page history steps = %q, want %q", got, want)
+	}
+	if got := pageBalanceChange(page, "debit_rejected"); got != "100" {
+		t.Errorf("page debit_rejected balance = %q, want the unchanged 100", got)
+	}
+	for row, want := range map[string]string{
+		"bank-a": "Bank A 100 → 100 credits",
+		"bank-b": "Bank B Not involved",
+		"debit":  "Debit 1 attempt, 0 effects",
+		"credit": "Credit not issued",
+		"refund": "",
+	} {
+		if got := pageOutcomeSummary(page, row); got != want {
+			t.Errorf("page outcome %s = %q, want %q", row, got, want)
+		}
 	}
 	for range 3 {
 		demo.get(t, transferPage)

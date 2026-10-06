@@ -59,6 +59,45 @@ func TestVisitorWithoutAccountIsNotFound(t *testing.T) {
 	}
 }
 
+func TestBankATopUpAddsItsConfiguredAmount(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	b := open(t, db, bank.Config{OpeningBalance: 100, TopUpAmount: 100, Role: bank.Source})
+
+	response := post(b, "/accounts/test-visitor/top-ups")
+	if response.Code != http.StatusOK {
+		t.Fatalf("top-up: status %d, body %q", response.Code, response.Body)
+	}
+	var account struct {
+		VisitorID string `json:"visitor_id"`
+		Balance   int64  `json:"balance"`
+		Amount    int64  `json:"amount"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&account); err != nil {
+		t.Fatalf("decode account: %v", err)
+	}
+	if account.VisitorID != "test-visitor" || account.Balance != 200 || account.Amount != 100 {
+		t.Fatalf("top-up returned %+v, want test-visitor with 200 after adding 100", account)
+	}
+	if got := balance(t, b, "test-visitor"); got != 200 {
+		t.Fatalf("balance after top-up = %d, want 200", got)
+	}
+	if got := post(b, "/accounts/unknown-visitor/top-ups").Code; got != http.StatusNotFound {
+		t.Fatalf("top-up of missing account: status %d, want %d", got, http.StatusNotFound)
+	}
+}
+
+func TestBankBOffersNoTopUp(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	b := open(t, db, bank.Config{OpeningBalance: 0, Role: bank.Destination})
+
+	if got := post(b, "/accounts/test-visitor/top-ups").Code; got != http.StatusNotFound {
+		t.Fatalf("top-up at Bank B: status %d, want %d", got, http.StatusNotFound)
+	}
+	if got := balance(t, b, "test-visitor"); got != 0 {
+		t.Fatalf("Bank B balance = %d, want 0", got)
+	}
+}
+
 func TestDebitCommitsNothingWhenEnqueueFails(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	ctx := context.Background()
@@ -302,5 +341,11 @@ func balance(t *testing.T, b *bank.Bank, visitorID string) int64 {
 func get(b *bank.Bank, path string) *httptest.ResponseRecorder {
 	response := httptest.NewRecorder()
 	b.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+	return response
+}
+
+func post(b *bank.Bank, path string) *httptest.ResponseRecorder {
+	response := httptest.NewRecorder()
+	b.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, nil))
 	return response
 }
