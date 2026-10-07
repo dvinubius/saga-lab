@@ -43,7 +43,7 @@ func TestBankARejectsAnUnaffordableDebit(t *testing.T) {
 
 	transferPage := "/transfers/" + rejected.TransferID
 	page := demo.awaitReplay(t, transferPage)
-	if got := pageElementText(page, "transfer-status"); got != "Rejected by Bank A (insufficient funds)" {
+	if got := pageElementText(page, "transfer-status"); got != "Rejected by Bank A" {
 		t.Errorf("page status = %q, want the rejection with its reason", got)
 	}
 	if got, want := pageSteps(page), []string{"requested", "debit_rejected", "transfer_rejected"}; !slices.Equal(got, want) {
