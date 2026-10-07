@@ -331,7 +331,6 @@ type homePage struct {
 }
 
 type transferPage struct {
-	Balances balances
 	Transfer transfer
 	Lanes    []string
 	History  []historyRow
@@ -418,13 +417,7 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "The transfer is temporarily unavailable.", http.StatusInternalServerError)
 		return
 	}
-	b, err := s.balances(r.Context())
-	if err != nil {
-		s.logger.Error("read balances", "error", err)
-		http.Error(w, "Balances are temporarily unavailable.", http.StatusBadGateway)
-		return
-	}
-	page := transferPage{Balances: b, Transfer: t, Lanes: lanes, History: playback(historyRows(t.History))}
+	page := transferPage{Transfer: t, Lanes: lanes, History: playback(historyRows(t.History))}
 	if t.TraceID != "" {
 		page.TraceURL = s.traceURL(t.TraceID)
 	}

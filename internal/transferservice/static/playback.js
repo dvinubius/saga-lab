@@ -10,6 +10,7 @@
   const back = panel.querySelector('[data-control="back"]');
   const play = panel.querySelector('[data-control="play"]');
   const forward = panel.querySelector('[data-control="forward"]');
+  const end = panel.querySelector('[data-control="end"]');
   const track = panel.querySelector(".timeline-track");
   const progress = panel.querySelector(".timeline-progress");
 
@@ -176,7 +177,7 @@
   const seq = panel.querySelector('[data-diagram="sequence"]');
   const seqBody = seq.querySelector(".seq-body");
   const seqWindow = seq.querySelector(".seq-window");
-  const lifelineX = { client: 10, "transfer-service": 75, broker: 235, "bank-a": 400, "bank-b": 535 };
+  const lifelineX = { client: 10, "transfer-service": 75, broker: 243, "bank-a": 416, "bank-b": 559 };
   const svgNS = "http://www.w3.org/2000/svg";
   const make = (parent, tag, attrs, text) => {
     const el = document.createElementNS(svgNS, tag);
@@ -195,11 +196,11 @@
   rows.reduce((y, _, i) => {
     const at = continuesResumed(i) ? ys[i - 1] : y;
     ys.push(at);
-    return continuesResumed(i) ? y + 16 : at + 36;
+    return continuesResumed(i) ? y + 18 : at + 44;
   }, 26);
   const seqHeight = Math.max(...ys) + 44;
   seqBody.setAttribute("height", seqHeight);
-  seqBody.setAttribute("viewBox", `0 0 600 ${seqHeight}`);
+  seqBody.setAttribute("viewBox", `0 0 624 ${seqHeight}`);
   ["transfer-service", "broker", "bank-a", "bank-b"].forEach((node) => make(seqBody, "line", { class: "lifeline", x1: lifelineX[node], y1: 0, x2: lifelineX[node], y2: seqHeight }));
   const messages = rows.map((row, i) => {
     const g = make(seqBody, "g", { class: "msg" });
@@ -237,7 +238,7 @@
     } else {
       const x = lifelineX[paths[i][0] || lanes[i]] ?? lifelineX["transfer-service"];
       make(g, "circle", { class: "dot", cx: x, cy: ly, r: 3.5 });
-      make(g, "text", { x: x < 300 ? x + 12 : x - 12, y: ly, style: `text-anchor:${x < 300 ? "start" : "end"}`, "data-tone": tone }, label);
+      make(g, "text", { x: x < 312 ? x + 12 : x - 12, y: ly, style: `text-anchor:${x < 312 ? "start" : "end"}`, "data-tone": tone }, label);
     }
     return { g, segments };
   });
@@ -260,7 +261,7 @@
     });
     const lit = litNodes(i, m);
     seq.querySelectorAll("[data-node]").forEach((node) => node.toggleAttribute("data-lit", lit.includes(node.dataset.node)));
-    const view = seqWindow.clientHeight || 200;
+    const view = seqWindow.clientHeight || 264;
     const scroll = Math.min(0, Math.max(view - seqHeight, view * 0.6 - ys[i]));
     if (scroll !== seqScroll) seqBody.style.transform = `translateY(${(seqScroll = scroll)}px)`;
   };
@@ -301,7 +302,7 @@
     graphs.forEach((g) => g.kind === view && renderGraph(g, current, motion));
     if (view === "sequence") renderSeq(current, motion);
     reset.disabled = back.disabled = position === 0;
-    forward.disabled = position === n;
+    forward.disabled = end.disabled = position === n;
     const [state, label] = playing ? ["pause", "Pause"] : position === n ? ["replay", "Replay"] : ["play", "Play"];
     if (play.dataset.state !== state) {
       play.dataset.state = state;
@@ -362,6 +363,12 @@
     elapsed = 0;
     motion = position === n ? Infinity : 0;
     stepping = position < n;
+  });
+  end.addEventListener("click", () => {
+    playing = stepping = false;
+    position = n;
+    elapsed = 0;
+    motion = Infinity;
   });
 
   requestAnimationFrame(frame);
