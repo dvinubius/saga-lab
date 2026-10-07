@@ -95,7 +95,7 @@ func (d *visitorClient) assertTopUpRefused(t *testing.T, pending string) {
 	if !regexp.MustCompile(`id="top-up-error"`).Match(r.body) {
 		t.Errorf("page does not explain the refused top-up: %s", r.body)
 	}
-	if regexp.MustCompile(`<meta http-equiv="refresh"`).Match(r.body) {
+	if regexp.MustCompile(`<meta http-equiv="refresh"|<script src="/static/poll.js"`).Match(r.body) {
 		t.Errorf("refused top-up page navigates away from its explanation")
 	}
 	assertBalance(t, "Bank A", pageBalance(t, r.body, "bank-a-balance"), 100)

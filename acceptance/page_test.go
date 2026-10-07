@@ -85,7 +85,7 @@ func (d *visitorClient) awaitPageUntil(t *testing.T, path string, done func([]by
 	for {
 		page := d.get(t, path)
 		current, replay := pageData(page, "transfer-status"), pageData(page, "transfer-replay")
-		polling := regexp.MustCompile(`<meta http-equiv="refresh"`).Match(page)
+		polling := regexp.MustCompile(`<script src="/static/poll.js"`).Match(page)
 		playback := regexp.MustCompile(`id="playback"`).Match(page)
 		pending := current == "awaiting_admission" || current == "debit_pending" || current == "credit_pending" || current == "refund_pending"
 		if pending != (replay == "pending") || !slices.Contains([]string{"pending", "preparing", "ready"}, replay) {
@@ -94,8 +94,8 @@ func (d *visitorClient) awaitPageUntil(t *testing.T, path string, done func([]by
 		if polling == (replay == "ready") || playback != (replay == "ready") {
 			t.Fatalf("status %q and replay %q shown with polling = %t, playback = %t", current, replay, polling, playback)
 		}
-		if polling && !regexp.MustCompile(`<meta http-equiv="refresh" content="1; url=/transfers/[^"?]+">`).Match(page) {
-			t.Fatalf("polling page does not refresh itself: %s", page)
+		if polling != regexp.MustCompile(`<noscript><meta http-equiv="refresh" content="1; url=/transfers/[^"?]+"></noscript>`).Match(page) {
+			t.Fatalf("polling page does not fall back to refreshing itself without scripts: %s", page)
 		}
 		if summarised := regexp.MustCompile(`id="outcome"`).Match(page); summarised != (replay == "ready") {
 			t.Fatalf("status %q and replay %q shown with outcome summary = %t", current, replay, summarised)

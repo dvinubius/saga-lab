@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/theme.js"></script>
 <script src="/static/fresh.js"></script>
+<script src="/static/localtime.js"></script>
 <script src="/static/diagram-view.js"></script>
 {{end}}
 
@@ -202,7 +203,8 @@
 {{define "command-inline"}}{{with .}}<b>{{.Attempts}}</b> attempt{{if ne .Attempts 1}}s{{end}}, <b>{{.Effects}}</b> effect{{if ne .Effects 1}}s{{end}}{{else}}not issued{{end}}{{end}}
 
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
-{{if and .PendingID (not .Overlap) (not .TopUpRefused)}}<meta http-equiv="refresh" content="1; url=/">{{end}}
+{{if and .PendingID (not .Overlap) (not .TopUpRefused)}}<noscript><meta http-equiv="refresh" content="1; url=/"></noscript>
+<script src="/static/poll.js" defer></script>{{end}}
 {{template "top" "centered"}}
 <section class="section">
 <h2 class="title">Inter-Bank Transfer</h2>
@@ -211,7 +213,7 @@
 <p class="note intro">Pick a scenario, transfer and the execution.</p>
 </section>
 
-<div class="columns transfer-row">
+<div class="columns transfer-row" data-live="transfer">
 <section class="card">
   <form class="transfer-form" method="post" action="/transfers">
     <label class="fact amount">Amount (credits)
@@ -243,7 +245,7 @@
 </section>
 </div>
 
-<section class="panel">
+<section class="panel" data-live="history">
   <h3 class="caps panel-head">Transfer history</h3>
   {{with .Transfers}}<table class="table transfers">
     <thead><tr><th class="caps">Scenario</th><th class="caps">Amount</th><th class="caps">Result</th></tr></thead>
@@ -255,14 +257,15 @@
 {{template "foot"}}{{end}}
 
 {{define "transfer"}}{{template "head"}}<title>Transfer {{.Transfer.ID}} · Saga Lab</title>
-{{if not .Transfer.VisualisationReady}}<meta http-equiv="refresh" content="1; url=/transfers/{{.Transfer.ID}}">{{end}}
+{{if not .Transfer.VisualisationReady}}<noscript><meta http-equiv="refresh" content="1; url=/transfers/{{.Transfer.ID}}"></noscript>
+<script src="/static/poll.js" defer></script>{{end}}
 {{template "top" "centered wide"}}
 {{with .Transfer}}
 <div class="page-head">
 <a class="btn btn-secondary" href="/">← Back</a>
 <h2 class="title"><data id="transfer-scenario" value="{{.Scenario}}">{{.Scenario.Label}}</data></h2>
 </div>
-<div class="columns">
+<div class="columns" data-live="summary">
 <section class="panel details">
   <div class="panel-head details-head"><h3 class="caps">Transfer details</h3><data class="pill" id="transfer-status" value="{{.Status}}">{{.StatusLabel}}</data></div>
   <dl class="facts">
@@ -294,7 +297,7 @@
 </div>
 
 <div class="section">
-{{if .VisualisationReady}}<div class="playback" id="playback">
+{{if .VisualisationReady}}<div class="playback" id="playback" data-live="playback">
 <data id="transfer-replay" value="ready" hidden></data>
 <div class="playback-stage">
 {{template "diagram"}}
@@ -306,7 +309,7 @@
   <div class="playback-entry"></div>
   <p class="note playback-note"></p>
 </div>
-</div>{{else}}<div class="playback" aria-busy="true">
+</div>{{else}}<div class="playback" aria-busy="true" data-live="playback">
 <div class="playback-stage">
 {{template "diagram"}}
 {{template "playback-controls" true}}
@@ -320,10 +323,10 @@
     <circle cx="12" cy="12" r="2"/>
   </svg>
   <span class="spinner" aria-hidden="true"></span>
-  <p class="fact"><data id="transfer-replay" value="{{if .Status.Pending}}pending{{else}}preparing{{end}}">Preparing playback</data></p>
+  <p class="fact"><data id="transfer-replay" data-live="replay" value="{{if .Status.Pending}}pending{{else}}preparing{{end}}">Transfer in progress</data></p>
 </div>
 </div>{{end}}
-<section class="panel history-panel">
+<section class="panel history-panel" data-live="history">
   <h3 class="caps panel-head">History</h3>
   <table class="table history">
     <thead><tr><th class="caps">Observed</th>{{range $.Lanes}}<th class="caps">{{.}}</th>{{end}}</tr></thead>
@@ -345,7 +348,6 @@
   </div>{{end}}
 </section>
 </div>
-<script src="/static/localtime.js" defer></script>
 {{if .VisualisationReady}}<script src="/static/playback.js" defer></script>{{end}}
 {{end}}
 

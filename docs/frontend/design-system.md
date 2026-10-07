@@ -186,7 +186,8 @@ words say what is wrong; the color only marks it.
 
 **Waiting.** Something in progress says in words what it waits for (a
 `.fact`). A wait that fills a region shows the ring spinner — hairline ring,
-body arc — over the product mark as a 6% watermark.
+body arc — over the product mark as a 6% watermark. A waiting page updates
+in place and never reloads, so the spinner keeps turning until its wait ends.
 
 **Code surfaces** follow the theme: `--code-bg` (Shade on light, Panel
 `#1C1C1C` with `--code-edge` hairline on dark). Keys violet, values teal,
