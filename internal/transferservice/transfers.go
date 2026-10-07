@@ -53,7 +53,7 @@ func (s status) Label() string {
 	case rejected:
 		return "Rejected by Bank A"
 	case refunded:
-		return "Refunded after Bank B rejected the credit"
+		return "Refunded to Bank A"
 	}
 	return string(s)
 }
@@ -171,9 +171,6 @@ type transferSummary struct {
 }
 
 func (t transfer) StatusLabel() string {
-	if t.Status == rejected && t.RejectionReason != "" {
-		return fmt.Sprintf("%s (%s)", t.Status.Label(), strings.ToLower(t.RejectionReason))
-	}
 	return t.Status.Label()
 }
 
