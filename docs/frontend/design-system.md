@@ -32,6 +32,11 @@ True-neutral base plus one warm accent. Ink `#141414` / Paper `#FAFAFA`.
 is the point — a balance, a count, the amount — the number is body (weight 500)
 and its name drops: muted beside a display figure or in a summary line.
 
+**Highlight.** `--highlight` marks what playback has lit — nodes, moving
+messages, the current state and message, the timeline's progress and ticks.
+Body on light; `#F3F6F8` on dark, a faintly cool white as luminous as
+`#F0F6FB` but half as saturated, so lit marks sit apart from Paper text.
+
 **Accent.** Ember `#A8500F` on light, Ember Light `#DE8A42` on dark, never the
 reverse; `--accent-on-hover` is `#8A420C` / `#E49F64`. At most ~2% of a view,
 never on running text, never the sole carrier of a state. It is spent on: the
@@ -117,8 +122,9 @@ declaration.
 ## Shape
 
 `--radius-control` and `--radius-surface`, both the brand's 2px. Rows in lists
-and tables are square. The one round shape is the status pill. No shadows, no
-gradients, no textures; separation is hairlines and flat fills.
+and tables are square. The one round shape is the status pill. One shadow: the
+playback diagram's raised surface. No gradients, no textures; otherwise
+separation is hairlines and flat fills.
 
 ## Components
 
@@ -137,11 +143,18 @@ the head fill with a panel-edge rule above.
 edge, no head; its primary button names it.
 
 **Stage.** An interactive visualization (playback) sits on the page, unframed,
-below a hairline that parts it from the panels above. The diagram and the
-playback details share a row, the details centered against the diagram; the
-controls run below the diagram: first step, step back, play, step forward,
-then the view strip at the far end. The diagram has three views of equal
-height — Overview, Detailed and Sequence — so switching moves nothing else.
+under an 18px `.title` heading that parts it from the panels above. The diagram and the
+playback details share a row, 656px and 336px, as do the panels above. The
+diagram sits raised: 16px padding (28px at the sides of Overview and
+Detailed; Sequence widens to fill), `--radius-surface` and a soft shadow, on
+`#F4F4F4` in light; in dark, on the panel fill with a 5% white top-edge
+highlight, since a shadow alone does not read on Ink. Below it the view strip
+sits
+centered above the centered controls: first step, step back, play, step
+forward, last step. The diagram has three views of equal height — Overview,
+Detailed and Sequence — so switching moves nothing else. While playback is not
+ready, the wait takes the diagram's place, the details side stays empty, and
+the view strip and controls are disabled.
 
 **Rows.** Lists and tables are rows parted by hairlines, mono at
 `--text-mono-meta` with `--leading-code`. Names body, values dim; column
@@ -186,8 +199,10 @@ words say what is wrong; the color only marks it.
 
 **Waiting.** Something in progress says in words what it waits for (a
 `.fact`). A wait that fills a region shows the ring spinner — hairline ring,
-body arc — over the product mark as a 6% watermark. A waiting page updates
-in place and never reloads, so the spinner keeps turning until its wait ends.
+body arc — centered on the hub of the product mark, drawn as a 6% watermark
+with its hub in `--accent-frame`; the words sit below the spinner. A value not
+yet known shows a small spinner in its place. A waiting page updates in place
+and never reloads, so the spinner keeps turning until its wait ends.
 
 **Code surfaces** follow the theme: `--code-bg` (Shade on light, Panel
 `#1C1C1C` with `--code-edge` hairline on dark). Keys violet, values teal,
