@@ -87,7 +87,7 @@ func TestPageHoldsSubmissionWhileATransferIsPending(t *testing.T) {
 	if got := pendingTransferLink(home); got != transferPage {
 		t.Errorf("home page links pending transfer %q, want %q", got, transferPage)
 	}
-	if !regexp.MustCompile(`<meta http-equiv="refresh" content="1; url=/">`).Match(home) {
+	if !regexp.MustCompile(`<script src="/static/poll.js"`).Match(home) || !regexp.MustCompile(`<noscript><meta http-equiv="refresh" content="1; url=/"></noscript>`).Match(home) {
 		t.Errorf("home page does not poll while %s is pending", pending)
 	}
 
@@ -98,7 +98,7 @@ func TestPageHoldsSubmissionWhileATransferIsPending(t *testing.T) {
 	if !regexp.MustCompile(`id="overlap-error"`).Match(r.body) {
 		t.Errorf("page does not explain the overlapping submission: %s", r.body)
 	}
-	if regexp.MustCompile(`<meta http-equiv="refresh"`).Match(r.body) {
+	if regexp.MustCompile(`<meta http-equiv="refresh"|<script src="/static/poll.js"`).Match(r.body) {
 		t.Errorf("overlap page navigates away from its explanation")
 	}
 	if got := pendingTransferLink(r.body); got != transferPage {
