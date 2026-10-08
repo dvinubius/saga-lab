@@ -2,6 +2,12 @@ CREATE TABLE IF NOT EXISTS visitors (
     visitor_id TEXT PRIMARY KEY
 );
 
+ALTER TABLE visitors ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+CREATE TABLE IF NOT EXISTS account_closures (
+    visitor_id TEXT PRIMARY KEY
+);
+
 CREATE TABLE IF NOT EXISTS transfers (
     transfer_id TEXT PRIMARY KEY,
     visitor_id TEXT NOT NULL,
