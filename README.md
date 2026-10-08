@@ -54,7 +54,11 @@ This clears all visitors, accounts, transfers, history and work still queued for
 
 A service's reset refuses to run while its queues still have consumers, so it never races a running service. With all three services stopped, nothing is in flight: a message is either in a database, its outbox included, or waiting in a queue, and the reset clears both. The services then start again and the command waits until they are ready. Any failure ends the command with an error and without the completion message; the state is then unreliable until `make reset` succeeds. Traces stay in Tempo.
 
-Only `make reset` discards demonstration state; startup and page reloads never do.
+Only `make reset` and retention discard demonstration state; startup and page reloads never do.
+
+## Expiry and retention
+
+Nothing in the stack grows without bound. Each request records the visitor's last-seen time. At startup and then every `VISITOR_EXPIRY_SWEEP`, the Transfer Service deletes every visitor unseen for longer than `VISITOR_EXPIRY`, exactly as a visitor reset would: its history, transfers and visitor record in one transaction, then its accounts at both banks. A returning browser keeps its cookie and starts over with fresh 100 / 0 accounts. A visitor whose transfer is pending, including one awaiting admission, or holds the demonstration slot is skipped and tried again by a later sweep. An account closure that fails is remembered and retried by every later sweep, and before a returning browser's accounts are reopened. Both settings are required positive Go durations; Compose sets seven days (`168h`) and one hour (`1h`). Each bank deletes inbox entries received more than seven days ago, hourly; a redelivery older than that would no longer be recognised as a duplicate. Tempo keeps trace blocks for 168 hours, so a remaining transfer's trace link keeps working.
 
 Override host ports with `POSTGRES_PORT`, `RABBITMQ_PORT`, `RABBITMQ_MANAGEMENT_PORT`, `TRANSFER_SERVICE_PORT`, `BANK_A_PORT`, `BANK_B_PORT`, `GRAFANA_PORT`, `TEMPO_PORT`, and `OTEL_COLLECTOR_HTTP_PORT`; an empty value picks a free port. Follow logs with `make logs` and stop with `make down`.
 
