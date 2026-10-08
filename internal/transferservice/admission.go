@@ -40,9 +40,10 @@ func (s *Service) releaseSlot(ctx context.Context, tx pgx.Tx, transferID string)
 	}
 	var debit messaging.DebitFunds
 	var traceContext propagation.MapCarrier
-	err := tx.QueryRow(ctx, `SELECT transfer_id, visitor_id, amount, scenario, trace_context FROM transfers
+	var requestedAt time.Time
+	err := tx.QueryRow(ctx, `SELECT transfer_id, visitor_id, amount, scenario, trace_context, requested_at FROM transfers
   WHERE status = $1 ORDER BY requested_at, transfer_id LIMIT 1 FOR UPDATE`, awaitingAdmission).
-		Scan(&debit.TransferID, &debit.VisitorID, &debit.Amount, &debit.Scenario, &traceContext)
+		Scan(&debit.TransferID, &debit.VisitorID, &debit.Amount, &debit.Scenario, &traceContext, &requestedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.logger.Info("demonstration slot released", "transfer_id", transferID)
 		return nil
@@ -61,14 +62,16 @@ func (s *Service) releaseSlot(ctx context.Context, tx pgx.Tx, transferID string)
 	if _, err := tx.Exec(ctx, `UPDATE demonstration_slot SET holder_transfer_id = $1`, debit.TransferID); err != nil {
 		return err
 	}
+	admittedAt := time.Now()
 	if err := record(ctx, tx, debit.TransferID, historyEntry{
-		Observation: admitted, Service: messaging.TransferService, ObservedAt: time.Now(), IssuedMessageID: command.UUID,
+		Observation: admitted, Service: messaging.TransferService, ObservedAt: admittedAt, IssuedMessageID: command.UUID,
 	}); err != nil {
 		return err
 	}
 	if err := messaging.Enqueue(admissionContext, tx, messaging.DebitFundsTopic, command); err != nil {
 		return err
 	}
+	recordWait(admissionContext, admissionWaitSpan, debit.TransferID, requestedAt, admittedAt)
 	s.logger.Info("demonstration slot released", "transfer_id", transferID)
 	s.logger.Info("transfer admitted", "transfer_id", debit.TransferID)
 	return nil
