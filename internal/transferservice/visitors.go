@@ -65,12 +65,21 @@ func visitorID(token string) string {
 }
 
 func (s *Service) openVisitor(ctx context.Context, id string) error {
-	var opened bool
-	if err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM visitors WHERE visitor_id = $1)`, id).Scan(&opened); err != nil {
-		return fmt.Errorf("read visitor: %w", err)
+	seen, err := s.db.Exec(ctx, `UPDATE visitors SET last_seen_at = now() WHERE visitor_id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("record visitor seen: %w", err)
 	}
-	if opened {
+	if seen.RowsAffected() == 1 {
 		return nil
+	}
+	var closing bool
+	if err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM account_closures WHERE visitor_id = $1)`, id).Scan(&closing); err != nil {
+		return fmt.Errorf("read account closures: %w", err)
+	}
+	if closing {
+		if err := s.closeAccounts(ctx, id); err != nil {
+			return err
+		}
 	}
 	if err := s.bankA.openAccount(ctx, id); err != nil {
 		return err
@@ -119,6 +128,7 @@ func (s *Service) forgetVisitor(ctx context.Context, id string) error {
 			`DELETE FROM transfer_history WHERE transfer_id IN (SELECT transfer_id FROM transfers WHERE visitor_id = $1)`,
 			`DELETE FROM transfers WHERE visitor_id = $1`,
 			`DELETE FROM visitors WHERE visitor_id = $1`,
+			`INSERT INTO account_closures (visitor_id) VALUES ($1) ON CONFLICT DO NOTHING`,
 		} {
 			if _, err := tx.Exec(ctx, statement, id); err != nil {
 				return err
@@ -129,8 +139,18 @@ func (s *Service) forgetVisitor(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	return s.closeAccounts(ctx, id)
+}
+
+func (s *Service) closeAccounts(ctx context.Context, id string) error {
 	if err := s.bankA.closeAccount(ctx, id); err != nil {
 		return err
 	}
-	return s.bankB.closeAccount(ctx, id)
+	if err := s.bankB.closeAccount(ctx, id); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(ctx, `DELETE FROM account_closures WHERE visitor_id = $1`, id); err != nil {
+		return fmt.Errorf("record account closure: %w", err)
+	}
+	return nil
 }

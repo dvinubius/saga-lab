@@ -168,6 +168,8 @@ services:
       BANK_B_URL: http://bank-b:8080
       GRAFANA_URL: ${SAGA_LAB_GRAFANA_URL-http://localhost:3000/grafana}
       VISITOR_COOKIE_SECURE: ${SAGA_LAB_VISITOR_COOKIE_SECURE-false}
+      VISITOR_EXPIRY: 168h
+      VISITOR_EXPIRY_SWEEP: 1h
     ports:
       - "127.0.0.1:${TRANSFER_SERVICE_PORT-8080}:8080"
     depends_on:
