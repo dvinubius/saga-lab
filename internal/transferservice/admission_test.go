@@ -63,7 +63,7 @@ func TestConcurrentUnavailableSubmissionsStartOneAndQueueTheRest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const count = 8
+	const count = 6
 	responses := make([]*httptest.ResponseRecorder, count)
 	start := make(chan struct{})
 	var group sync.WaitGroup

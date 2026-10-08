@@ -202,6 +202,10 @@ const foreignKeyViolation = "23503"
 
 var errTransferNotFound = errors.New("transfer not found")
 
+const admissionLimit = 5
+
+var errAdmissionLimit = errors.New("the Bank B unavailable demo has reached its admission limit; try again in a minute or pick another scenario")
+
 type pendingTransferError struct {
 	PendingID string
 }
@@ -266,6 +270,15 @@ func (s *Service) recordSubmission(ctx context.Context, t transfer, debit *messa
 		)
 		if err != nil || inserted.RowsAffected() == 0 {
 			return err
+		}
+		if queued {
+			var ahead int
+			if err := tx.QueryRow(ctx, `SELECT count(*) FROM transfers WHERE status = $1 AND transfer_id <> $2`, awaitingAdmission, t.ID).Scan(&ahead); err != nil {
+				return err
+			}
+			if ahead >= admissionLimit {
+				return errAdmissionLimit
+			}
 		}
 		insertedTransfer = true
 		issuedID := debit.UUID

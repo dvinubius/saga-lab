@@ -296,6 +296,11 @@ func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
 		}, s.logger)
 		return
 	}
+	if errors.Is(err, errAdmissionLimit) {
+		w.Header().Set("Retry-After", retryAfter)
+		web.WriteError(w, http.StatusServiceUnavailable, errAdmissionLimit.Error(), s.logger)
+		return
+	}
 	if err != nil {
 		s.logger.Error("submit transfer", "error", err)
 		web.WriteError(w, http.StatusInternalServerError, "transfer could not be started", s.logger)
@@ -320,18 +325,21 @@ func (s *Service) getTransfer(w http.ResponseWriter, r *http.Request) {
 }
 
 type homePage struct {
-	Balances      balances
-	Transfers     []transferSummary
-	PendingID     string
-	Amount        string
-	Scenario      scenario
-	Scenarios     []scenario
-	Error         string
-	ScenarioError string
-	Overlap       bool
-	TopUpRefused  bool
-	ResetRefused  bool
+	Balances         balances
+	Transfers        []transferSummary
+	PendingID        string
+	Amount           string
+	Scenario         scenario
+	Scenarios        []scenario
+	Error            string
+	ScenarioError    string
+	Overlap          bool
+	AdmissionLimited bool
+	TopUpRefused     bool
+	ResetRefused     bool
 }
+
+const retryAfter = "60"
 
 type transferPage struct {
 	Transfer transfer
@@ -385,6 +393,11 @@ func (s *Service) postTransferForm(w http.ResponseWriter, r *http.Request) {
 	t, err := s.submit(r.Context(), amount, chosen)
 	if pending, ok := errors.AsType[pendingTransferError](err); ok {
 		s.renderHome(w, r, http.StatusConflict, homePage{PendingID: pending.PendingID, Amount: text, Scenario: chosen, Overlap: true})
+		return
+	}
+	if errors.Is(err, errAdmissionLimit) {
+		w.Header().Set("Retry-After", retryAfter)
+		s.renderHome(w, r, http.StatusServiceUnavailable, homePage{Amount: text, Scenario: chosen, AdmissionLimited: true})
 		return
 	}
 	if err != nil {
