@@ -20,7 +20,13 @@ func TestBankBUnavailabilityTraceLabelsItsWaits(t *testing.T) {
 	completedQueued := second.awaitReadiness(t, queued.TransferID, "completed")
 	tempo := "http://" + serviceAddress(t, demo.project, "tempo", "3200")
 
-	queuedSpans := awaitDeliveryWait(t, tempo, completedQueued)
+	creditFunds := entry(t, completedQueued.History, "credit_requested").IssuedMessageID
+	dedicatedCredit := func(s namedSpan) bool {
+		return s.Service == "bank-b" && s.Kind == "SPAN_KIND_CONSUMER" && s.Topic == "CreditFundsDedicated" && s.MessageID == creditFunds
+	}
+	queuedSpans := awaitSpans(t, tempo, completedQueued, func(spans []namedSpan) bool {
+		return len(waitSpans(spans, completedQueued.TransferID, deliveryWaitSpan)) != 0 && slices.ContainsFunc(spans, dedicatedCredit)
+	})
 	admissions := observations(completedQueued.History, "Admitted")
 	if len(admissions) != 1 {
 		t.Fatalf("admissions = %+v, want one", admissions)
@@ -32,15 +38,13 @@ func TestBankBUnavailabilityTraceLabelsItsWaits(t *testing.T) {
 	assertNear(t, "admission wait start", admissionWaits[0].Start, entry(t, completedQueued.History, "requested").ObservedAt)
 	assertNear(t, "admission wait end", admissionWaits[0].End, admissions[0].ObservedAt)
 	assertDeliveryWait(t, queuedSpans, completedQueued)
-	creditFunds := entry(t, completedQueued.History, "credit_requested").IssuedMessageID
-	dedicated := slices.IndexFunc(queuedSpans, func(s namedSpan) bool {
-		return s.Service == "bank-b" && s.Kind == "SPAN_KIND_CONSUMER" && s.Topic == "CreditFundsDedicated" && s.MessageID == creditFunds && slices.Contains(s.Events, "consumer.paused")
-	})
-	if dedicated < 0 {
+	if !slices.ContainsFunc(queuedSpans, func(s namedSpan) bool { return dedicatedCredit(s) && slices.Contains(s.Events, "consumer.paused") }) {
 		t.Errorf("no Bank B dedicated credit span for %s with consumer.paused: %+v", creditFunds, queuedSpans)
 	}
 
-	holderSpans := awaitDeliveryWait(t, tempo, completedHolder)
+	holderSpans := awaitSpans(t, tempo, completedHolder, func(spans []namedSpan) bool {
+		return len(waitSpans(spans, completedHolder.TransferID, deliveryWaitSpan)) != 0
+	})
 	assertDeliveryWait(t, holderSpans, completedHolder)
 	if waits := waitSpans(holderSpans, completedHolder.TransferID, admissionWaitSpan); len(waits) != 0 {
 		t.Errorf("transfer admitted at submission has admission wait spans: %+v", waits)
@@ -64,17 +68,17 @@ type namedSpan struct {
 	Events     []string
 }
 
-func awaitDeliveryWait(t *testing.T, tempo string, tr transfer) []namedSpan {
+func awaitSpans(t *testing.T, tempo string, tr transfer, exported func([]namedSpan) bool) []namedSpan {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		body, _ := fetchTrace(t, tempo, tr.TraceID)
 		spans := namedSpans(body)
-		if len(waitSpans(spans, tr.TransferID, deliveryWaitSpan)) != 0 {
+		if exported(spans) {
 			return spans
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("trace %s has no %q span for transfer %s after test deadline: %+v", tr.TraceID, deliveryWaitSpan, tr.TransferID, spans)
+			t.Fatalf("trace %s of transfer %s lacks expected spans after test deadline: %+v", tr.TraceID, tr.TransferID, spans)
 		}
 		time.Sleep(time.Second)
 	}
