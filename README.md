@@ -72,6 +72,10 @@ and restores the previous deployment if any check fails. Visitors expire after
 a week unseen; terminal transfers and their histories disappear seven days
 after request time. Pending transfers are protected.
 
+<p align="center">
+  <img src="docs/assets/screenshots/grafana-dark.png" alt="Replay Screenshot" width="1080">
+</p>
+
 ## Run locally
 
 Requires Docker with Compose v2.
