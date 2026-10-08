@@ -334,11 +334,10 @@ type homePage struct {
 }
 
 type transferPage struct {
-	Transfer  transfer
-	Lanes     []string
-	History   []historyRow
-	TraceURL  string
-	BrokerURL string
+	Transfer transfer
+	Lanes    []string
+	History  []historyRow
+	TraceURL string
 }
 
 func (s *Service) getHome(w http.ResponseWriter, r *http.Request) {
@@ -422,25 +421,19 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := transferPage{Transfer: t, Lanes: lanes, History: playback(historyRows(t.History))}
-	from, to := evidenceWindow(t)
 	if t.TraceID != "" {
-		page.TraceURL = s.traceURL(t.TraceID, from, to)
-	}
-	if t.Scenario == bankBUnavailable {
-		page.BrokerURL = s.brokerURL(from, to)
+		page.TraceURL = s.traceURL(t)
 	}
 	s.render(w, http.StatusOK, "transfer", page)
 }
 
-func evidenceWindow(t transfer) (from, to string) {
-	from = strconv.FormatInt(t.RequestedAt.Add(-30*time.Second).UnixMilli(), 10)
+func (s *Service) traceURL(t transfer) string {
+	end := t.History[len(t.History)-1].ObservedAt
 	if t.Status.Pending() {
-		return from, "now"
+		end = time.Now().Add(s.resumeWait)
 	}
-	return from, strconv.FormatInt(t.History[len(t.History)-1].ObservedAt.Add(30*time.Second).UnixMilli(), 10)
-}
-
-func (s *Service) traceURL(traceID, from, to string) string {
+	from := strconv.FormatInt(t.RequestedAt.Add(-10*time.Second).UnixMilli(), 10)
+	to := strconv.FormatInt(end.Add(10*time.Second).UnixMilli(), 10)
 	panes, _ := json.Marshal(map[string]any{
 		"trace": map[string]any{
 			"datasource": "tempo",
@@ -448,21 +441,13 @@ func (s *Service) traceURL(traceID, from, to string) string {
 				"refId":      "A",
 				"datasource": map[string]string{"type": "tempo", "uid": "tempo"},
 				"queryType":  "traceql",
-				"query":      traceID,
+				"query":      t.TraceID,
 			}},
 			"range": map[string]string{"from": from, "to": to},
 		},
 	})
-	return s.grafanaLink("/explore", url.Values{"schemaVersion": {"1"}, "panes": {string(panes)}})
-}
-
-func (s *Service) brokerURL(from, to string) string {
-	return s.grafanaLink("/d/broker", url.Values{"from": {from}, "to": {to}})
-}
-
-func (s *Service) grafanaLink(path string, query url.Values) string {
-	query.Set("orgId", "1")
-	return s.grafanaURL + path + "?" + query.Encode()
+	query := url.Values{"schemaVersion": {"1"}, "orgId": {"1"}, "panes": {string(panes)}}
+	return s.grafanaURL + "/explore?" + query.Encode()
 }
 
 func (s *Service) render(w http.ResponseWriter, status int, name string, data any) {

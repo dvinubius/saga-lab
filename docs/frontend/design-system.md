@@ -179,9 +179,7 @@ underlined.
   outline and body text at 500, the others dim text that goes to body on hover.
 - Icon-only — square, with `aria-label` and `title` naming the action.
 - Quiet link — body text over a 1px accent bottom border; inline it takes a
-  trailing `→`, in the footer a leading one. Links on one fact row group at
-  its end, 18px apart. A fact row whose value is missing keeps its links and
-  says so in words (`Not traced`).
+  trailing `→`, in the footer a leading one.
 
 **Fields.** Mono on `--surface-page` with a hairline border, at
 `--row-height`; placeholder muted.

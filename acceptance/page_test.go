@@ -73,7 +73,7 @@ func TestRefreshingTheTransferPageNeverResubmits(t *testing.T) {
 	demo.assertBalances(t, 75, 25)
 }
 
-func TestTransferPagesLinkToTheirEvidence(t *testing.T) {
+func TestTransferPagesLinkToTheirTrace(t *testing.T) {
 	t.Parallel()
 	demo := startObservedDemonstration(t)
 
@@ -87,35 +87,24 @@ func TestTransferPagesLinkToTheirEvidence(t *testing.T) {
 		id := accepted[scenario].TransferID
 		v.awaitReplay(t, "/transfers/"+id)
 		page, current := v.settledPage(t, id)
-		from := strconv.FormatInt(current.RequestedAt.Add(-30*time.Second).UnixMilli(), 10)
-		to := strconv.FormatInt(current.History[len(current.History)-1].ObservedAt.Add(30*time.Second).UnixMilli(), 10)
+		from := strconv.FormatInt(current.RequestedAt.Add(-10*time.Second).UnixMilli(), 10)
+		to := strconv.FormatInt(current.History[len(current.History)-1].ObservedAt.Add(10*time.Second).UnixMilli(), 10)
 
 		trace := pageLink(t, page, "Trace →")
 		if trace == nil {
 			t.Errorf("%s page has no trace link", scenario)
-		} else {
-			var panes map[string]struct {
-				Queries []struct{ Query string }
-				Range   struct{ From, To string }
-			}
-			if err := json.Unmarshal([]byte(trace.Query().Get("panes")), &panes); err != nil {
-				t.Errorf("%s trace link %s: decode panes: %v", scenario, trace, err)
-			}
-			pane := panes["trace"]
-			if trace.Path != "/explore" || len(pane.Queries) != 1 || pane.Queries[0].Query != current.TraceID || current.TraceID == "" || pane.Range.From != from || pane.Range.To != to {
-				t.Errorf("%s trace link = %s, want Explore on trace %q from %s to %s", scenario, trace, current.TraceID, from, to)
-			}
-		}
-
-		broker := pageLink(t, page, "Broker →")
-		if scenario != "bank_b_unavailable" {
-			if broker != nil {
-				t.Errorf("%s page links to the broker: %s", scenario, broker)
-			}
 			continue
 		}
-		if broker == nil || broker.Path != "/d/broker" || broker.Query().Get("from") != from || broker.Query().Get("to") != to {
-			t.Errorf("%s broker link = %v, want the Broker dashboard from %s to %s", scenario, broker, from, to)
+		var panes map[string]struct {
+			Queries []struct{ Query string }
+			Range   struct{ From, To string }
+		}
+		if err := json.Unmarshal([]byte(trace.Query().Get("panes")), &panes); err != nil {
+			t.Errorf("%s trace link %s: decode panes: %v", scenario, trace, err)
+		}
+		pane := panes["trace"]
+		if trace.Path != "/explore" || len(pane.Queries) != 1 || pane.Queries[0].Query != current.TraceID || current.TraceID == "" || pane.Range.From != from || pane.Range.To != to {
+			t.Errorf("%s trace link = %s, want Explore on trace %q from %s to %s", scenario, trace, current.TraceID, from, to)
 		}
 	}
 }

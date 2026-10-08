@@ -92,7 +92,6 @@ func composeEnv(env []string) []string {
 		"OTEL_COLLECTOR_HTTP_PORT=",
 		"TEMPO_PORT=",
 		"GRAFANA_PORT=",
-		"PROMETHEUS_PORT=",
 		"SAGA_LAB_BANK_B_RESUME_WAIT=2.5s",
 	), env...)
 }

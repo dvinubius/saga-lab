@@ -5,11 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -270,7 +274,7 @@ func TestHolderResubmissionAndCompletionReleaseWithoutDeadlock(t *testing.T) {
 	}
 }
 
-func TestUntracedUnavailableTransferPageStillLinksToTheBroker(t *testing.T) {
+func TestPendingTransferTraceLinkHasAFixedWindow(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	config := bankConfig(t)
 	config.GrafanaURL = "http://grafana.test"
@@ -278,13 +282,33 @@ func TestUntracedUnavailableTransferPageStillLinksToTheBroker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	submitted := submitUnavailable(t, s, "visitor")
-	page := admissionRequest(s, "visitor", http.MethodGet, "/transfers/"+submitted.ID, "").Body.String()
-	if !strings.Contains(page, `id="broker-link" href="http://grafana.test/d/broker?`) {
-		t.Fatalf("untraced page has no broker link:\n%s", page)
+	ctx, span := sdktrace.NewTracerProvider().Tracer("test").Start(context.Background(), "submit")
+	defer span.End()
+	submittedAt := time.Now()
+	r := httptest.NewRequest(http.MethodPost, "/api/transfers", strings.NewReader(`{"amount":25,"scenario":"bank_b_unavailable"}`)).WithContext(ctx)
+	r.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: "visitor"})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	var submitted transferJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &submitted); err != nil || w.Code != http.StatusAccepted {
+		t.Fatalf("submit: %d %s, %v", w.Code, w.Body, err)
 	}
-	if strings.Contains(page, `id="trace-link"`) {
-		t.Fatalf("untraced page links to a trace:\n%s", page)
+	page := admissionRequest(s, "visitor", http.MethodGet, "/transfers/"+submitted.ID, "").Body.String()
+	match := regexp.MustCompile(`id="trace-link" href="([^"]+)"`).FindStringSubmatch(page)
+	if match == nil {
+		t.Fatalf("pending page has no trace link:\n%s", page)
+	}
+	link, err := url.Parse(html.UnescapeString(match[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var panes map[string]struct{ Range struct{ To string } }
+	if err := json.Unmarshal([]byte(link.Query().Get("panes")), &panes); err != nil {
+		t.Fatalf("decode panes of %s: %v", link, err)
+	}
+	to, err := strconv.ParseInt(panes["trace"].Range.To, 10, 64)
+	if err != nil || time.UnixMilli(to).Before(submittedAt.Add(config.ResumeWait)) {
+		t.Fatalf("pending trace link %s ends at %q, want a fixed time after the scheduled resume", link, panes["trace"].Range.To)
 	}
 }
 

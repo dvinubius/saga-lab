@@ -42,7 +42,7 @@ if [ "$short" = true ]; then
   pull=never
 else
   docker compose build
-  docker compose pull --quiet --policy missing postgres rabbitmq otel-collector tempo prometheus grafana
+  docker compose pull --quiet --policy missing postgres rabbitmq otel-collector tempo grafana
   pull=missing
 fi
 docker compose --file compose.yaml --file compose.test.yaml up --pull "$pull" --detach --wait postgres rabbitmq
