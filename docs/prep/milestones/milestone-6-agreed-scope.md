@@ -1,6 +1,6 @@
 # Milestone 6 — Agreed scope
 
-Build specification: not yet published.
+Build specification: [GitHub issue #61 — Complete engineering investigation: labelled waits, broker dashboard and transfer links](https://github.com/dvinubius/saga-lab/issues/61).
 
 These decisions refine milestone 6 and narrow it substantially. Traces, the persisted execution history, playback and the outcome summary already explain four of the five scenarios; the only evidence missing is the broker's own view of the delivery wait, plus labels for the gaps a trace already shows. The [Observability](../saga-lab-03-observability.md) document and the milestone 6 entry in [Milestones](../saga-lab-04-milestones.md) are amended in place to match.
 
