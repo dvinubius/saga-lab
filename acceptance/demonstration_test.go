@@ -3,6 +3,7 @@ package acceptance_test
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -35,7 +36,7 @@ func newVisitorClient(baseURL string) *visitorClient {
 	}}
 }
 
-func (d *visitorClient) visitorID(t *testing.T) string {
+func (d *visitorClient) token(t *testing.T) string {
 	t.Helper()
 	base, _ := url.Parse(d.baseURL)
 	for _, cookie := range d.client.Jar.Cookies(base) {
@@ -45,6 +46,17 @@ func (d *visitorClient) visitorID(t *testing.T) string {
 	}
 	t.Fatal("visitor cookie missing")
 	return ""
+}
+
+func (d *visitorClient) setToken(token string) {
+	base, _ := url.Parse(d.baseURL)
+	d.client.Jar.SetCookies(base, []*http.Cookie{{Name: visitor.CookieName, Value: token}})
+}
+
+func (d *visitorClient) visitorID(t *testing.T) string {
+	t.Helper()
+	hash := sha256.Sum256([]byte(d.token(t)))
+	return hex.EncodeToString(hash[:])
 }
 
 func (d *demonstration) visitor(t *testing.T) *visitorClient {
