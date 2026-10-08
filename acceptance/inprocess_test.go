@@ -88,7 +88,7 @@ func startDemonstration(t *testing.T) *inProcessDemonstration {
 	bankB := newService("bank-b", "bank_b", func(ctx context.Context, settings service.Settings) error {
 		return bank.Run(ctx, settings, bankBConfig)
 	})
-	config := transferservice.Config{ResumeWait: 2500 * time.Millisecond, BankAURL: bankA.url(), BankBURL: bankB.url(), GrafanaURL: "http://localhost:3000"}
+	config := transferservice.Config{ResumeWait: 2500 * time.Millisecond, BankAURL: bankA.url(), BankBURL: bankB.url(), GrafanaURL: "http://localhost:3000/grafana"}
 	transferService := newService("transfer-service", "transfer_service", func(ctx context.Context, settings service.Settings) error {
 		return transferservice.Run(ctx, settings, config)
 	})

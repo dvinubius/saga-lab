@@ -124,7 +124,7 @@ Playback requires **both a terminal business outcome and the selected scenarioâ€
 
 ## 8. Grafana investigation plan
 
-The only dashboard is a provisioned Trace dashboard showing one trace selected by a URL variable. The transfer page links to its trace there, on the transfer's own time window, so visitors do not land in an unrelated range. Recorded wait spans label the admission wait and the delivery wait, and span events mark injected faults, suppressed duplicates, scenario credit rejections, and the dedicated consumer pausing again.
+The only dashboard is a provisioned Trace dashboard (UID `saga-lab-trace`) whose one Traces panel queries Tempo with the TraceQL `${traceId}`, selected by the URL variable `var-traceId`. The transfer page links to its trace there, on the transfer's own time window as `from`/`to`, so visitors do not land in an unrelated range. Recorded wait spans label the admission wait and the delivery wait, and span events mark injected faults, suppressed duplicates, scenario credit rejections, and the dedicated consumer pausing again.
 
 The application's own outcome summary should remain understandable without opening Grafana. Grafana is the evidence layer, not the only user interface.
 

@@ -434,20 +434,8 @@ func (s *Service) traceURL(t transfer) string {
 	}
 	from := strconv.FormatInt(t.RequestedAt.Add(-10*time.Second).UnixMilli(), 10)
 	to := strconv.FormatInt(end.Add(10*time.Second).UnixMilli(), 10)
-	panes, _ := json.Marshal(map[string]any{
-		"trace": map[string]any{
-			"datasource": "tempo",
-			"queries": []map[string]any{{
-				"refId":      "A",
-				"datasource": map[string]string{"type": "tempo", "uid": "tempo"},
-				"queryType":  "traceql",
-				"query":      t.TraceID,
-			}},
-			"range": map[string]string{"from": from, "to": to},
-		},
-	})
-	query := url.Values{"schemaVersion": {"1"}, "orgId": {"1"}, "panes": {string(panes)}}
-	return s.grafanaURL + "/explore?" + query.Encode()
+	query := url.Values{"var-traceId": {t.TraceID}, "from": {from}, "to": {to}}
+	return s.grafanaURL + "/d/saga-lab-trace?" + query.Encode()
 }
 
 func (s *Service) render(w http.ResponseWriter, status int, name string, data any) {
