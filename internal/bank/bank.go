@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
@@ -261,6 +262,7 @@ func (b *Bank) creditFunds(msg *message.Message) error {
 		}, msg)
 	}, logger)
 	if err == nil && rejected {
+		trace.SpanFromContext(msg.Context()).AddEvent("credit.rejected", trace.WithAttributes(attribute.String("saga.scenario", command.Scenario)))
 		logger.Info("credit rejected as the scenario requires", "transfer_id", command.TransferID, "message_id", msg.UUID)
 	}
 	return err

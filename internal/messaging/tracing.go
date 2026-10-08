@@ -24,7 +24,7 @@ func AttemptID(ctx context.Context) string {
 }
 
 func AttemptLogger(ctx context.Context, logger *slog.Logger) *slog.Logger {
-	return logger.With("attempt_id", AttemptID(ctx))
+	return logger.With("attempt_id", AttemptID(ctx), "trace_id", trace.SpanContextFromContext(ctx).TraceID().String())
 }
 
 func send(ctx context.Context, publisher message.Publisher, topic string, msg *message.Message) error {
