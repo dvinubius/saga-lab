@@ -92,7 +92,7 @@ services:
       - prometheus
 
   bank-a:
-    image: saga-lab-services
+    image: ${SAGA_LAB_SERVICES_IMAGE:-saga-lab-services}
     build: .
     entrypoint: ["/usr/local/bin/bank-a"]
     environment:
@@ -111,7 +111,7 @@ services:
     restart: unless-stopped
 
   bank-b:
-    image: saga-lab-services
+    image: ${SAGA_LAB_SERVICES_IMAGE:-saga-lab-services}
     build: .
     entrypoint: ["/usr/local/bin/bank-b"]
     environment:
@@ -130,7 +130,7 @@ services:
     restart: unless-stopped
 
   transfer-service:
-    image: saga-lab-services
+    image: ${SAGA_LAB_SERVICES_IMAGE:-saga-lab-services}
     build: .
     entrypoint: ["/usr/local/bin/transfer-service"]
     environment:
