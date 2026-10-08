@@ -380,6 +380,7 @@ func (s *Service) debitRejected(msg *message.Message) error {
 	}
 	ctx := msg.Context()
 	current := ""
+	var admission wait
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		if err := lockSlotFor(ctx, tx, event.TransferID); err != nil {
 			return err
@@ -406,8 +407,12 @@ func (s *Service) debitRejected(msg *message.Message) error {
 		}); err != nil {
 			return err
 		}
-		return s.releaseSlot(ctx, tx, event.TransferID)
+		admission, err = s.releaseSlot(ctx, tx, event.TransferID)
+		return err
 	})
+	if err == nil {
+		admission.record()
+	}
 	return endTransition(err, messaging.DebitRejectedTopic, event.TransferID, current, msg, logger)
 }
 
@@ -420,6 +425,7 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 	}
 	ctx := msg.Context()
 	current := ""
+	var admission wait
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		if err := lockSlotFor(ctx, tx, event.TransferID); err != nil {
 			return err
@@ -446,8 +452,12 @@ func (s *Service) fundsCredited(msg *message.Message) error {
 		}); err != nil {
 			return err
 		}
-		return s.releaseSlot(ctx, tx, event.TransferID)
+		admission, err = s.releaseSlot(ctx, tx, event.TransferID)
+		return err
 	})
+	if err == nil {
+		admission.record()
+	}
 	return endTransition(err, messaging.FundsCreditedTopic, event.TransferID, current, msg, logger)
 }
 
@@ -535,6 +545,7 @@ func (s *Service) processingObserved(msg *message.Message) error {
 		return nil
 	}
 	ctx := msg.Context()
+	var admission wait
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		if event.Observation == messaging.DeliveryPaused {
 			if _, err := lockSlot(ctx, tx); err != nil {
@@ -548,7 +559,9 @@ func (s *Service) processingObserved(msg *message.Message) error {
 			return err
 		}
 		if event.Observation == messaging.DeliveryPaused {
-			return s.releaseSlot(ctx, tx, event.TransferID)
+			var err error
+			admission, err = s.releaseSlot(ctx, tx, event.TransferID)
+			return err
 		}
 		return nil
 	})
@@ -559,6 +572,7 @@ func (s *Service) processingObserved(msg *message.Message) error {
 	if err != nil {
 		return fmt.Errorf("record %s for transfer %s: %w", event.Observation, event.TransferID, err)
 	}
+	admission.record()
 	return nil
 }
 

@@ -16,9 +16,19 @@ const (
 
 var tracer = otel.Tracer("github.com/dvinubius/saga-lab/internal/transferservice")
 
-func recordWait(ctx context.Context, name, transferID string, start, end time.Time) {
-	_, span := tracer.Start(ctx, name,
-		trace.WithTimestamp(start),
-		trace.WithAttributes(attribute.String("saga.transfer_id", transferID)))
-	span.End(trace.WithTimestamp(end))
+type wait struct {
+	ctx        context.Context
+	name       string
+	transferID string
+	start, end time.Time
+}
+
+func (w wait) record() {
+	if w.ctx == nil {
+		return
+	}
+	_, span := tracer.Start(w.ctx, w.name,
+		trace.WithTimestamp(w.start),
+		trace.WithAttributes(attribute.String("saga.transfer_id", w.transferID)))
+	span.End(trace.WithTimestamp(w.end))
 }
