@@ -155,6 +155,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.getHome)
 	mux.HandleFunc("POST /transfers", s.postTransferForm)
 	mux.HandleFunc("POST /top-ups", s.postTopUpForm)
+	mux.HandleFunc("POST /reset", s.postResetForm)
 	mux.HandleFunc("GET /transfers/{transferID}", s.getTransferPage)
 	mux.HandleFunc("GET /api/balances", s.getBalances)
 	mux.HandleFunc("POST /api/top-ups", s.postTopUp)
@@ -328,6 +329,7 @@ type homePage struct {
 	ScenarioError string
 	Overlap       bool
 	TopUpRefused  bool
+	ResetRefused  bool
 }
 
 type transferPage struct {

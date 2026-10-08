@@ -8,9 +8,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dvinubius/saga-lab/internal/visitor"
 )
 
 type demonstration struct {
@@ -30,6 +33,18 @@ func newVisitorClient(baseURL string) *visitorClient {
 		Jar:           jar,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}
+}
+
+func (d *visitorClient) visitorID(t *testing.T) string {
+	t.Helper()
+	base, _ := url.Parse(d.baseURL)
+	for _, cookie := range d.client.Jar.Cookies(base) {
+		if cookie.Name == visitor.CookieName {
+			return cookie.Value
+		}
+	}
+	t.Fatal("visitor cookie missing")
+	return ""
 }
 
 func (d *demonstration) visitor(t *testing.T) *visitorClient {

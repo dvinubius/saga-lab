@@ -26,6 +26,7 @@
 <script src="/static/fresh.js"></script>
 <script src="/static/localtime.js"></script>
 <script src="/static/diagram-view.js"></script>
+<script src="/static/live.js"></script>
 {{end}}
 
 {{define "top"}}</head>
@@ -206,7 +207,7 @@
 {{define "command-inline"}}{{with .}}<b>{{.Attempts}}</b> attempt{{if ne .Attempts 1}}s{{end}}, <b>{{.Effects}}</b> effect{{if ne .Effects 1}}s{{end}}{{else}}not issued{{end}}{{end}}
 
 {{define "home"}}{{template "head"}}<title>Saga Lab</title>
-{{if and .PendingID (not .Overlap) (not .TopUpRefused)}}<noscript><meta http-equiv="refresh" content="1; url=/"></noscript>
+{{if and .PendingID (not .Overlap) (not .TopUpRefused) (not .ResetRefused)}}<noscript><meta http-equiv="refresh" content="1; url=/"></noscript>
 <script src="/static/poll.js" defer></script>{{end}}
 {{template "top" "centered"}}
 <section class="section">
@@ -236,16 +237,20 @@
   <p><a class="quiet-link" id="pending-transfer" href="/transfers/{{.}}">Follow pending transfer →</a></p>{{end}}
 </section>
 
+<div class="credits">
 <section class="panel">
   <h3 class="caps panel-head">Your credits</h3>
   <dl class="accounts">
     <div class="account">{{template "account" (account "bank-a" "Bank A" .Balances.BankA)}}
-      <dd class="top-up"><form method="post" action="/top-ups"><button class="btn btn-secondary" id="top-up"{{if .PendingID}} disabled{{end}}>+100 credits</button></form>
+      <dd class="top-up"><form method="post" action="/top-ups" data-in-place><button class="btn btn-secondary" id="top-up"{{if .PendingID}} disabled{{end}}>+100 credits</button></form>
         {{if .TopUpRefused}}<p class="error" id="top-up-error">No credits were added: a transfer is still pending.</p>{{end}}</dd>
     </div>
     <div class="account">{{template "account" (account "bank-b" "Bank B" .Balances.BankB)}}</div>
   </dl>
 </section>
+<form method="post" action="/reset" data-in-place><button class="btn btn-secondary" id="reset"{{if .PendingID}} disabled{{end}}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2.75V10.5"/><path d="M8 10.5H16L18.5 21.25H5.5Z"/><path d="M9.75 15V21M12 15V21M14.25 15V21"/></svg>Reset state</button></form>
+{{if .ResetRefused}}<p class="error" id="reset-error">Nothing was reset: a transfer is still in progress.</p>{{end}}
+</div>
 </div>
 
 <section class="panel" data-live="history">

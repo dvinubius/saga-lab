@@ -22,11 +22,15 @@ The indivisible fictional unit of value used in the demonstration; amounts are w
 An addition of a fixed number of fictional credits to a visitor's Bank A account, outside any transfer. It is not part of a Saga and leaves no execution history.
 _Avoid_: Deposit
 
+**Visitor reset**:
+A visitor's request to start over: the browser becomes a new visitor with fresh accounts, and the old visitor's accounts, transfers and execution histories are deleted. It is refused while one of the visitor's transfers is pending or holds the demonstration slot. Observability data is left to expire.
+_Avoid_: Demo reset (the operator's wipe of every visitor)
+
 **Transfer**:
 An attempt to move a chosen amount of credits from a visitor’s Bank A account to that visitor’s Bank B account, coordinated through independent local operations. It exists from submission and begins with its debit, which may first wait for admission.
 
 **Pending-transfer restriction**:
-A visitor has at most one transfer pending at a time; a submission made while one is pending starts nothing and names the pending transfer, and a top-up made then is refused. It is not request deduplication: a repeated submission after the pending transfer has ended starts a new transfer.
+A visitor has at most one transfer pending at a time; a submission made while one is pending starts nothing and names the pending transfer, and a top-up or visitor reset made then is refused. It is not request deduplication: a repeated submission after the pending transfer has ended starts a new transfer.
 _Avoid_: Idempotency, deduplication
 
 **Debit**:

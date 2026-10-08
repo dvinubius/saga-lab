@@ -152,6 +152,7 @@ func (b *Bank) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /accounts/{visitorID}", b.getAccount)
 	mux.HandleFunc("PUT /accounts/{visitorID}", b.openAccount)
+	mux.HandleFunc("DELETE /accounts/{visitorID}", b.closeAccount)
 	if b.topUpAmount > 0 {
 		mux.HandleFunc("POST /accounts/{visitorID}/top-ups", b.topUp)
 	}
@@ -383,6 +384,15 @@ func (b *Bank) getAccount(w http.ResponseWriter, r *http.Request) {
 func (b *Bank) openAccount(w http.ResponseWriter, r *http.Request) {
 	if _, err := b.db.Exec(r.Context(), `INSERT INTO accounts (visitor_id, balance) VALUES ($1, $2) ON CONFLICT (visitor_id) DO NOTHING`, r.PathValue("visitorID"), b.openingBalance); err != nil {
 		b.logger.Error("open account", "error", err)
+		web.WriteError(w, http.StatusInternalServerError, "account unavailable", b.logger)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (b *Bank) closeAccount(w http.ResponseWriter, r *http.Request) {
+	if _, err := b.db.Exec(r.Context(), `DELETE FROM accounts WHERE visitor_id = $1`, r.PathValue("visitorID")); err != nil {
+		b.logger.Error("close account", "error", err)
 		web.WriteError(w, http.StatusInternalServerError, "account unavailable", b.logger)
 		return
 	}
