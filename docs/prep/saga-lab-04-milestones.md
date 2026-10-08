@@ -9,7 +9,7 @@ Each milestone ends in demonstrable behavior with its own tests and recorded evi
 3. **Compensation, including duplicate-safe refunds:** implement permanent credit rejection, refund, and refund redelivery. Demonstrate both compensation scenarios with correct balances, tests, and sufficient history for playback.
 4. **Isolated consumer unavailability and recovery:** implement the dedicated Bank B queue, serialized admission, consumer cancellation/resumption, and friendly contention UI. Demonstrate approximately five seconds of real broker waiting while normal traffic continues. Test sequential visitors, routing, cleanup, and evidence readiness.
 5. **Complete visitor experience:** complete cookie-associated visitor setup and visitor-owned accounts, top-ups, all five scenario choices, outcome counts, and automatic/pause/step/replay controls. Clearly distinguish admission waiting, Saga execution, and preparation of the replay. Playback never repeats business operations.
-6. **Complete engineering investigation:** finish structured logs, reliability metrics, broker views, provisioned Grafana dashboards, and transfer-specific trace/log links. Verify that evidence supports every scenario's explanation.
+6. **Complete engineering investigation:** label the admission and delivery waits in traces, mark scenario facts with span events, put trace IDs in logs, and link each transfer to its trace on the transfer's time window. Verify that evidence supports every scenario's explanation. Log shipping, broker metrics, application metrics and dashboards are out of V1.
 7. **Public release:** deploy application and observability, run full scenario acceptance checks and polish, bound public resource use and retention (including a cap of about five transfers waiting for admission to Bank B unavailable, beyond which a submission is refused without creating a transfer), keep public observability read-only (and decide how anonymous visitors then open the transfer page's trace links), and document architecture, semantics, invariants, and representative demonstrations. Process-crash and broker-outage exercises remain excluded.
 
 Detail the first milestone into a spec and small tracer-bullet tickets, then refine later milestones using what the working system teaches us. Each implementation ticket carries its tests; the combined reliability milestone is not one oversized implementation ticket.
@@ -23,3 +23,4 @@ Each milestone, once refined, has its agreed scope in a separate document that l
 - [Milestone 3](milestones/milestone-3-agreed-scope.md)
 - [Milestone 4](milestones/milestone-4-agreed-scope.md)
 - [Milestone 5](milestones/milestone-5-agreed-scope.md)
+- [Milestone 6](milestones/milestone-6-agreed-scope.md)

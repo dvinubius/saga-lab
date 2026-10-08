@@ -5,11 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +23,10 @@ import (
 	"github.com/dvinubius/saga-lab/internal/postgres/pgtest"
 	"github.com/dvinubius/saga-lab/internal/transferservice"
 	"github.com/dvinubius/saga-lab/internal/visitor"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func admissionRequest(s *transferservice.Service, who, method, path, body string) *httptest.ResponseRecorder {
@@ -263,5 +271,93 @@ func TestHolderResubmissionAndCompletionReleaseWithoutDeadlock(t *testing.T) {
 	}
 	if got := admissionTransfer(t, s, "waiting", waiting.ID); got.Status != "debit_pending" {
 		t.Fatalf("release did not admit oldest: %+v", got)
+	}
+}
+
+func TestPendingTransferTraceLinkHasAFixedWindow(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	config := bankConfig(t)
+	config.GrafanaURL = "http://grafana.test"
+	s, err := transferservice.Open(context.Background(), db, config, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, span := sdktrace.NewTracerProvider().Tracer("test").Start(context.Background(), "submit")
+	defer span.End()
+	submittedAt := time.Now()
+	r := httptest.NewRequest(http.MethodPost, "/api/transfers", strings.NewReader(`{"amount":25,"scenario":"bank_b_unavailable"}`)).WithContext(ctx)
+	r.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: "visitor"})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	var submitted transferJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &submitted); err != nil || w.Code != http.StatusAccepted {
+		t.Fatalf("submit: %d %s, %v", w.Code, w.Body, err)
+	}
+	page := admissionRequest(s, "visitor", http.MethodGet, "/transfers/"+submitted.ID, "").Body.String()
+	match := regexp.MustCompile(`id="trace-link" href="([^"]+)"`).FindStringSubmatch(page)
+	if match == nil {
+		t.Fatalf("pending page has no trace link:\n%s", page)
+	}
+	link, err := url.Parse(html.UnescapeString(match[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var panes map[string]struct{ Range struct{ To string } }
+	if err := json.Unmarshal([]byte(link.Query().Get("panes")), &panes); err != nil {
+		t.Fatalf("decode panes of %s: %v", link, err)
+	}
+	to, err := strconv.ParseInt(panes["trace"].Range.To, 10, 64)
+	if err != nil || time.UnixMilli(to).Before(submittedAt.Add(config.ResumeWait)) {
+		t.Fatalf("pending trace link %s ends at %q, want a fixed time after the scheduled resume", link, panes["trace"].Range.To)
+	}
+}
+
+func TestAdmissionWaitIsTracedOnlyOnceTheAdmissionCommits(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)))
+	t.Cleanup(func() { otel.SetTracerProvider(previous) })
+	admissionWaits := func(transferID string) int {
+		count := 0
+		for _, span := range recorder.Ended() {
+			if span.Name() == "admission wait" && slices.Contains(span.Attributes(), attribute.String("saga.transfer_id", transferID)) {
+				count++
+			}
+		}
+		return count
+	}
+
+	db := pgtest.NewDatabase(t)
+	ctx := context.Background()
+	s, err := transferservice.Open(ctx, db, bankConfig(t), slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	holder := submitUnavailable(t, s, "holder")
+	waiting := submitUnavailable(t, s, "waiting")
+	reject := event(t, holder.ID, messaging.DebitRejected{TransferID: holder.ID, Reason: "Insufficient funds", ObservedAt: time.Now()})
+	if _, err := db.Exec(ctx, `
+		CREATE FUNCTION refuse_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'commit refused'; END $$;
+		CREATE CONSTRAINT TRIGGER refuse_commit AFTER INSERT ON transfer_history DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION refuse_commit();`); err != nil {
+		t.Fatalf("install commit trigger: %v", err)
+	}
+	if err := transferservice.DebitRejected(s, reject); err == nil {
+		t.Fatal("DebitRejected with a refused commit succeeded, want an error")
+	}
+	if got := admissionWaits(waiting.ID); got != 0 {
+		t.Fatalf("admission waits after a failed commit = %d, want 0", got)
+	}
+
+	if _, err := db.Exec(ctx, `DROP TRIGGER refuse_commit ON transfer_history`); err != nil {
+		t.Fatalf("drop commit trigger: %v", err)
+	}
+	if err := transferservice.DebitRejected(s, reject); err != nil {
+		t.Fatal(err)
+	}
+	if got := admissionTransfer(t, s, "waiting", waiting.ID); got.Status != "debit_pending" {
+		t.Fatalf("waiting = %+v, want admitted", got)
+	}
+	if got := admissionWaits(waiting.ID); got != 1 {
+		t.Fatalf("admission waits after the commit = %d, want 1", got)
 	}
 }

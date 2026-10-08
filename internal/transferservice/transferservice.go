@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -155,6 +156,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.getHome)
 	mux.HandleFunc("POST /transfers", s.postTransferForm)
 	mux.HandleFunc("POST /top-ups", s.postTopUpForm)
+	mux.HandleFunc("POST /reset", s.postResetForm)
 	mux.HandleFunc("GET /transfers/{transferID}", s.getTransferPage)
 	mux.HandleFunc("GET /api/balances", s.getBalances)
 	mux.HandleFunc("POST /api/top-ups", s.postTopUp)
@@ -328,6 +330,7 @@ type homePage struct {
 	ScenarioError string
 	Overlap       bool
 	TopUpRefused  bool
+	ResetRefused  bool
 }
 
 type transferPage struct {
@@ -419,12 +422,18 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 	}
 	page := transferPage{Transfer: t, Lanes: lanes, History: playback(historyRows(t.History))}
 	if t.TraceID != "" {
-		page.TraceURL = s.traceURL(t.TraceID)
+		page.TraceURL = s.traceURL(t)
 	}
 	s.render(w, http.StatusOK, "transfer", page)
 }
 
-func (s *Service) traceURL(traceID string) string {
+func (s *Service) traceURL(t transfer) string {
+	end := t.History[len(t.History)-1].ObservedAt
+	if t.Status.Pending() {
+		end = time.Now().Add(s.resumeWait)
+	}
+	from := strconv.FormatInt(t.RequestedAt.Add(-10*time.Second).UnixMilli(), 10)
+	to := strconv.FormatInt(end.Add(10*time.Second).UnixMilli(), 10)
 	panes, _ := json.Marshal(map[string]any{
 		"trace": map[string]any{
 			"datasource": "tempo",
@@ -432,9 +441,9 @@ func (s *Service) traceURL(traceID string) string {
 				"refId":      "A",
 				"datasource": map[string]string{"type": "tempo", "uid": "tempo"},
 				"queryType":  "traceql",
-				"query":      traceID,
+				"query":      t.TraceID,
 			}},
-			"range": map[string]string{"from": "now-1h", "to": "now"},
+			"range": map[string]string{"from": from, "to": to},
 		},
 	})
 	query := url.Values{"schemaVersion": {"1"}, "orgId": {"1"}, "panes": {string(panes)}}

@@ -9,17 +9,7 @@
       setTimeout(poll, 1000);
       return;
     }
-    localTimes(next);
-    [...next.querySelectorAll("[data-live]")].reverse().forEach((fresh) => {
-      const current = document.querySelector(`[data-live="${fresh.dataset.live}"]`);
-      if (current && current.outerHTML !== fresh.outerHTML) current.replaceWith(document.importNode(fresh, true));
-    });
-    checkDiagramView(document);
-    next.querySelectorAll("body script[src]").forEach((script) => {
-      const src = script.getAttribute("src");
-      if (document.querySelector(`script[src="${src}"]`)) return;
-      document.body.append(Object.assign(document.createElement("script"), { src }));
-    });
+    refreshLive(next);
     if (next.querySelector('script[src="/static/poll.js"]')) setTimeout(poll, 1000);
   };
   setTimeout(poll, 1000);

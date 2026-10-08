@@ -8,6 +8,7 @@ export POSTGRES_PORT=
 export RABBITMQ_PORT=
 export RABBITMQ_MANAGEMENT_PORT=
 export SAGA_LAB_ACCEPTANCE_PREFIX="saga-lab-acceptance-$run-"
+export SAGA_LAB_SERVICES_IMAGE="saga-lab-services-$(pwd -P | shasum | cut -c1-8)"
 
 remove_acceptance_projects() {
   local project

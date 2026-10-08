@@ -133,7 +133,7 @@ Each demonstration concludes with a concise, domain-level result: status, before
 
 For the canonical debit-redelivery experiment, the visitor should be able to see **two debit-command deliveries, two handling attempts, one debit, one credit, and zero duplicate effects**. For compensation, the visitor should be able to see the rejected credit and the refund restoring the source balance.
 
-The application presents this curated factual timeline and outcome; the observability interface provides the deeper traces, logs, metrics, and broker evidence. Direct links should connect the two. The user should not need to understand Grafana to understand the basic demonstration.
+The application presents this curated factual timeline and outcome; the observability interface provides the deeper traces and broker evidence. Direct links should connect the two. The user should not need to understand Grafana to understand the basic demonstration.
 
 ## 8. V1 boundaries and acceptance
 

@@ -57,6 +57,14 @@ func (c bankClient) openAccount(ctx context.Context, visitorID string) error {
 	return response.Body.Close()
 }
 
+func (c bankClient) closeAccount(ctx context.Context, visitorID string) error {
+	response, err := c.accountRequest(ctx, http.MethodDelete, accountPath(visitorID), "close account", http.StatusNoContent)
+	if err != nil {
+		return err
+	}
+	return response.Body.Close()
+}
+
 func accountPath(visitorID string) string {
 	return "/accounts/" + url.PathEscape(visitorID)
 }

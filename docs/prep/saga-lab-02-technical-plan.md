@@ -142,7 +142,7 @@ Show the business outcome immediately and “preparing the replay” while requi
 
 Playback is strictly **read-only**. Allow automatic playback, pause, backward/forward stepping, and replay; optional speed control is acceptable. Use approximately **500–800 ms of minimum screen time for short stages** and stretch longer actual delays proportionally enough to show their significance, while displaying the real timestamps and durations. A five-second queue wait must stand out from millisecond-scale delivery. A simple logical service/broker diagram is sufficient; do not build a Grafana clone or pretend animated movement measures network latency.
 
-Prefer server-rendered pages with small client-side playback behavior. Fetch the durable history when ready; status polling can report admission, execution, and evidence readiness, while a live event feed via Server-Sent Events is optional. Link directly to the appropriate Grafana trace/log/dashboard investigation.
+Prefer server-rendered pages with small client-side playback behavior. Fetch the durable history when ready; status polling can report admission, execution, and evidence readiness, while a live event feed via Server-Sent Events is optional. Link directly to the transfer's Grafana trace.
 
 ## 7. Automated verification: application invariants
 

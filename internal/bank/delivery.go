@@ -8,6 +8,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/dvinubius/saga-lab/internal/messaging"
 	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type DedicatedConsumer interface {
@@ -68,6 +69,7 @@ func (b *Bank) dedicatedCredit(msg *message.Message, resumedTransferID string, d
 	if err := b.dedicated.Pause(command.TransferID); err != nil {
 		return true, fmt.Errorf("pause delivery: %w", err)
 	}
+	trace.SpanFromContext(msg.Context()).AddEvent("consumer.paused")
 	if err := pgx.BeginFunc(msg.Context(), b.db, func(tx pgx.Tx) error {
 		return b.observe(tx, command.TransferID, messaging.DeliveryPaused, msg)
 	}); err != nil {

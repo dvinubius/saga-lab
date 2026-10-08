@@ -1,7 +1,6 @@
 package acceptance_test
 
 import (
-	"cmp"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -45,54 +44,13 @@ func TestTransferTraceCoversAllServices(t *testing.T) {
 	}
 
 	tempo := "http://" + serviceAddress(t, demo.project, "tempo", "3200")
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		body, spans := fetchTrace(t, tempo, completed.TraceID)
-		missing := missingSpans(spans, want)
-		if len(missing) == 0 {
-			assertNoSecrets(t, body)
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("trace %s lacks spans after test deadline: %+v\nexported spans: %+v", completed.TraceID, missing, spans)
-		}
-		time.Sleep(time.Second)
-	}
+	awaitSpans(t, tempo, completed, func(spans []exportedSpan) bool { return len(missingSpans(spans, want)) == 0 })
+	body, _ := fetchTrace(t, tempo, completed.TraceID)
+	assertNoSecrets(t, body)
 
 	redelivered := demo.submitTransfer(t, `{"amount": 25, "scenario": "debit_redelivery"}`)
 	completed = demo.awaitTransfer(t, redelivered.TransferID, "completed")
-	debitFunds = completed.History[0].IssuedMessageID
-	deadline = time.Now().Add(30 * time.Second)
-	for {
-		_, spans := fetchTrace(t, tempo, completed.TraceID)
-		var attempts []exportedSpan
-		for _, s := range spans {
-			if s.Service == "bank-a" && s.Kind == "SPAN_KIND_CONSUMER" && s.Topic == "DebitFunds" && s.MessageID == debitFunds {
-				attempts = append(attempts, s)
-			}
-		}
-		if len(attempts) >= 2 {
-			slices.SortFunc(attempts, func(a, b exportedSpan) int { return cmp.Compare(a.Start, b.Start) })
-			first, second := attempts[0], attempts[1]
-			if len(attempts) != 2 {
-				t.Errorf("Bank A DebitFunds consumer spans = %d, want 2: %+v", len(attempts), attempts)
-			}
-			if first.AttemptID == "" || first.AttemptID == second.AttemptID {
-				t.Errorf("attempt IDs = %q and %q, want two different IDs", first.AttemptID, second.AttemptID)
-			}
-			if !first.Failed || !slices.Contains(first.Events, "fault.injected") {
-				t.Errorf("first attempt failed = %v, events = %q, want error status and fault.injected", first.Failed, first.Events)
-			}
-			if second.Failed || !slices.Contains(second.Events, "duplicate.suppressed") {
-				t.Errorf("second attempt failed = %v, events = %q, want no error status and duplicate.suppressed", second.Failed, second.Events)
-			}
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("trace %s has %d Bank A DebitFunds consumer spans for %s after test deadline, want 2", completed.TraceID, len(attempts), debitFunds)
-		}
-		time.Sleep(time.Second)
-	}
+	assertRedeliveryTrace(t, tempo, completed, "DebitFunds", completed.History[0].IssuedMessageID)
 }
 
 type span struct {
@@ -107,10 +65,30 @@ type span struct {
 
 type exportedSpan struct {
 	span
+	Name      string
 	AttemptID string
-	Start     uint64
+	Start     time.Time
+	End       time.Time
 	Failed    bool
-	Events    []string
+	Events    []spanEvent
+}
+
+type spanEvent struct {
+	Name       string
+	Attributes []otlpAttribute
+}
+
+func (s exportedSpan) event(name string) (spanEvent, bool) {
+	i := slices.IndexFunc(s.Events, func(e spanEvent) bool { return e.Name == name })
+	if i < 0 {
+		return spanEvent{}, false
+	}
+	return s.Events[i], true
+}
+
+func (s exportedSpan) hasEvent(name string) bool {
+	_, found := s.event(name)
+	return found
 }
 
 func missingSpans(spans []exportedSpan, want []span) []span {
@@ -125,6 +103,49 @@ func missingSpans(spans []exportedSpan, want []span) []span {
 		}
 	}
 	return missing
+}
+
+func assertRedeliveryTrace(t *testing.T, tempo string, tr transfer, topic, messageID string) {
+	t.Helper()
+	var attempts []exportedSpan
+	awaitSpans(t, tempo, tr, func(spans []exportedSpan) bool {
+		attempts = nil
+		for _, s := range spans {
+			if s.Service == "bank-a" && s.Kind == "SPAN_KIND_CONSUMER" && s.Topic == topic && s.MessageID == messageID {
+				attempts = append(attempts, s)
+			}
+		}
+		return len(attempts) >= 2
+	})
+	slices.SortFunc(attempts, func(a, b exportedSpan) int { return a.Start.Compare(b.Start) })
+	if len(attempts) != 2 {
+		t.Errorf("Bank A %s consumer spans = %d, want 2: %+v", topic, len(attempts), attempts)
+	}
+	first, second := attempts[0], attempts[1]
+	if first.AttemptID == "" || first.AttemptID == second.AttemptID {
+		t.Errorf("attempt IDs = %q and %q, want two different IDs", first.AttemptID, second.AttemptID)
+	}
+	if !first.Failed || !first.hasEvent("fault.injected") {
+		t.Errorf("first attempt failed = %v, events = %+v, want error status and fault.injected", first.Failed, first.Events)
+	}
+	if second.Failed || !second.hasEvent("duplicate.suppressed") {
+		t.Errorf("second attempt failed = %v, events = %+v, want no error status and duplicate.suppressed", second.Failed, second.Events)
+	}
+}
+
+func awaitSpans(t *testing.T, tempo string, tr transfer, exported func([]exportedSpan) bool) []exportedSpan {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		_, spans := fetchTrace(t, tempo, tr.TraceID)
+		if exported(spans) {
+			return spans
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("trace %s of transfer %s lacks expected spans after test deadline: %+v", tr.TraceID, tr.TransferID, spans)
+		}
+		time.Sleep(time.Second)
+	}
 }
 
 type otlpAttribute struct {
@@ -164,11 +185,13 @@ func fetchTrace(t *testing.T, tempo, traceID string) ([]byte, []exportedSpan) {
 				Resource   struct{ Attributes []otlpAttribute }
 				ScopeSpans []struct {
 					Spans []struct {
+						Name              string
 						Kind              string
-						StartTimeUnixNano uint64 `json:",string"`
+						StartTimeUnixNano int64 `json:",string"`
+						EndTimeUnixNano   int64 `json:",string"`
 						Attributes        []otlpAttribute
 						Status            struct{ Code string }
-						Events            []struct{ Name string }
+						Events            []spanEvent
 					}
 				}
 			}
@@ -182,10 +205,6 @@ func fetchTrace(t *testing.T, tempo, traceID string) ([]byte, []exportedSpan) {
 		service := attributeValue(resource.Resource.Attributes, "service.name")
 		for _, scope := range resource.ScopeSpans {
 			for _, s := range scope.Spans {
-				var events []string
-				for _, e := range s.Events {
-					events = append(events, e.Name)
-				}
 				spans = append(spans, exportedSpan{
 					span: span{
 						Service:     service,
@@ -196,10 +215,12 @@ func fetchTrace(t *testing.T, tempo, traceID string) ([]byte, []exportedSpan) {
 						TransferID:  attributeValue(s.Attributes, "saga.transfer_id"),
 						Database:    attributeValue(s.Attributes, "db.system.name") == "postgresql",
 					},
+					Name:      s.Name,
 					AttemptID: attributeValue(s.Attributes, "saga.attempt_id"),
-					Start:     s.StartTimeUnixNano,
+					Start:     time.Unix(0, s.StartTimeUnixNano),
+					End:       time.Unix(0, s.EndTimeUnixNano),
 					Failed:    s.Status.Code == "STATUS_CODE_ERROR",
-					Events:    events,
+					Events:    s.Events,
 				})
 			}
 		}
