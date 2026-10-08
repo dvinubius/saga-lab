@@ -241,14 +241,15 @@
 <section class="panel">
   <h3 class="caps panel-head">Your credits</h3>
   <dl class="accounts">
-    <div class="account">{{template "account" (account "bank-a" "Bank A" .Balances.BankA)}}
-      <dd class="top-up"><form method="post" action="/top-ups" data-in-place><button class="btn btn-secondary" id="top-up"{{if .PendingID}} disabled{{end}}>+100 credits</button></form>
-        {{if .TopUpRefused}}<p class="error" id="top-up-error">No credits were added: a transfer is still pending.</p>{{end}}</dd>
-    </div>
+    <div class="account">{{template "account" (account "bank-a" "Bank A" .Balances.BankA)}}</div>
     <div class="account">{{template "account" (account "bank-b" "Bank B" .Balances.BankB)}}</div>
   </dl>
 </section>
-<form method="post" action="/reset" data-in-place><button class="btn btn-secondary" id="reset"{{if .PendingID}} disabled{{end}}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2.75V10.5"/><path d="M8 10.5H16L18.5 21.25H5.5Z"/><path d="M9.75 15V21M12 15V21M14.25 15V21"/></svg>Reset state</button></form>
+<div class="credit-actions">
+  <form method="post" action="/top-ups" data-in-place><button class="btn btn-secondary" id="top-up"{{if .PendingID}} disabled{{end}}>+100 Bank A</button></form>
+  <form method="post" action="/reset" data-in-place><button class="btn btn-secondary" id="reset"{{if .PendingID}} disabled{{end}}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2.75V10.5"/><path d="M8 10.5H16L18.5 21.25H5.5Z"/><path d="M9.75 15V21M12 15V21M14.25 15V21"/></svg>Reset all</button></form>
+</div>
+{{if .TopUpRefused}}<p class="error" id="top-up-error">No credits were added: a transfer is still pending.</p>{{end}}
 {{if .ResetRefused}}<p class="error" id="reset-error">Nothing was reset: a transfer is still in progress.</p>{{end}}
 </div>
 </div>

@@ -220,7 +220,7 @@ is rendered as text, never markup.
 field shows focus by turning its border and a 1px inset outline muted.
 
 **Submitting.** A form whose answer is the page it sits on (top-up, reset
-state) posts in the background and updates that page in place; its button is
+all) posts in the background and updates that page in place; its button is
 disabled until the answer arrives.
 
 **Disabled.** Keeps its shape, drops to `--disabled-opacity`, `cursor:
