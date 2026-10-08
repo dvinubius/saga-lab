@@ -1,6 +1,6 @@
 # Milestone 7 — Agreed scope
 
-Build specification: not yet written.
+Build specification: [GitHub issue #66 — Public release: shared VPS deployment, read-only investigation and bounded use](https://github.com/dvinubius/saga-lab/issues/66).
 
 These decisions refine milestone 7. Everything in the milestone 7 entry in [Milestones](../saga-lab-04-milestones.md) is in scope. The [Technical Plan](../saga-lab-02-technical-plan.md) §9 and the [Observability](../saga-lab-03-observability.md) document §8–9 are amended in place to match. Expected traffic is organic only, about one visitor a week for a few minutes; there is no synthetic traffic.
 
