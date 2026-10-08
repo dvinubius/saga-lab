@@ -1,0 +1,34 @@
+{
+  "uid": "saga-lab-trace",
+  "title": "Trace",
+  "editable": false,
+  "schemaVersion": 41,
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "traceId",
+        "label": "Trace ID",
+        "type": "textbox",
+        "query": ""
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "traces",
+      "title": "Trace",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 30 },
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "traceql",
+          "query": "${traceId}"
+        }
+      ]
+    }
+  ]
+}

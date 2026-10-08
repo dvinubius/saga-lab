@@ -25,6 +25,11 @@ import (
 //go:embed schema.sql
 var schema string
 
+const (
+	inboxRetention     = 7 * 24 * time.Hour
+	inboxPruneInterval = time.Hour
+)
+
 var errInjectedFailure = errors.New("injected lost acknowledgement after commit")
 
 type Role struct {
@@ -97,6 +102,9 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 	}
 	g.Go(func() error { return broker.Run(ctx) })
 	g.Go(func() error { return broker.RunRelay(ctx, db, settings.Logger) })
+	g.Go(func() error {
+		return messaging.RunInboxPruning(ctx, db, inboxRetention, inboxPruneInterval, settings.Logger)
+	})
 	g.Go(func() error { return web.Serve(ctx, settings.Listener, b.Handler(), web.Internal, settings.Logger) })
 	return g.Wait()
 }

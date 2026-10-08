@@ -46,15 +46,20 @@ var pages = template.Must(template.New("pages").Funcs(template.FuncMap{
 }).Parse(pagesTemplate))
 
 type Config struct {
-	BankAURL     string
-	BankBURL     string
-	GrafanaURL   string
-	ResumeWait   time.Duration
-	SecureCookie bool
+	BankAURL      string
+	BankBURL      string
+	GrafanaURL    string
+	ResumeWait    time.Duration
+	SecureCookie  bool
+	VisitorExpiry time.Duration
+	ExpirySweep   time.Duration
 }
 
 func Run(ctx context.Context, settings service.Settings, config Config) error {
 	defer settings.Listener.Close()
+	if config.VisitorExpiry <= 0 || config.ExpirySweep <= 0 {
+		return errors.New("visitor expiry and its sweep interval must be positive")
+	}
 	db, err := postgres.Connect(ctx, settings.DatabaseURL)
 	if err != nil {
 		return err
@@ -75,6 +80,7 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 	g.Go(func() error { return broker.Run(ctx) })
 	g.Go(func() error { return broker.RunRelay(ctx, db, settings.Logger) })
 	g.Go(func() error { return s.runResumeSchedule(ctx) })
+	g.Go(func() error { return s.runExpirySweep(ctx, config.VisitorExpiry, config.ExpirySweep) })
 	g.Go(func() error { return web.Serve(ctx, settings.Listener, s.Handler(), web.Public, settings.Logger) })
 	return g.Wait()
 }
@@ -89,7 +95,7 @@ func Reset(ctx context.Context, settings service.Settings) error {
 	}
 	defer db.Close()
 	return pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS demonstration_slot, transfer_history, transfers, visitors`); err != nil {
+		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS demonstration_slot, transfer_history, transfers, visitors, account_closures`); err != nil {
 			return fmt.Errorf("drop transfers: %w", err)
 		}
 		if _, err := tx.Exec(ctx, schema); err != nil {
@@ -450,20 +456,8 @@ func (s *Service) traceURL(t transfer) string {
 	}
 	from := strconv.FormatInt(t.RequestedAt.Add(-10*time.Second).UnixMilli(), 10)
 	to := strconv.FormatInt(end.Add(10*time.Second).UnixMilli(), 10)
-	panes, _ := json.Marshal(map[string]any{
-		"trace": map[string]any{
-			"datasource": "tempo",
-			"queries": []map[string]any{{
-				"refId":      "A",
-				"datasource": map[string]string{"type": "tempo", "uid": "tempo"},
-				"queryType":  "traceql",
-				"query":      t.TraceID,
-			}},
-			"range": map[string]string{"from": from, "to": to},
-		},
-	})
-	query := url.Values{"schemaVersion": {"1"}, "orgId": {"1"}, "panes": {string(panes)}}
-	return s.grafanaURL + "/explore?" + query.Encode()
+	query := url.Values{"var-traceId": {t.TraceID}, "from": {from}, "to": {to}}
+	return s.grafanaURL + "/d/saga-lab-trace?" + query.Encode()
 }
 
 func (s *Service) render(w http.ResponseWriter, status int, name string, data any) {
