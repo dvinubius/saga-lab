@@ -22,7 +22,7 @@ documents. Files directly under `docs/` describe the system as built.
 | Visitor token, Grafana exposure, telemetry rules, rate limits, expiry, secrets | [Security](security.md) |
 | Design limitations and known gaps | [Limitations](limitations.md) |
 | Deploying, one-time setup, operating the VPS stack, rollback | [Deployment runbook](deployment-runbook.md) |
-| UI changes (`pages.html`, `static/`) | [Design system](frontend/design-system.md) |
+| UI changes (`pages.html`, `static/`) | [Design system](../.agents/design-system.md) |
 | Domain terms | [Glossary](../GLOSSARY.md) |
 | Why a durable technical decision was made | [Architecture decision records](adr/) |
 | Intended behavior, milestone scope, open requirements | [`docs/prep/`](prep/) |
@@ -40,7 +40,7 @@ When documents disagree, investigate in this order:
    ahead of the code.
 
 The [glossary](../GLOSSARY.md), the [ADRs](adr/) and the
-[design system](frontend/design-system.md) are normative too: follow their
+[design system](../.agents/design-system.md) are normative too: follow their
 terms, decisions and rules.
 
 Resolve a mismatch instead of silently choosing one: update stale

@@ -121,6 +121,7 @@ button,.btn,a{transition:var(--hover-transition);}
 .main.wide{max-width:1040px;gap:24px;}
 .section{display:flex;flex-direction:column;gap:14px;}
 .intro{max-width:600px;font-size:16px;}
+.intro-emphasis{color:var(--text-body);font-weight:500;}
 .page-head{display:flex;align-items:center;gap:20px;}
 .main>.section>h2.title{margin-bottom:12px;font-size:32px;}
 .stage-title{margin-top:16px;font-size:18px;}

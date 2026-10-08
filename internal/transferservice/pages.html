@@ -211,10 +211,9 @@
 <script src="/static/poll.js" defer></script>{{end}}
 {{template "top" "centered"}}
 <section class="section" id="introduction">
-<h2 class="title">Inter-Bank Transfer</h2>
-<p class="note intro">This is a live demo of an orchestrated Saga. A Transfer Service coordinates each transfer of fictional credits from Bank A to Bank B as local steps, one per bank, joined by messages through a broker. No transaction spans the banks: a credit Bank B refuses is compensated by a refund, not rolled back.</p>
-<p class="note intro">Five scenarios show what can go wrong and how the transfer still ends consistent: Happy path, Debit redelivery, Credit rejection &amp; refund, Bank B unavailable, and Credit rejection &amp; refund redelivery.</p>
-<p class="note intro">Pick a scenario, make a transfer and watch its execution. Its Trace → link opens the transfer's distributed trace in Grafana, the evidence behind the replay.</p>
+<h2 class="title">Orchestrated Credit Transfer</h2>
+<p class="note intro">This is a live demo of orchestrated Sagas. Credits are transferred from Bank A to Bank B in a message-based distributed transaction, which is coordinated by a third service.</p>
+<p class="note intro">Five scenarios show what can go wrong and how the transfer still ends consistent. Pick one, make a transfer and <span class="intro-emphasis">replay its execution</span>. You can also <span class="intro-emphasis">examine the trace</span> in Grafana, as observed evidence.</p>
 </section>
 
 <div class="columns transfer-row" data-live="transfer">

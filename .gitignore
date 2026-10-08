@@ -3,6 +3,7 @@
 .codegraph/
 .agents/
 .claude/
+
 skills-lock.json
 
 docs/learning/

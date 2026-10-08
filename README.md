@@ -102,7 +102,7 @@ scripts/smoke.sh http://localhost:8080  # all five scenarios against a running s
 - [Security](docs/security.md)
 - [Limitations and known gaps](docs/limitations.md)
 - [Deployment runbook](docs/deployment-runbook.md)
-- [Design system](docs/frontend/design-system.md)
+- [Design system](.agents/design-system.md)
 - [Glossary](GLOSSARY.md)
 - [Architecture decision records](docs/adr/)
 
