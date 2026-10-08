@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/dvinubius/saga-lab/internal/service"
@@ -22,6 +23,11 @@ func main() {
 				return errors.New("BANK_B_RESUME_WAIT must be configured as a positive Go duration")
 			}
 			config.ResumeWait = wait
+			if secure := os.Getenv("VISITOR_COOKIE_SECURE"); secure != "" {
+				if config.SecureCookie, err = strconv.ParseBool(secure); err != nil {
+					return errors.New("VISITOR_COOKIE_SECURE must be true or false")
+				}
+			}
 			return transferservice.Run(ctx, settings, config)
 		},
 		transferservice.Reset)

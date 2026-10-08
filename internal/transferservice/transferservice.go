@@ -46,10 +46,11 @@ var pages = template.Must(template.New("pages").Funcs(template.FuncMap{
 }).Parse(pagesTemplate))
 
 type Config struct {
-	BankAURL   string
-	BankBURL   string
-	GrafanaURL string
-	ResumeWait time.Duration
+	BankAURL     string
+	BankBURL     string
+	GrafanaURL   string
+	ResumeWait   time.Duration
+	SecureCookie bool
 }
 
 func Run(ctx context.Context, settings service.Settings, config Config) error {
@@ -99,13 +100,14 @@ func Reset(ctx context.Context, settings service.Settings) error {
 }
 
 type Service struct {
-	db         *pgxpool.Pool
-	broker     *messaging.Broker
-	bankA      bankClient
-	bankB      bankClient
-	grafanaURL string
-	logger     *slog.Logger
-	resumeWait time.Duration
+	db           *pgxpool.Pool
+	broker       *messaging.Broker
+	bankA        bankClient
+	bankB        bankClient
+	grafanaURL   string
+	logger       *slog.Logger
+	resumeWait   time.Duration
+	secureCookie bool
 }
 
 func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Logger) (*Service, error) {
@@ -119,12 +121,13 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 		return nil, err
 	}
 	return &Service{
-		db:         db,
-		bankA:      newBankClient(messaging.BankA, config.BankAURL),
-		bankB:      newBankClient(messaging.BankB, config.BankBURL),
-		grafanaURL: strings.TrimSuffix(config.GrafanaURL, "/"),
-		logger:     logger,
-		resumeWait: config.ResumeWait,
+		db:           db,
+		bankA:        newBankClient(messaging.BankA, config.BankAURL),
+		bankB:        newBankClient(messaging.BankB, config.BankBURL),
+		grafanaURL:   strings.TrimSuffix(config.GrafanaURL, "/"),
+		logger:       logger,
+		resumeWait:   config.ResumeWait,
+		secureCookie: config.SecureCookie,
 	}, nil
 }
 

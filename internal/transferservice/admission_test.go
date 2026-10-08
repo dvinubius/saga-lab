@@ -31,7 +31,7 @@ import (
 
 func admissionRequest(s *transferservice.Service, who, method, path, body string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
-	r.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: who})
+	r.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: visitorToken(who)})
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
 	return w
@@ -157,7 +157,7 @@ func TestReleaseAdmitsOldestWaitingTransferAfterBothCompletionAndPause(t *testin
 			if err := db.QueryRow(context.Background(), `SELECT payload FROM outbox WHERE message_id = $1 AND topic = 'DebitFunds'`, admitted.History[1].IssuedMessageID).Scan(&payload); err != nil {
 				t.Fatal(err)
 			}
-			if err := json.Unmarshal(payload, &command); err != nil || command.TransferID != first.ID || command.VisitorID != "first" || command.Amount != 25 {
+			if err := json.Unmarshal(payload, &command); err != nil || command.TransferID != first.ID || command.VisitorID != visitorID("first") || command.Amount != 25 {
 				t.Fatalf("debit = %+v, %v", command, err)
 			}
 			if order == "rejection" {
@@ -254,7 +254,7 @@ func TestHolderResubmissionAndCompletionReleaseWithoutDeadlock(t *testing.T) {
 		group.Go(func() {
 			<-start
 			r := httptest.NewRequest(http.MethodPost, "/api/transfers", strings.NewReader(`{"amount":25,"scenario":"bank_b_unavailable"}`)).WithContext(ctx)
-			r.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: "holder"})
+			r.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: visitorToken("holder")})
 			responses[i] = httptest.NewRecorder()
 			s.Handler().ServeHTTP(responses[i], r)
 		})
@@ -286,7 +286,7 @@ func TestPendingTransferTraceLinkHasAFixedWindow(t *testing.T) {
 	defer span.End()
 	submittedAt := time.Now()
 	r := httptest.NewRequest(http.MethodPost, "/api/transfers", strings.NewReader(`{"amount":25,"scenario":"bank_b_unavailable"}`)).WithContext(ctx)
-	r.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: "visitor"})
+	r.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: visitorToken("visitor")})
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
 	var submitted transferJSON

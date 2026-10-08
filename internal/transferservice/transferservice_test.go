@@ -3,8 +3,10 @@ package transferservice_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"github.com/dvinubius/saga-lab/internal/visitor"
 	"io"
 	"log/slog"
@@ -467,8 +469,18 @@ func bankConfig(t *testing.T) transferservice.Config {
 
 func testRequest(method, path string, body io.Reader) *http.Request {
 	r := httptest.NewRequest(method, path, body)
-	r.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: "test-visitor"})
+	r.AddCookie(&http.Cookie{Name: visitor.CookieName, Value: visitorToken("test-visitor")})
 	return r
+}
+
+func visitorToken(name string) string {
+	hash := sha256.Sum256([]byte(name))
+	return hex.EncodeToString(hash[:])
+}
+
+func visitorID(name string) string {
+	hash := sha256.Sum256([]byte(visitorToken(name)))
+	return hex.EncodeToString(hash[:])
 }
 
 func TestTopUpChangesNothingWhenBankBIsUnavailable(t *testing.T) {
@@ -507,6 +519,27 @@ func TestTopUpChangesNothingWhenBankBIsUnavailable(t *testing.T) {
 	}
 	if toppedUp {
 		t.Fatal("Bank A was topped up although the top-up failed")
+	}
+}
+
+func TestVisitorCookieIsSecureWhenConfigured(t *testing.T) {
+	for _, secure := range []bool{false, true} {
+		t.Run(fmt.Sprintf("secure %v", secure), func(t *testing.T) {
+			config := bankConfig(t)
+			config.SecureCookie = secure
+			s, err := transferservice.Open(context.Background(), pgtest.NewDatabase(t), config, slog.New(slog.DiscardHandler))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, request := range []*http.Request{httptest.NewRequest(http.MethodGet, "/api/transfers", nil), testRequest(http.MethodPost, "/reset", nil)} {
+				response := httptest.NewRecorder()
+				s.Handler().ServeHTTP(response, request)
+				cookies := response.Result().Cookies()
+				if len(cookies) != 1 || cookies[0].Secure != secure {
+					t.Fatalf("%s %s: visitor cookies = %v, want Secure %v", request.Method, request.URL.Path, cookies, secure)
+				}
+			}
+		})
 	}
 }
 

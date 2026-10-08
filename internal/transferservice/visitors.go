@@ -3,6 +3,7 @@ package transferservice
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -17,16 +18,17 @@ import (
 
 func (s *Service) visitors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := ""
-		if cookie, err := r.Cookie(visitor.CookieName); err == nil {
-			id = cookie.Value
+		token := ""
+		if cookie, err := r.Cookie(visitor.CookieName); err == nil && validToken(cookie.Value) {
+			token = cookie.Value
 		}
-		if id == "" {
+		if token == "" {
 			var err error
-			if id, err = s.newVisitor(w); err != nil {
+			if token, err = s.newVisitor(w); err != nil {
 				return
 			}
 		}
+		id := visitorID(token)
 		if err := s.openVisitor(r.Context(), id); err != nil {
 			s.logger.Error("open visitor accounts", "error", err)
 			if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -47,9 +49,19 @@ func (s *Service) newVisitor(w http.ResponseWriter) (string, error) {
 		http.Error(w, "The page could not be served.", http.StatusInternalServerError)
 		return "", err
 	}
-	id := hex.EncodeToString(random[:])
-	http.SetCookie(w, &http.Cookie{Name: visitor.CookieName, Value: id, HttpOnly: true, SameSite: http.SameSiteLaxMode, Path: "/", MaxAge: 365 * 24 * 60 * 60, Expires: time.Now().AddDate(1, 0, 0)})
-	return id, nil
+	token := hex.EncodeToString(random[:])
+	http.SetCookie(w, &http.Cookie{Name: visitor.CookieName, Value: token, HttpOnly: true, Secure: s.secureCookie, SameSite: http.SameSiteLaxMode, Path: "/", MaxAge: 365 * 24 * 60 * 60, Expires: time.Now().AddDate(1, 0, 0)})
+	return token, nil
+}
+
+func validToken(token string) bool {
+	_, err := hex.DecodeString(token)
+	return len(token) == 64 && err == nil
+}
+
+func visitorID(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
 }
 
 func (s *Service) openVisitor(ctx context.Context, id string) error {
