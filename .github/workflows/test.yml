@@ -21,7 +21,4 @@ jobs:
       - name: Tests
         run: make test
       - name: Deployment script tests
-        run: |
-          if grep -q '^test-deploy:' Makefile; then
-            make test-deploy
-          fi
+        run: make test-deploy
