@@ -73,6 +73,10 @@ The exclusive right, shared by all visitors, to run a Bank B unavailability tran
 **Admission wait**:
 A submitted transfer's wait for the demonstration slot, before the transfer begins.
 
+**Delivery wait**:
+In Bank B unavailability, the few seconds during which the transfer's credit command waits in the broker with no consumer for it. Distinct from the admission wait, which precedes the transfer.
+_Avoid_: Queue wait, Bank B downtime
+
 **Execution history**:
 The recorded steps and processing observations associated with a transfer.
 
