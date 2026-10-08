@@ -6,12 +6,23 @@ x-app-healthcheck: &app-healthcheck
   start_period: 60s
   start_interval: 250ms
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:17.10-alpine3.24@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+    mem_limit: 128m
+    logging: *logging
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      TRANSFER_SERVICE_DB_PASSWORD: transfer_service
+      BANK_A_DB_PASSWORD: bank_a
+      BANK_B_DB_PASSWORD: bank_b
     ports:
       - "127.0.0.1:${POSTGRES_PORT-5432}:5432"
     volumes:
@@ -27,6 +38,8 @@ services:
 
   rabbitmq:
     image: rabbitmq:4.3.5-management-alpine@sha256:b3b8b7f95f5382a19f9ea33540e604f30aad081d37ad9aba72255135765373a1
+    mem_limit: 256m
+    logging: *logging
     hostname: rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: saga_lab
@@ -47,6 +60,8 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector:0.160.0@sha256:e495787f07dbe432ce763ebaf5bc3d113850e9eee2250ade7a3da6a882d0d69a
+    mem_limit: 64m
+    logging: *logging
     command: ["--config=/etc/otel-collector/config.yaml"]
     ports:
       - "127.0.0.1:${OTEL_COLLECTOR_HTTP_PORT-4318}:4318"
@@ -57,6 +72,8 @@ services:
 
   tempo:
     image: grafana/tempo:3.0.3@sha256:0296560ac66f8a3600d7fb3014a52c189d4d9c3549ad6ff441bf2409855d68d5
+    mem_limit: 256m
+    logging: *logging
     command: ["-target=all", "-config.file=/etc/tempo/tempo.yaml"]
     ports:
       - "127.0.0.1:${TEMPO_PORT-3200}:3200"
@@ -66,6 +83,8 @@ services:
 
   grafana:
     image: grafana/grafana:13.0.6@sha256:035dfe16f7a3a109b54f2ac032232b07d069aa732156480555b2391fc0a32813
+    mem_limit: 256m
+    logging: *logging
     environment:
       GF_SERVER_ROOT_URL: ${SAGA_LAB_GRAFANA_URL-http://localhost:3000/grafana}
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
@@ -92,6 +111,8 @@ services:
 
   bank-a:
     image: ${SAGA_LAB_SERVICES_IMAGE:-saga-lab-services}
+    mem_limit: 64m
+    logging: *logging
     build: .
     entrypoint: ["/usr/local/bin/bank-a"]
     environment:
@@ -111,6 +132,8 @@ services:
 
   bank-b:
     image: ${SAGA_LAB_SERVICES_IMAGE:-saga-lab-services}
+    mem_limit: 64m
+    logging: *logging
     build: .
     entrypoint: ["/usr/local/bin/bank-b"]
     environment:
@@ -130,6 +153,8 @@ services:
 
   transfer-service:
     image: ${SAGA_LAB_SERVICES_IMAGE:-saga-lab-services}
+    mem_limit: 64m
+    logging: *logging
     build: .
     entrypoint: ["/usr/local/bin/transfer-service"]
     environment:
