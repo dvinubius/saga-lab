@@ -13,15 +13,15 @@ import (
 type issuedResume struct {
 	ID                string
 	TraceContext      propagation.MapCarrier
-	CreditRequestedAt time.Time
+	CreditConfirmedAt time.Time
 }
 
 func (s *Service) runResumeSchedule(ctx context.Context) error {
 	for {
 		var waits []wait
 		err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-			rows, err := tx.Query(ctx, `UPDATE transfers t SET resume_issued = true WHERE resume_at <= clock_timestamp() AND NOT resume_issued
-  RETURNING transfer_id, trace_context, (SELECT observed_at FROM transfer_history h WHERE h.transfer_id = t.transfer_id AND h.step = $1)`, creditRequested)
+			rows, err := tx.Query(ctx, `UPDATE transfers SET resume_issued = true WHERE resume_at <= clock_timestamp() AND NOT resume_issued
+  RETURNING transfer_id, trace_context, credit_confirmed_at`)
 			if err != nil {
 				return err
 			}
@@ -39,7 +39,7 @@ func (s *Service) runResumeSchedule(ctx context.Context) error {
 				if err := messaging.Enqueue(resumeContext, tx, messaging.ResumeDeliveryTopic, command); err != nil {
 					return err
 				}
-				waits = append(waits, wait{resumeContext, deliveryWaitSpan, transfer.ID, transfer.CreditRequestedAt, issuedAt})
+				waits = append(waits, wait{resumeContext, deliveryWaitSpan, transfer.ID, transfer.CreditConfirmedAt, issuedAt})
 			}
 			return nil
 		})
