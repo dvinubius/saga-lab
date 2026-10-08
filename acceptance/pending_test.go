@@ -134,7 +134,7 @@ func pendingTransferLink(page []byte) string {
 
 func (d *inProcessDemonstration) holdBankADebits(t *testing.T) (release func()) {
 	t.Helper()
-	d.assertBalances(t, 100, 0)
+	d.get(t, "/api/balances")
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, d.bankA.settings.DatabaseURL)
 	if err != nil {

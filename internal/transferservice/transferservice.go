@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dvinubius/saga-lab/internal/messaging"
@@ -46,14 +47,20 @@ var pages = template.Must(template.New("pages").Funcs(template.FuncMap{
 }).Parse(pagesTemplate))
 
 type Config struct {
-	BankAURL   string
-	BankBURL   string
-	GrafanaURL string
-	ResumeWait time.Duration
+	BankAURL      string
+	BankBURL      string
+	GrafanaURL    string
+	ResumeWait    time.Duration
+	SecureCookie  bool
+	VisitorExpiry time.Duration
+	ExpirySweep   time.Duration
 }
 
 func Run(ctx context.Context, settings service.Settings, config Config) error {
 	defer settings.Listener.Close()
+	if config.VisitorExpiry <= 0 || config.ExpirySweep <= 0 {
+		return errors.New("visitor expiry and its sweep interval must be positive")
+	}
 	db, err := postgres.Connect(ctx, settings.DatabaseURL)
 	if err != nil {
 		return err
@@ -74,6 +81,7 @@ func Run(ctx context.Context, settings service.Settings, config Config) error {
 	g.Go(func() error { return broker.Run(ctx) })
 	g.Go(func() error { return broker.RunRelay(ctx, db, settings.Logger) })
 	g.Go(func() error { return s.runResumeSchedule(ctx) })
+	g.Go(func() error { return s.runExpirySweep(ctx, config.VisitorExpiry, config.ExpirySweep) })
 	g.Go(func() error { return web.Serve(ctx, settings.Listener, s.Handler(), web.Public, settings.Logger) })
 	return g.Wait()
 }
@@ -88,7 +96,7 @@ func Reset(ctx context.Context, settings service.Settings) error {
 	}
 	defer db.Close()
 	return pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS demonstration_slot, transfer_history, transfers, visitors`); err != nil {
+		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS demonstration_slot, transfer_history, transfers, visitors, account_closures`); err != nil {
 			return fmt.Errorf("drop transfers: %w", err)
 		}
 		if _, err := tx.Exec(ctx, schema); err != nil {
@@ -99,13 +107,15 @@ func Reset(ctx context.Context, settings service.Settings) error {
 }
 
 type Service struct {
-	db         *pgxpool.Pool
-	broker     *messaging.Broker
-	bankA      bankClient
-	bankB      bankClient
-	grafanaURL string
-	logger     *slog.Logger
-	resumeWait time.Duration
+	visitorMu    sync.Mutex
+	db           *pgxpool.Pool
+	broker       *messaging.Broker
+	bankA        bankClient
+	bankB        bankClient
+	grafanaURL   string
+	logger       *slog.Logger
+	resumeWait   time.Duration
+	secureCookie bool
 }
 
 func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Logger) (*Service, error) {
@@ -119,12 +129,13 @@ func Open(ctx context.Context, db *pgxpool.Pool, config Config, logger *slog.Log
 		return nil, err
 	}
 	return &Service{
-		db:         db,
-		bankA:      newBankClient(messaging.BankA, config.BankAURL),
-		bankB:      newBankClient(messaging.BankB, config.BankBURL),
-		grafanaURL: strings.TrimSuffix(config.GrafanaURL, "/"),
-		logger:     logger,
-		resumeWait: config.ResumeWait,
+		db:           db,
+		bankA:        newBankClient(messaging.BankA, config.BankAURL),
+		bankB:        newBankClient(messaging.BankB, config.BankBURL),
+		grafanaURL:   strings.TrimSuffix(config.GrafanaURL, "/"),
+		logger:       logger,
+		resumeWait:   config.ResumeWait,
+		secureCookie: config.SecureCookie,
 	}, nil
 }
 
@@ -296,6 +307,11 @@ func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
 		}, s.logger)
 		return
 	}
+	if errors.Is(err, errAdmissionLimit) {
+		w.Header().Set("Retry-After", retryAfter)
+		web.WriteError(w, http.StatusServiceUnavailable, errAdmissionLimit.Error(), s.logger)
+		return
+	}
 	if err != nil {
 		s.logger.Error("submit transfer", "error", err)
 		web.WriteError(w, http.StatusInternalServerError, "transfer could not be started", s.logger)
@@ -320,18 +336,21 @@ func (s *Service) getTransfer(w http.ResponseWriter, r *http.Request) {
 }
 
 type homePage struct {
-	Balances      balances
-	Transfers     []transferSummary
-	PendingID     string
-	Amount        string
-	Scenario      scenario
-	Scenarios     []scenario
-	Error         string
-	ScenarioError string
-	Overlap       bool
-	TopUpRefused  bool
-	ResetRefused  bool
+	Balances         balances
+	Transfers        []transferSummary
+	PendingID        string
+	Amount           string
+	Scenario         scenario
+	Scenarios        []scenario
+	Error            string
+	ScenarioError    string
+	Overlap          bool
+	AdmissionLimited bool
+	TopUpRefused     bool
+	ResetRefused     bool
 }
+
+const retryAfter = "60"
 
 type transferPage struct {
 	Transfer transfer
@@ -387,6 +406,11 @@ func (s *Service) postTransferForm(w http.ResponseWriter, r *http.Request) {
 		s.renderHome(w, r, http.StatusConflict, homePage{PendingID: pending.PendingID, Amount: text, Scenario: chosen, Overlap: true})
 		return
 	}
+	if errors.Is(err, errAdmissionLimit) {
+		w.Header().Set("Retry-After", retryAfter)
+		s.renderHome(w, r, http.StatusServiceUnavailable, homePage{Amount: text, Scenario: chosen, AdmissionLimited: true})
+		return
+	}
 	if err != nil {
 		s.logger.Error("submit transfer", "error", err)
 		http.Error(w, "The transfer could not be started.", http.StatusInternalServerError)
@@ -434,20 +458,8 @@ func (s *Service) traceURL(t transfer) string {
 	}
 	from := strconv.FormatInt(t.RequestedAt.Add(-10*time.Second).UnixMilli(), 10)
 	to := strconv.FormatInt(end.Add(10*time.Second).UnixMilli(), 10)
-	panes, _ := json.Marshal(map[string]any{
-		"trace": map[string]any{
-			"datasource": "tempo",
-			"queries": []map[string]any{{
-				"refId":      "A",
-				"datasource": map[string]string{"type": "tempo", "uid": "tempo"},
-				"queryType":  "traceql",
-				"query":      t.TraceID,
-			}},
-			"range": map[string]string{"from": from, "to": to},
-		},
-	})
-	query := url.Values{"schemaVersion": {"1"}, "orgId": {"1"}, "panes": {string(panes)}}
-	return s.grafanaURL + "/explore?" + query.Encode()
+	query := url.Values{"var-traceId": {t.TraceID}, "from": {from}, "to": {to}}
+	return s.grafanaURL + "/d/saga-lab-trace?" + query.Encode()
 }
 
 func (s *Service) render(w http.ResponseWriter, status int, name string, data any) {

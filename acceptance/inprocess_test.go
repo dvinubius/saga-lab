@@ -49,7 +49,7 @@ type inProcessService struct {
 	err      error
 }
 
-func startDemonstration(t *testing.T) *inProcessDemonstration {
+func startDemonstration(t *testing.T, configure ...func(*transferservice.Config)) *inProcessDemonstration {
 	t.Helper()
 	for _, variable := range []string{pgtest.AdminURLVariable, amqpURLVariable, managementURLVariable} {
 		if os.Getenv(variable) == "" {
@@ -88,7 +88,10 @@ func startDemonstration(t *testing.T) *inProcessDemonstration {
 	bankB := newService("bank-b", "bank_b", func(ctx context.Context, settings service.Settings) error {
 		return bank.Run(ctx, settings, bankBConfig)
 	})
-	config := transferservice.Config{ResumeWait: 2500 * time.Millisecond, BankAURL: bankA.url(), BankBURL: bankB.url(), GrafanaURL: "http://localhost:3000"}
+	config := transferservice.Config{ResumeWait: 2500 * time.Millisecond, BankAURL: bankA.url(), BankBURL: bankB.url(), GrafanaURL: "http://localhost:3000/grafana", VisitorExpiry: 7 * 24 * time.Hour, ExpirySweep: time.Hour}
+	for _, c := range configure {
+		c(&config)
+	}
 	transferService := newService("transfer-service", "transfer_service", func(ctx context.Context, settings service.Settings) error {
 		return transferservice.Run(ctx, settings, config)
 	})

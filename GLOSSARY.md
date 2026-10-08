@@ -29,6 +29,9 @@ _Avoid_: Demo reset (the operator's wipe of every visitor)
 **Visitor expiry**:
 The deletion of a visitor unseen for seven days, with the same effect as a visitor reset: a returning browser starts over with fresh accounts. A visitor whose transfer is pending or holds the demonstration slot does not expire.
 
+**Transfer retention**:
+Completed, rejected and refunded transfers disappear seven days after their request time, along with their execution histories. Account balances remain. A pending transfer or demonstration-slot holder is kept until it can be safely removed.
+
 **Transfer**:
 An attempt to move a chosen amount of credits from a visitor’s Bank A account to that visitor’s Bank B account, coordinated through independent local operations. It exists from submission and begins with its debit, which may first wait for admission.
 

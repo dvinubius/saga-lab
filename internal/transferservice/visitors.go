@@ -3,6 +3,7 @@ package transferservice
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -17,16 +18,19 @@ import (
 
 func (s *Service) visitors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := ""
-		if cookie, err := r.Cookie(visitor.CookieName); err == nil {
-			id = cookie.Value
+		s.visitorMu.Lock()
+		defer s.visitorMu.Unlock()
+		token := ""
+		if cookie, err := r.Cookie(visitor.CookieName); err == nil && validToken(cookie.Value) {
+			token = cookie.Value
 		}
-		if id == "" {
+		if token == "" {
 			var err error
-			if id, err = s.newVisitor(w); err != nil {
+			if token, err = s.newVisitor(w); err != nil {
 				return
 			}
 		}
+		id := visitorID(token)
 		if err := s.openVisitor(r.Context(), id); err != nil {
 			s.logger.Error("open visitor accounts", "error", err)
 			if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -47,18 +51,37 @@ func (s *Service) newVisitor(w http.ResponseWriter) (string, error) {
 		http.Error(w, "The page could not be served.", http.StatusInternalServerError)
 		return "", err
 	}
-	id := hex.EncodeToString(random[:])
-	http.SetCookie(w, &http.Cookie{Name: visitor.CookieName, Value: id, HttpOnly: true, SameSite: http.SameSiteLaxMode, Path: "/", MaxAge: 365 * 24 * 60 * 60, Expires: time.Now().AddDate(1, 0, 0)})
-	return id, nil
+	token := hex.EncodeToString(random[:])
+	http.SetCookie(w, &http.Cookie{Name: visitor.CookieName, Value: token, HttpOnly: true, Secure: s.secureCookie, SameSite: http.SameSiteLaxMode, Path: "/", MaxAge: 365 * 24 * 60 * 60, Expires: time.Now().AddDate(1, 0, 0)})
+	return token, nil
+}
+
+func validToken(token string) bool {
+	_, err := hex.DecodeString(token)
+	return len(token) == 64 && err == nil
+}
+
+func visitorID(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
 }
 
 func (s *Service) openVisitor(ctx context.Context, id string) error {
-	var opened bool
-	if err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM visitors WHERE visitor_id = $1)`, id).Scan(&opened); err != nil {
-		return fmt.Errorf("read visitor: %w", err)
+	seen, err := s.db.Exec(ctx, `UPDATE visitors SET last_seen_at = now() WHERE visitor_id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("record visitor seen: %w", err)
 	}
-	if opened {
+	if seen.RowsAffected() == 1 {
 		return nil
+	}
+	var closing bool
+	if err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM account_closures WHERE visitor_id = $1)`, id).Scan(&closing); err != nil {
+		return fmt.Errorf("read account closures: %w", err)
+	}
+	if closing {
+		if err := s.closeAccounts(ctx, id); err != nil {
+			return err
+		}
 	}
 	if err := s.bankA.openAccount(ctx, id); err != nil {
 		return err
@@ -107,6 +130,7 @@ func (s *Service) forgetVisitor(ctx context.Context, id string) error {
 			`DELETE FROM transfer_history WHERE transfer_id IN (SELECT transfer_id FROM transfers WHERE visitor_id = $1)`,
 			`DELETE FROM transfers WHERE visitor_id = $1`,
 			`DELETE FROM visitors WHERE visitor_id = $1`,
+			`INSERT INTO account_closures (visitor_id) VALUES ($1) ON CONFLICT DO NOTHING`,
 		} {
 			if _, err := tx.Exec(ctx, statement, id); err != nil {
 				return err
@@ -117,8 +141,25 @@ func (s *Service) forgetVisitor(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	return s.closeAccounts(ctx, id)
+}
+
+func (s *Service) closeAccounts(ctx context.Context, id string) error {
+	var closing bool
+	if err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM account_closures WHERE visitor_id = $1)`, id).Scan(&closing); err != nil {
+		return fmt.Errorf("read account closures: %w", err)
+	}
+	if !closing {
+		return nil
+	}
 	if err := s.bankA.closeAccount(ctx, id); err != nil {
 		return err
 	}
-	return s.bankB.closeAccount(ctx, id)
+	if err := s.bankB.closeAccount(ctx, id); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(ctx, `DELETE FROM account_closures WHERE visitor_id = $1`, id); err != nil {
+		return fmt.Errorf("record account closure: %w", err)
+	}
+	return nil
 }

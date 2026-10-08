@@ -30,6 +30,8 @@ func Serve(ctx context.Context, listener net.Listener, handler http.Handler, exp
 	server := &http.Server{
 		Handler:           traced,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelInfo),
 	}
 	served := make(chan error, 1)

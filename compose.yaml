@@ -6,12 +6,23 @@ x-app-healthcheck: &app-healthcheck
   start_period: 60s
   start_interval: 250ms
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:17.10-alpine3.24@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+    mem_limit: 128m
+    logging: *logging
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      TRANSFER_SERVICE_DB_PASSWORD: transfer_service
+      BANK_A_DB_PASSWORD: bank_a
+      BANK_B_DB_PASSWORD: bank_b
     ports:
       - "127.0.0.1:${POSTGRES_PORT-5432}:5432"
     volumes:
@@ -27,6 +38,8 @@ services:
 
   rabbitmq:
     image: rabbitmq:4.3.5-management-alpine@sha256:b3b8b7f95f5382a19f9ea33540e604f30aad081d37ad9aba72255135765373a1
+    mem_limit: 256m
+    logging: *logging
     hostname: rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: saga_lab
@@ -47,6 +60,8 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector:0.160.0@sha256:e495787f07dbe432ce763ebaf5bc3d113850e9eee2250ade7a3da6a882d0d69a
+    mem_limit: 64m
+    logging: *logging
     command: ["--config=/etc/otel-collector/config.yaml"]
     ports:
       - "127.0.0.1:${OTEL_COLLECTOR_HTTP_PORT-4318}:4318"
@@ -57,6 +72,8 @@ services:
 
   tempo:
     image: grafana/tempo:3.0.3@sha256:0296560ac66f8a3600d7fb3014a52c189d4d9c3549ad6ff441bf2409855d68d5
+    mem_limit: 256m
+    logging: *logging
     command: ["-target=all", "-config.file=/etc/tempo/tempo.yaml"]
     ports:
       - "127.0.0.1:${TEMPO_PORT-3200}:3200"
@@ -65,20 +82,37 @@ services:
       - tempo-data:/var/tempo
 
   grafana:
-    image: grafana/grafana:13.2.1@sha256:f772d434e8fab0049deb2b1b30abd43342bcfca1537614aa8d36080232cf4283
+    image: grafana/grafana:13.0.6@sha256:035dfe16f7a3a109b54f2ac032232b07d069aa732156480555b2391fc0a32813
+    mem_limit: 256m
+    logging: *logging
     environment:
+      GF_SERVER_ROOT_URL: ${SAGA_LAB_GRAFANA_URL-http://localhost:3000/grafana}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD-admin}
       GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Editor
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SNAPSHOTS_ENABLED: "false"
+      GF_PUBLIC_DASHBOARDS_ENABLED: "false"
     ports:
       - "127.0.0.1:${GRAFANA_PORT-3000}:3000"
     volumes:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/grafana/api/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 60s
+      start_interval: 250ms
     depends_on:
       - tempo
 
   bank-a:
     image: ${SAGA_LAB_SERVICES_IMAGE:-saga-lab-services}
+    mem_limit: 64m
+    logging: *logging
     build: .
     entrypoint: ["/usr/local/bin/bank-a"]
     environment:
@@ -98,6 +132,8 @@ services:
 
   bank-b:
     image: ${SAGA_LAB_SERVICES_IMAGE:-saga-lab-services}
+    mem_limit: 64m
+    logging: *logging
     build: .
     entrypoint: ["/usr/local/bin/bank-b"]
     environment:
@@ -117,6 +153,8 @@ services:
 
   transfer-service:
     image: ${SAGA_LAB_SERVICES_IMAGE:-saga-lab-services}
+    mem_limit: 64m
+    logging: *logging
     build: .
     entrypoint: ["/usr/local/bin/transfer-service"]
     environment:
@@ -128,7 +166,10 @@ services:
       BANK_B_RESUME_WAIT: ${SAGA_LAB_BANK_B_RESUME_WAIT-5s}
       BANK_A_URL: http://bank-a:8080
       BANK_B_URL: http://bank-b:8080
-      GRAFANA_URL: ${SAGA_LAB_GRAFANA_URL-http://localhost:3000}
+      GRAFANA_URL: ${SAGA_LAB_GRAFANA_URL-http://localhost:3000/grafana}
+      VISITOR_COOKIE_SECURE: ${SAGA_LAB_VISITOR_COOKIE_SECURE-false}
+      VISITOR_EXPIRY: 168h
+      VISITOR_EXPIRY_SWEEP: 1h
     ports:
       - "127.0.0.1:${TRANSFER_SERVICE_PORT-8080}:8080"
     depends_on:

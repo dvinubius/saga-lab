@@ -1,4 +1,4 @@
-.PHONY: up down logs reset test
+.PHONY: up down logs reset test test-deploy
 
 up:
 	docker compose up --detach --build --wait
@@ -15,3 +15,8 @@ reset:
 
 test:
 	scripts/test.sh
+
+test-deploy:
+	./scripts/classify-deploy_test.sh
+	./scripts/ci-deploy_test.sh
+	./scripts/remote-deploy_test.sh

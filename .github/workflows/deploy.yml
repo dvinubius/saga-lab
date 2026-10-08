@@ -1,0 +1,117 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_full:
+        description: Full deployment of the selected main commit (bootstrap or recovery)
+        type: boolean
+        default: true
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  plan:
+    needs: test
+    runs-on: ubuntu-24.04
+    environment: production
+    outputs:
+      mode: ${{ steps.classify.outputs.mode }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install deployment SSH credentials
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" >"$RUNNER_TEMP/deploy_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >"$RUNNER_TEMP/known_hosts"
+      - name: Classify changes since the last verified deployment
+        id: classify
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_full && 'full' || '' }}
+        run: |
+          mode=$(DEPLOY_SSH_KEY_FILE="$RUNNER_TEMP/deploy_key" \
+            DEPLOY_KNOWN_HOSTS_FILE="$RUNNER_TEMP/known_hosts" \
+            ./scripts/ci-deploy.sh plan "$GITHUB_SHA" $FORCE)
+          printf 'mode=%s\n' "$mode" >>"$GITHUB_OUTPUT"
+          printf 'Deployment mode for `%s`: **%s**\n' "$GITHUB_SHA" "$mode" >>"$GITHUB_STEP_SUMMARY"
+
+  image:
+    needs: plan
+    if: needs.plan.outputs.mode == 'full'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.push.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and push the services image
+        id: push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          repository=ghcr.io/dvinubius/saga-lab
+          printf '%s\n' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker build --platform linux/amd64 \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --tag "$repository:$GITHUB_SHA" .
+          docker push --quiet "$repository:$GITHUB_SHA"
+          image=$(docker image inspect --format '{{index .RepoDigests 0}}' "$repository:$GITHUB_SHA")
+          [[ $image =~ ^${repository//./\\.}@sha256:[0-9a-f]{64}$ ]] || { echo "Unexpected digest: $image" >&2; exit 1; }
+          docker logout ghcr.io
+          printf 'image=%s\n' "$image" >>"$GITHUB_OUTPUT"
+          printf 'Published `%s`\n' "$image" >>"$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: image
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install deployment SSH credentials
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" >"$RUNNER_TEMP/deploy_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >"$RUNNER_TEMP/known_hosts"
+      - name: Deploy
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_PULL_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DEPLOY_SSH_KEY_FILE="$RUNNER_TEMP/deploy_key" \
+            DEPLOY_KNOWN_HOSTS_FILE="$RUNNER_TEMP/known_hosts" \
+            ./scripts/ci-deploy.sh deploy "$GITHUB_SHA" "$IMAGE"
+          printf 'Deployed `%s` with `%s`\n' "$GITHUB_SHA" "$IMAGE" >>"$GITHUB_STEP_SUMMARY"

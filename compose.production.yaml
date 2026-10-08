@@ -1,0 +1,75 @@
+name: saga-lab
+
+x-services-image: &services-image ${SAGA_LAB_IMAGE:?Set SAGA_LAB_IMAGE to a published image digest in .env.image.}
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      TRANSFER_SERVICE_DB_PASSWORD: ${TRANSFER_SERVICE_DB_PASSWORD:?}
+      BANK_A_DB_PASSWORD: ${BANK_A_DB_PASSWORD:?}
+      BANK_B_DB_PASSWORD: ${BANK_B_DB_PASSWORD:?}
+    ports: !reset []
+    restart: unless-stopped
+
+  rabbitmq:
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?}
+    ports: !reset []
+    restart: unless-stopped
+
+  otel-collector:
+    ports: !reset []
+    restart: unless-stopped
+
+  tempo:
+    ports: !reset []
+    restart: unless-stopped
+
+  grafana:
+    environment:
+      GF_SERVER_ROOT_URL: https://saga.dinubarbu.com/grafana/
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?}
+    ports: !reset []
+    networks:
+      default:
+      saga-lab-edge:
+        aliases: [saga-lab-grafana]
+    restart: unless-stopped
+
+  bank-a:
+    image: *services-image
+    build: !reset null
+    environment:
+      DATABASE_URL: postgres://bank_a:${BANK_A_DB_PASSWORD:?}@postgres:5432/bank_a?sslmode=disable
+      AMQP_URL: amqp://${RABBITMQ_USER:?}:${RABBITMQ_PASSWORD:?}@rabbitmq:5672/
+    ports: !reset []
+
+  bank-b:
+    image: *services-image
+    build: !reset null
+    environment:
+      DATABASE_URL: postgres://bank_b:${BANK_B_DB_PASSWORD:?}@postgres:5432/bank_b?sslmode=disable
+      AMQP_URL: amqp://${RABBITMQ_USER:?}:${RABBITMQ_PASSWORD:?}@rabbitmq:5672/
+    ports: !reset []
+
+  transfer-service:
+    image: *services-image
+    build: !reset null
+    environment:
+      DATABASE_URL: postgres://transfer_service:${TRANSFER_SERVICE_DB_PASSWORD:?}@postgres:5432/transfer_service?sslmode=disable
+      AMQP_URL: amqp://${RABBITMQ_USER:?}:${RABBITMQ_PASSWORD:?}@rabbitmq:5672/
+      BANK_B_RESUME_WAIT: 5s
+      GRAFANA_URL: https://saga.dinubarbu.com/grafana/
+      VISITOR_COOKIE_SECURE: "true"
+    ports: !override
+      - "127.0.0.1:8090:8080"
+    networks:
+      default:
+      saga-lab-edge:
+        aliases: [saga-lab]
+
+networks:
+  saga-lab-edge:
+    external: true
