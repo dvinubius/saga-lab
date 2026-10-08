@@ -285,9 +285,9 @@
       <dt>Transfer ID</dt>
       <dd class="linked"><code><data id="transfer-id" value="{{.ID}}">{{.ID}}</data></code><a class="quiet-link" id="transfer-json" href="/api/transfers/{{.ID}}" target="_blank">JSON →</a></dd>
     </div>
-    {{with .TraceID}}<div>
+    {{if or .TraceID $.BrokerURL}}<div>
       <dt>Trace ID</dt>
-      <dd class="linked"><code><data id="trace-id" value="{{.}}">{{.}}</data></code><span class="links">{{with $.TraceURL}}<a class="quiet-link" id="trace-link" href="{{.}}" target="_blank">Trace →</a>{{end}}{{with $.BrokerURL}}<a class="quiet-link" id="broker-link" href="{{.}}" target="_blank">Broker →</a>{{end}}</span></dd>
+      <dd class="linked">{{with .TraceID}}<code><data id="trace-id" value="{{.}}">{{.}}</data></code>{{else}}<span>Not traced</span>{{end}}<span class="links">{{with $.TraceURL}}<a class="quiet-link" id="trace-link" href="{{.}}" target="_blank">Trace →</a>{{end}}{{with $.BrokerURL}}<a class="quiet-link" id="broker-link" href="{{.}}" target="_blank">Broker →</a>{{end}}</span></dd>
     </div>{{end}}
   </dl>
 </section>
