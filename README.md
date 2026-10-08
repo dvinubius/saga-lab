@@ -1,150 +1,110 @@
+<p align="center">
+  <a href="https://saga.dinubarbu.com"><img src="internal/transferservice/static/saga-lab-logo-row.png" alt="Saga Lab" width="480"></a>
+</p>
+
+<p align="center">
+  A live demonstration of orchestrated Sagas: transfers that stay consistent
+  across two independent banks, with the evidence to prove it.
+</p>
+
+<p align="center">
+  <a href="docs/README.md">Docs</a> ·
+  <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/scenarios.md">Scenarios</a> ·
+  <a href="docs/observability.md">Observability</a>
+</p>
+
+<p align="center">
+  <a href="https://saga.dinubarbu.com/readyz"><img src="https://img.shields.io/website?url=https%3A%2F%2Fsaga.dinubarbu.com%2Freadyz&label=saga.dinubarbu.com&up_message=live&down_message=down" alt="saga.dinubarbu.com status"></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/dvinubius/saga-lab" alt="Go version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/dvinubius/saga-lab" alt="MIT license"></a>
+</p>
+
+<h3 align="center">
+  <a href="https://saga.dinubarbu.com">https://saga.dinubarbu.com</a>
+</h3>
+
 # Saga Lab
 
-A local demonstration of orchestrated Sagas: a Transfer Service coordinates transfers of fictional credits between two independently owned banks.
+A Transfer Service moves fictional credits from Bank A to Bank B. The two
+banks own their own databases, so no transaction can span a transfer. Instead
+the Transfer Service orchestrates it as a **Saga**: each bank commits its own
+local step, the steps are joined by messages through RabbitMQ, and a credit
+Bank B rejects is compensated by a refund rather than rolled back.
 
-Milestone 2 is complete. Each browser is its own visitor, with an account at each bank starting with 100 credits at Bank A and 0 at Bank B. A private window is a separate visitor. The visitor transfers a whole number of credits from Bank A to Bank B and follows the transfer's status, balances, and recorded history on a minimal page. Each transfer can be followed as one distributed trace in Grafana. A development reset clears visitors and transfers; returning browsers receive fresh accounts on their next request. Every service commits its state changes together with its outgoing messages, and the **Debit redelivery** scenario shows a redelivered debit recognised and applied only once, with the evidence in the transfer's history.
+Each visitor gets an account at each bank, 100 credits at Bank A and 0 at
+Bank B, picks a scenario, makes a transfer and watches it run. Five scenarios
+show what can go wrong in a message-driven system and how this one stays
+consistent:
 
-## Requirements
+- **Happy path**: debit, credit, done.
+- **Debit redelivery**: Bank A's acknowledgement is lost after it commits the
+  debit; the broker redelivers it, and the bank's inbox recognises the
+  duplicate and applies nothing.
+- **Credit rejection & refund**: Bank B refuses the credit; the Transfer
+  Service compensates with a refund to Bank A.
+- **Bank B unavailable**: the credit command waits in the broker with no
+  consumer for a few seconds, then is delivered and applied.
+- **Credit rejection & refund redelivery**: the refund's acknowledgement is
+  lost too, and the refund is still applied exactly once.
 
-- Docker with Compose v2
-- Go 1.27, to run the tests
+Every transfer leaves an execution history recorded by the services
+themselves, a replay of it, an outcome summary counting each command's
+handling attempts and committed effects, and a link to its distributed trace
+in a read-only Grafana. The point is not that it works on a good day, but that
+a reviewer can see *why* it stays correct on a bad one: every state change is
+committed together with its outgoing messages (an outbox per service), every
+command is applied at most once (an inbox per bank), and duplicate effects are
+counted to show there are none. See [scenarios and invariants](docs/scenarios.md).
 
-## Run
+Behind the page sits a small production deployment: three Go services, one
+services image published to GHCR by digest, PostgreSQL, RabbitMQ, the
+OpenTelemetry Collector, Tempo and Grafana, memory-bounded on a shared VPS
+behind the [hetzner-one](https://github.com/dvinubius/hetzner-one) Caddy. A
+tested pipeline deploys every push to `main`, checks the release from inside
+and from the internet by running all five scenarios against the public site,
+and restores the previous deployment if any check fails. Visitors expire after
+a week; nothing grows without bound.
+
+## Run locally
+
+Requires Docker with Compose v2.
 
 ```bash
-make up
+make up      # build and start everything, wait until ready
 ```
 
-This builds the services, starts them with PostgreSQL, RabbitMQ, and the tracing stack (OpenTelemetry Collector, Tempo, Grafana), and waits until every container reports ready. Open <http://localhost:8080>.
-
-| Service          | Host URL                | Database           |
-| ---------------- | ----------------------- | ------------------ |
-| Transfer Service | <http://localhost:8080> | `transfer_service` |
-| Bank A           | <http://localhost:8081> | `bank_a`           |
-| Bank B           | <http://localhost:8082> | `bank_b`           |
-| PostgreSQL       | `localhost:5432`        |                    |
-| RabbitMQ         | `localhost:5672`        |                    |
-| Grafana          | <http://localhost:3000/grafana/> |           |
-| Tempo API        | <http://localhost:3200> |                    |
-| Collector (OTLP/HTTP) | `localhost:4318`   |                    |
-
-The RabbitMQ management UI is at <http://localhost:15672> (user and password `saga_lab`).
-
-HTTP interfaces:
-
-- Transfer Service pages: `GET /` shows a transfer form, balances, and a Transfer history of earlier transfers, newest first; `POST /transfers` submits the form and redirects to `GET /transfers/{transferID}`, which shows the transfer and refreshes itself while it is pending. While a transfer is pending, `GET /` disables the form and links the pending transfer, and `POST /transfers` answers `409 Conflict` with the same page. `POST /top-ups` submits the **+100 Bank A** button below the credits panel and redirects to `GET /`; while a transfer is pending the button is disabled and `POST /top-ups` answers `409 Conflict` with the home page.
-- Transfer Service JSON: `GET /api/balances`; `POST /api/top-ups`, with no body, adds Bank A's top-up amount and answers `200 OK` with both balances, or `409 Conflict` with `pending_transfer_id` while a transfer is pending; `POST /api/transfers` with `{"amount": 25}` and an optional `"scenario"` (`happy_path`, the default, `debit_redelivery`, `credit_rejection`, `bank_b_unavailable` or `refund_redelivery`) answers `202 Accepted` with the transfer and its `Location`, `400 Bad Request` listing the accepted values for an unknown scenario, `409 Conflict` with `pending_transfer_id` while another transfer is pending, or `503 Service Unavailable` with `Retry-After: 60` when a **Bank B unavailable** transfer meets the admission limit; `GET /api/transfers` lists the current visitor's transfers; `GET /api/transfers/{transferID}` returns status and history.
-- Bank A and Bank B: `GET /accounts/{visitorID}` reads an account; internal `PUT /accounts/{visitorID}` opens it idempotently with the bank's opening balance. Bank A alone offers internal `POST /accounts/{visitorID}/top-ups`, which adds its configured top-up amount (100) and returns the account with the `amount` added.
-- Every service: `GET /readyz`.
-
-Each service connects with its own PostgreSQL role, which can open only that service's database. The Transfer Service obtains balances from the banks' HTTP interfaces.
-
-API clients must keep and resend the cookie, for example with curl's `-c cookies.txt -b cookies.txt`. The Transfer Service identifies visitors with a cookie (`HttpOnly`, `SameSite=Lax`, `Path=/`, valid for one year), shared by the pages and JSON API. The cookie carries a secret random token of 32 bytes, hex-encoded to 64 characters. The visitor ID is the hex SHA-256 of that token. Only the Transfer Service's visitor middleware sees the token; database rows, bank accounts, messages, spans and logs carry only the visitor ID, so a visitor ID seen in a trace cannot be used to act as that visitor. A missing cookie, or one that is not exactly 64 hex characters, starts a new visitor with a new token. Visitors from before the token was introduced are not migrated; `make reset` clears them. Set `SAGA_LAB_VISITOR_COOKIE_SECURE=true` (Compose passes it as `VISITOR_COOKIE_SECURE`, default `false`) when the site is served over HTTPS, so the cookie carries `Secure`. On the first request it synchronously opens the visitor's accounts over the banks' internal HTTP and records the visitor only after both succeed. An unavailable bank gives a 502 and the next request tries again. Banks start with no accounts and account opening never overwrites an existing balance. Data lives in the `postgres-data` and `rabbitmq-data` volumes, so `make down` followed by `make up` keeps balances, transfers, and queued messages. `docker compose down --volumes` deletes all data.
-
-## Reset
-
-```bash
-make reset
-```
-
-This clears all visitors, accounts, transfers, history and work still queued for the services. A returning browser keeps its cookie and receives fresh 100 / 0 accounts on its next request. It builds the service images, starts PostgreSQL and RabbitMQ if needed, stops the Transfer Service and both banks, and runs each service's own reset in a one-off container (`docker compose run --rm --no-deps <service> reset`):
-
-- Bank A purges its command queues (`DebitFunds`, `RefundFunds`) and Bank B its own (`CreditFunds`, `CreditFundsDedicated`); each recreates its accounts table empty, its inbox, and its outbox.
-- The Transfer Service purges its event queues (`FundsDebited`, `DebitRejected`, `FundsCredited`, `CreditRejected`, `FundsRefunded`, `ProcessingObserved`) and recreates its visitors, transfer and history tables and its outbox.
-
-A service's reset refuses to run while its queues still have consumers, so it never races a running service. With all three services stopped, nothing is in flight: a message is either in a database, its outbox included, or waiting in a queue, and the reset clears both. The services then start again and the command waits until they are ready. Any failure ends the command with an error and without the completion message; the state is then unreliable until `make reset` succeeds. Traces stay in Tempo.
-
-Only `make reset` and retention discard demonstration state; startup and page reloads never do.
-
-## Expiry and retention
-
-Nothing in the stack grows without bound. Each request records the visitor's last-seen time. At startup and then every `VISITOR_EXPIRY_SWEEP`, the Transfer Service deletes every visitor unseen for longer than `VISITOR_EXPIRY`, exactly as a visitor reset would: its history, transfers and visitor record in one transaction, then its accounts at both banks. A returning browser keeps its cookie and starts over with fresh 100 / 0 accounts. A visitor whose transfer is pending, including one awaiting admission, or holds the demonstration slot is skipped and tried again by a later sweep. An account closure that fails is remembered and retried by every later sweep, and before a returning browser's accounts are reopened. Both settings are required positive Go durations; Compose sets seven days (`168h`) and one hour (`1h`). Each bank deletes inbox entries received more than seven days ago, hourly; a redelivery older than that would no longer be recognised as a duplicate. Tempo keeps trace blocks for 168 hours, so a remaining transfer's trace link keeps working.
-
-Override host ports with `POSTGRES_PORT`, `RABBITMQ_PORT`, `RABBITMQ_MANAGEMENT_PORT`, `TRANSFER_SERVICE_PORT`, `BANK_A_PORT`, `BANK_B_PORT`, `GRAFANA_PORT`, `TEMPO_PORT`, and `OTEL_COLLECTOR_HTTP_PORT`; an empty value picks a free port. Follow logs with `make logs` and stop with `make down`.
-
-## Transfers
-
-Amounts are whole numbers of credits written with digits only, greater than zero and no larger than 9223372036854775807. Anything else is rejected with `400 Bad Request` before a transfer is recorded.
-
-An accepted transfer runs through RabbitMQ, one durable queue per message type:
-
-1. The Transfer Service records the transfer as `debit_pending` and sends `DebitFunds`.
-2. Bank A commits the debit, then publishes `FundsDebited`.
-3. The Transfer Service records the committed debit, moves to `credit_pending`, and sends `CreditFunds`.
-4. Bank B commits the credit, then publishes `FundsCredited`.
-5. The Transfer Service records the committed credit and completes the transfer.
-
-Every message has its own message ID; each reply carries the ID of the message that caused it. The history lists the steps `requested`, `debit_committed` or `debit_rejected`, `credit_committed` or `credit_rejected`, `finished` or `refund_requested`, then `refund_committed` and `transfer_refunded`, and the processing observations the banks report: `NackRequested` when a bank simulates a lost acknowledgement after its commit by requesting redelivery, and `DuplicateSuppressed` when a bank recognises a command it already applied. An observation entry carries `observation` instead of `step`. Each entry has an `observed_at` time, when the reporting service saw the step happen (for a bank, just after its commit returned), and a `recorded_at` time, when the Transfer Service stored it. An entry also keeps the `message_id` of the bank event it records, the `causation_id` of the message that caused it, and the `issued_message_id` of the command it sent, so the chain from `DebitFunds` to `FundsCredited` can be followed in the history. A bank's entries also keep the `attempt_id` of the handling attempt that reported them, so two deliveries of one command show as two attempts. A bank's outcome step (`debit_committed`, `debit_rejected`, `credit_committed`, `credit_rejected`, `refund_committed`) carries `balance_before` and `balance_after`, the visitor's balance at that bank before and after its own effect, read in the transaction that committed it; a rejection reports the balance unchanged, and a suppressed duplicate reports nothing. History shows the pair after the step's label as "100 → 75", and a rejection's unchanged balance. Entries recorded before balances were reported omit both fields. The JSON lists entries in the order the Transfer Service recorded them; the transfer page orders them by `observed_at`, so a late-recorded observation sits where it happened.
-
-A transfer whose bank is unavailable stays pending until the bank processes the queued message; nothing times out.
-
-Bank A rejects a debit it cannot afford with `DebitRejected`; the transfer ends `rejected` with a reason, both balances unchanged, and no credit.
-
-Each visitor has at most one pending transfer. Admission is atomic in the Transfer Service database, so concurrent submissions, from any tab or client sharing that visitor cookie, start one transfer; the others start nothing and name the pending one. Completion, rejection and refund all release the restriction, and a transfer pending its refund holds it like any pending transfer; a delay never does. This is not request deduplication: a submission repeated after the pending transfer has ended starts a new transfer. There is no durable request identity; see Known gaps. A top-up adds 100 fictional credits to the visitor's Bank A account at once, over Bank A's internal HTTP and never through the broker. It is not a transfer: it sends no message and appears in no transfer's history. It is refused while a transfer is pending, including one awaiting admission; there is no deduplication, so a repeated top-up adds 100 again. Earlier increments could leave transfers pending for good; the Transfer Service refuses to start on such data, and `make reset` clears it.
-
-Every service commits each state change together with its outgoing messages, in its own outbox table; a relay in each service publishes them and retries with a capped backoff until the broker confirms, so a broker outage delays a transfer but never strands it. The banks record every command they apply in an inbox keyed by message ID, so a redelivered command is acknowledged without being applied twice; the Transfer Service ignores a repeated bank event because its status no longer matches. A handler that fails rejects its message, which RabbitMQ redelivers at once, without backoff.
-
-The **Debit redelivery** scenario shows this: Bank A commits the debit, but its acknowledgement of `DebitFunds` never reaches RabbitMQ, as if Bank A had crashed right after the commit. The demonstration simulates the lost acknowledgement by requesting redelivery (a Nack) instead of crashing; RabbitMQ redelivers `DebitFunds`, Bank A recognises the repeat and applies nothing, and the transfer completes with the happy path's balances. A debit Bank A cannot afford is rejected as usual, with no fault and no redelivery.
-
-The **Credit rejection & refund** scenario shows compensation. Bank A commits the debit as usual, then Bank B permanently rejects the credit with `CreditRejected` ("Credit refused by Bank B"), leaving its balance unchanged. This is a business outcome the scenario selects, not an injected fault, and it concerns that one credit: a later transfer under another scenario credits normally. The Transfer Service records the rejection and its reason, moves the transfer to `refund_pending`, and sends `RefundFunds` to Bank A. The refund is a new operation that restores the source balance, not a rollback of the debit, and it cannot be rejected. Bank A adds the amount back to the account and replies `FundsRefunded`, committed together with its inbox claim, so a redelivered `RefundFunds` is recognised and applies nothing. The Transfer Service then records the refund and ends the transfer `refunded` ("Refunded to Bank A"): 100 credits at Bank A and 0 at Bank B, as before the transfer. The intermediate 75 at Bank A is shown by the debit and refund steps in the history. A debit Bank A cannot afford is rejected as usual, with no credit and no refund.
-
-The **Bank B unavailable** scenario debits Bank A as usual, then routes its `CreditFunds` command only to `CreditFundsDedicated`. Both the Transfer Service and Bank B declare that durable queue at startup, and Bank B leaves it without a consumer. The Transfer Service records `CreditConfirmed` when RabbitMQ confirms the publication, and stores that time on the transfer. It describes confirmation, not the exact moment of queue insertion. A 25-credit transfer stays `credit_pending` (“Waiting for Bank B to credit”), with balances 75 / 0 during the configured wait. `BANK_B_RESUME_WAIT` is a required positive Go duration. Compose sets it to `5s`, overridable through `SAGA_LAB_BANK_B_RESUME_WAIT`; the test suite uses `2.5s` for productivity. The confirmation and resume time are stored on the transfer, so the Transfer Service can restart during the wait. After the wait, its polling loop issues `ResumeDelivery` through the outbox. Bank B claims it through its inbox, explicitly registers its dedicated consumer on an owned channel with a prefetch of one, and records `DeliveryResumed`. The credit uses the normal credit handler, inbox, outbox and tracing. After success and acknowledgement, Bank B cancels the consumer and records `DeliveryPaused`. The transfer completes with 75 / 25 balances. Right after the confirmation, the history shows Bank B as unavailable and waiting, with a note explaining that the command waits in the broker's queue with no consumer, neither delivered nor failed. The resumption row displays the confirmation-to-resumption wait. A duplicate resume is suppressed, and a registration failure is logged and redelivered. Bank B keeps completing other visitors' normal transfers through `CreditFunds`. An unaffordable debit is rejected as usual, with no credit command or confirmation and evidence ready at once.
-
-The **Credit rejection & refund redelivery** scenario shows that the refund, a command like any other, survives redelivery too. Everything happens as under credit rejection up to the refund. Bank A commits the refund, but its acknowledgement of `RefundFunds` is lost, simulated as for the debit: RabbitMQ redelivers the command, Bank A recognises the repeat and applies nothing, and the transfer still ends `refunded` with the same balances as under credit rejection. Bank A's `FundsRefunded` went out through its outbox with the refund's commit, so the flow continued despite the lost acknowledgement.
-
-Only one **Bank B unavailable** transfer runs at a time across all visitors. It atomically claims the demonstration slot. A transfer submitted while that slot is held exists immediately as `awaiting_admission`, with its requested history step and no debit command: Bank A keeps its balance while the page says “Another visitor is trying this demo. Yours will start automatically when it's your turn.” It is pending, never ready, and blocks that visitor's next submission with a 409 naming it. Once the holder completes and Bank B has reported `DeliveryPaused`, the same transaction releases the slot and starts the oldest waiting transfer with its debit. A debit rejection releases it immediately. A waiting transfer's history records `Admitted`, the measured wait since its request, and the debit it issued; an uncontended transfer starts immediately and has no admission entry. Admission never times out. At most five transfers await admission at once, not counting the slot holder; a sixth **Bank B unavailable** submission is turned away, creating no transfer and debiting nothing, with `503 Service Unavailable`, `Retry-After: 60` and an error naming the admission limit, or on the page with the form kept and the note that the demo is busy. Other scenarios are never limited. Info logs identify queued, admitted and released transfers. The development reset clears the slot and all waiting transfers and recreates the slot empty.
-
-A transfer's business status and its evidence are reported separately. `GET /api/transfers/{transferID}` includes `visualisation_ready`, which is true once the history holds everything the transfer's scenario needs to be explained: at once for a rejected transfer, a completed happy-path one and a refunded credit rejection, whose every step commits together with its status change; for a completed debit redelivery, once the history holds Bank A's `NackRequested` from the attempt that committed the debit and its `DuplicateSuppressed` from a later attempt, both caused by the transfer's `DebitFunds`; for a refunded refund redelivery, likewise once the history holds Bank A's `NackRequested` from the attempt that committed the refund and its `DuplicateSuppressed` from a later attempt, both caused by the transfer's `RefundFunds`. For a completed Bank B unavailable transfer it requires `CreditConfirmed` and `DeliveryResumed`; `DeliveryPaused` is not required for readiness. It is computed whenever a transfer is read and never stored, and it gates nothing: a transfer whose evidence is still being collected doesn't hold the next submission. The transfer page shows it as the **Replay** row: "Available once the transfer has ended" while the transfer is pending, "Being prepared" once it has ended but its evidence is incomplete, and "Ready" once it is complete. Until then the page reloads every second and shows the live history. Once ready, a playback panel above the history plays the transfer once from the start if the replay became ready while the page was open, and otherwise rests paused on the first entry. While playing, the history's current row is shaded, rows not yet played are dimmed, and the panel shows the current entry with its real timestamp and the real gap to the next one. Each entry stays on screen for that gap, at least 700 ms and at most 4 s; the waiting row of a Bank B unavailable transfer carries the broker wait. The visitor can pause, step back and forward, and replay. Playback only steps through the rendered rows and never calls the API, so it repeats no business operation.
-
-Once a transfer is ready, `GET /api/transfers/{transferID}` also carries an `outcome`, derived from the history alone, and the transfer page shows it as the **Outcome** summary between the playback panel and History. `balances.bank_a` holds Bank A's `before` from the debit or debit-rejection step and its `after` from the last Bank A step that reported a balance; `balances.bank_b` holds Bank B's pair from the credit or credit-rejection step, with `involved` false after a debit rejection. `commands.debit`, `commands.credit` and `commands.refund` each count the `attempts` (distinct attempt IDs among the entries the command caused) and the `effects` (its committed steps). `duplicates_suppressed` counts the `DuplicateSuppressed` observations those commands caused, and `duplicate_effects` the effects beyond one per command. A balance never reported, as on a transfer recorded before balances were, is `null`, and so is a command never issued; the page shows both as "—". Under debit redelivery the debit shows 2 attempts and 1 effect.
-
-## Known gaps
-
-A passing demonstration is not a crash-safe or stall-safe system. These gaps are known and accepted for now:
-
-- If Bank B crashes after committing a resume but before handling its credit, the dedicated consumer starts off and the credit stays queued until a reset (ADR 0002).
-- A connected broker that withholds publisher confirms (during a memory or disk alarm) stalls the relay silently, until milestone 6 adds a metric for it; the stalled transfer stays visibly pending.
-- A `NackRequested` whose own transaction fails leaves its transfer not ready indefinitely; the history honestly shows what was recorded.
-- A command for a missing account, possible only after a reset in mid-flight, leaves its transfer pending; for a refund, the transfer stays pending its refund.
-- A partial reset, of some services by hand rather than through `make reset`, is unguarded.
-- A blind HTTP retry of a submission after the transfer has ended starts a second transfer.
-
-Limitations of the design itself are listed in [docs/limitations.md](docs/limitations.md).
-
-## Traces
-
-The three services send OpenTelemetry traces to the Collector, which forwards them to Tempo; Grafana reads Tempo. All configuration lives in `deploy/` and is provisioned on startup. Traces are kept in the `tempo-data` volume.
-
-A transfer's trace starts with the request that submitted it; the Transfer Service starts a new trace for every request and only links trace context a client sends. Incoming HTTP requests (except `/readyz` and `/static/`), the Transfer Service's calls to the banks, database statements, and every message publication and consumption are spans. Trace context travels with each message in its Watermill metadata (`traceparent`), so a bank's handling of a command is a child of the span that sent it, and the whole transfer forms one trace. Message spans carry `messaging.destination.name`, `messaging.message.id`, `saga.transfer_id`, and, for replies, `saga.causation_id`. Every consumer span also carries `saga.attempt_id` and `messaging.rabbitmq.message.redelivered` and ends with error status when its handler fails. A bank's consumer span records a `fault.injected` event for the simulated lost acknowledgement and a `duplicate.suppressed` event when the bank recognises a command it already applied. A send span lasts until the broker confirms the message; the next service can start handling it before that, and the trace shows the times as they happened. No span stands for time spent inside RabbitMQ.
-
-To inspect a transfer's trace, follow **Trace →** on the transfer page; it opens Grafana's provisioned **Trace** dashboard (`/grafana/d/saga-lab-trace`) with the trace ID in its `traceId` variable (`var-traceId`) and the transfer's fixed time window as `from`/`to`: 10 s before it was requested to 10 s after its last history entry, or, while it is pending, to 10 s after the longest a resume could still take. The dashboard's one Traces panel queries Tempo with TraceQL `${traceId}`, and Grafana passes the window to Tempo, which uses it to narrow its search for the trace. By hand: take the trace ID from the transfer page or from `trace_id` in `GET /api/transfers/{transferID}`, open the Trace dashboard in Grafana (<http://localhost:3000/grafana/>, no login), and paste it into **Trace ID**. Grafana is read-only, locally as in public: anonymous visitors are Viewers, the login form, snapshots and public dashboards are disabled, and Viewers cannot open Explore. Spans do not record cookies, credentials, connection strings, or database roles. Traces are evidence only; balances, history, and status come from the services' databases.
-
-Set `SAGA_LAB_OTLP_ENDPOINT` to an empty value to start the services without tracing. Set `SAGA_LAB_GRAFANA_URL` to the Grafana address visitors' browsers reach, including the `/grafana` sub-path (default `http://localhost:3000/grafana`); it is Grafana's root URL and the transfer page's trace link points there. `GRAFANA_ADMIN_PASSWORD` sets the Grafana admin password (default `admin`); with the login form disabled it is only usable through the HTTP API.
+Open <http://localhost:8080>; Grafana is at <http://localhost:3000/grafana/>.
+`make reset` clears all visitors and transfers, `make down` stops the stack.
+See [development](docs/development.md) for ports, configuration and the demo
+reset.
 
 ## Test
 
-```bash
-make test
-```
-
-This builds the service images once and runs `go test ./...`. Each run gets a random run ID and starts one PostgreSQL and one RabbitMQ for the whole run in its own Compose project, `saga-lab-test-<run>`, on free ports. Package tests create their databases there, and most acceptance tests use both. At most four tests run at a time. The run's PostgreSQL allows 300 connections, enough for four tests' services and the package tests. The Compose-backed tests start a stack each, and with many stacks at once, Docker Desktop on macOS sometimes leaves a healthy container's published port unforwarded, and requests to it are refused. A run removes only its own projects afterwards, so concurrent runs and the development stack and its data are untouched. A run killed outright can leave its projects behind; `docker compose ls` lists them. Arguments to `scripts/test.sh` are passed to `go test`, for example `scripts/test.sh -run TestRefreshing -v ./acceptance`.
+Requires Go 1.27 and Docker.
 
 ```bash
-scripts/test.sh -short
+make test                               # Go and acceptance tests
+scripts/test.sh -short                  # the fast loop: no Compose-backed tests
+make test-deploy                        # deployment script tests
+scripts/smoke.sh http://localhost:8080  # all five scenarios against a running stack
 ```
 
-This is the fast loop. It needs only the run's PostgreSQL and RabbitMQ: it builds and pulls no images and skips the Compose-backed tests, so it starts no other Compose project. It starts PostgreSQL and RabbitMQ with `--pull never`, so it fails if their images are missing; a full run pulls them. Other arguments still go to `go test`, for example `scripts/test.sh -short -run TestReset -v ./acceptance`.
+## Documentation
 
-Most acceptance tests in `acceptance/` run Bank A, Bank B, and the Transfer Service inside the test process, with tracing turned off, and drive the Transfer Service only over HTTP. Each test gets three fresh databases, each owned by its own login role that alone can open it, as in the Compose stack, and its own RabbitMQ virtual host. They are removed when the test ends, also when it fails, so every visitor client begins with fresh 100 / 0 accounts regardless of test order. Each visitor client has its own cookie jar. A failing test prints its services' logs, each line naming its service. Restart and reset are tested this way too: stopping a service cancels it and waits for it to return, starting runs it again with the same settings, and reset calls each service's reset entry point while the services are stopped, in the order `scripts/reset.sh` uses.
+- [Documentation routing index](docs/README.md)
+- [Architecture](docs/architecture.md)
+- [Scenarios and invariants](docs/scenarios.md)
+- [Observability](docs/observability.md)
+- [HTTP API](docs/http-api.md)
+- [Development](docs/development.md)
+- [Security](docs/security.md)
+- [Limitations and known gaps](docs/limitations.md)
+- [Deployment runbook](docs/deployment-runbook.md)
+- [Design system](docs/frontend/design-system.md)
+- [Glossary](GLOSSARY.md)
+- [Architecture decision records](docs/adr/)
 
-`TestTransferTraceCoversAllServices`, `TestTransferPagesLinkToTheirTrace` and `TestResetScriptGivesReturningVisitorFreshAccounts` start their own Compose project each, `saga-lab-acceptance-<run>-<random>`, on free ports. The trace test starts the whole stack, completes a transfer, and polls Tempo's API until the transfer's trace holds the HTTP, database, send, and process spans it expects from each service. It then checks that the trace contains no connection strings, cookies, or database roles. The link test runs every scenario and checks each transfer page's trace link and its time window. The reset-script test starts only the services and their PostgreSQL and RabbitMQ, with tracing turned off. It completes a transfer, stops Bank A and submits another transfer so its `DebitFunds` waits in the queue, runs `scripts/reset.sh` against its project, and then expects the returning visitor to see 100/0, no transfers, open submission, and a fresh 25-credit transfer ending at 75/25. `TestSmokeScriptPassesAgainstAFreshStack` and `TestSmokeScriptSkipsBankBUnavailableRefusedByTheAdmissionLimit` start the services the same way and run `scripts/smoke.sh` against them; the second sets a ten-minute Bank B resume wait and fills the admission limit first, so the script's Bank B unavailability submission is refused. All skip with `-short`.
+## License
 
-Package tests skip unless `SAGA_LAB_POSTGRES_URL` is set. In-process acceptance tests also need `SAGA_LAB_AMQP_URL` and `SAGA_LAB_RABBITMQ_MANAGEMENT_URL`, and Compose-backed ones skip unless `SAGA_LAB_ACCEPTANCE_PREFIX` names their project prefix; `scripts/test.sh` sets all four. `scripts/test.sh` builds the service image as `saga-lab-services-<hash of the checkout path>`, so runs in different worktrees never swap each other's image; the development stack keeps `saga-lab-services`. The Compose-backed tests use that image as last built, and fail if a stack is not ready within three minutes.
-
-## Smoke run
-
-```bash
-scripts/smoke.sh http://localhost:8080
-```
-
-This proves a running Saga Lab works for a visitor, locally or on the public site. It acts as one new visitor through the JSON API, keeping its own cookie, and needs only `bash`, `curl` and `sed`. It tops up Bank A if it holds less than 50, then runs happy path, debit redelivery, credit rejection, Bank B unavailability and refund redelivery in turn, 10 credits each. It waits up to a minute for each transfer to be ready and compares the outcome summary with the scenario's expected balances, attempts, effects and duplicates. The Bank B unavailability transfer may first wait up to two minutes for admission; if the admission limit refuses it, the step is skipped with a warning. It prints one line per scenario, `ok`, `WARN` or `FAIL`, stops at the first failure, and exits 0 only when every scenario that ran passed.
+[MIT](LICENSE)

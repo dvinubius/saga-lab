@@ -72,6 +72,26 @@ func TestRefreshingTheTransferPageNeverResubmits(t *testing.T) {
 	demo.assertBalances(t, 75, 25)
 }
 
+func TestHomePageIntroducesTheDemonstration(t *testing.T) {
+	t.Parallel()
+	demo := startDemonstration(t)
+
+	page := demo.get(t, "/")
+	intro := regexp.MustCompile(`id="introduction"[^>]*>(?s:(.*?))</section>`).FindSubmatch(page)
+	if intro == nil {
+		t.Fatalf("home page has no introduction: %s", page)
+	}
+	text := html.UnescapeString(pageText(intro[1]))
+	for _, want := range []string{"orchestrated Saga", "Happy path", "Debit redelivery", "Credit rejection & refund", "Bank B unavailable", "Credit rejection & refund redelivery", "Trace →"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("introduction %q does not mention %q", text, want)
+		}
+	}
+	if !regexp.MustCompile(`<footer[^>]*>(?s:.*?)<a [^>]*href="https://github.com/dvinubius/saga-lab"(?s:.*?)</footer>`).Match(page) {
+		t.Error("home page footer does not link to the GitHub repository")
+	}
+}
+
 func TestTransferPagesLinkToTheirTrace(t *testing.T) {
 	t.Parallel()
 	demo := startObservedDemonstration(t)
