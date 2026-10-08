@@ -621,8 +621,9 @@ func record(ctx context.Context, tx pgx.Tx, transferID string, entry historyEntr
 func (s *Service) find(ctx context.Context, id string) (transfer, error) {
 	t := transfer{transferSummary: transferSummary{ID: id}}
 	err := s.db.QueryRow(ctx,
-		`SELECT amount, scenario, status, COALESCE(rejection_reason, ''), COALESCE(trace_id, ''), requested_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2`,
-		id, visitor.ID(ctx),
+		`SELECT amount, scenario, status, COALESCE(rejection_reason, ''), COALESCE(trace_id, ''), requested_at FROM transfers WHERE transfer_id = $1 AND visitor_id = $2
+		 AND (requested_at >= $3 OR status = ANY($4) OR transfer_id = (SELECT holder_transfer_id FROM demonstration_slot))`,
+		id, visitor.ID(ctx), time.Now().Add(-transferRetention), pendingStatuses,
 	).Scan(&t.Amount, &t.Scenario, &t.Status, &t.RejectionReason, &t.TraceID, &t.RequestedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return transfer{}, errTransferNotFound
@@ -698,8 +699,10 @@ func redeliveryEvidenced(history []historyEntry, command string, committedBy ste
 
 func (s *Service) list(ctx context.Context) ([]transferSummary, error) {
 	rows, err := s.db.Query(ctx,
-		`SELECT transfer_id, amount, scenario, status, requested_at FROM transfers WHERE visitor_id = $1 ORDER BY requested_at DESC`,
-		visitor.ID(ctx),
+		`SELECT transfer_id, amount, scenario, status, requested_at FROM transfers WHERE visitor_id = $1
+		 AND (requested_at >= $2 OR status = ANY($3) OR transfer_id = (SELECT holder_transfer_id FROM demonstration_slot))
+		 ORDER BY requested_at DESC`,
+		visitor.ID(ctx), time.Now().Add(-transferRetention), pendingStatuses,
 	)
 	if err != nil {
 		return nil, err

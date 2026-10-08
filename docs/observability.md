@@ -100,8 +100,11 @@ and cannot open Explore or change anything ([security](security.md#grafana)).
 
 ## Retention
 
-Tempo keeps trace blocks for 168 hours, matching visitor expiry: every
-transfer still listed for a visitor keeps a working trace link. Traces are not
+Tempo keeps trace blocks for 168 hours. Completed, rejected and refunded
+transfers disappear from lists and direct lookup seven days after their request
+time, independently of visitor activity; an hourly sweep removes their history.
+Pending transfers and demonstration-slot holders stay protected even when older;
+their early trace spans can have expired if they run beyond seven days. Traces are not
 deleted by a visitor reset, visitor expiry or the demo reset; they expire on
 their own.
 

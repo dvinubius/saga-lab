@@ -64,7 +64,8 @@ behind the [hetzner-one](https://github.com/dvinubius/hetzner-one) Caddy. A
 tested pipeline deploys every push to `main`, checks the release from inside
 and from the internet by running all five scenarios against the public site,
 and restores the previous deployment if any check fails. Visitors expire after
-a week; nothing grows without bound.
+a week unseen; terminal transfers and their histories disappear seven days
+after request time. Pending transfers are protected.
 
 ## Run locally
 

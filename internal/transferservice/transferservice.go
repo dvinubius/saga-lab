@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dvinubius/saga-lab/internal/messaging"
@@ -106,6 +107,7 @@ func Reset(ctx context.Context, settings service.Settings) error {
 }
 
 type Service struct {
+	visitorMu    sync.Mutex
 	db           *pgxpool.Pool
 	broker       *messaging.Broker
 	bankA        bankClient

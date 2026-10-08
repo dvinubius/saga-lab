@@ -307,3 +307,6 @@ rendered rows and never calls the API, so it repeats no business operation.
   or holds the demonstration slot.
 - **Visitor expiry**: a visitor unseen for seven days is deleted the same
   way ([security](security.md#visitor-expiry-and-retention)).
+- **Transfer retention**: terminal transfers and their execution histories
+  disappear seven days after request time, without changing account balances.
+  Pending transfers and demonstration-slot holders are protected.

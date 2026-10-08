@@ -1,21 +1,5 @@
 #!/usr/bin/env bash
 
-# Apply one Saga Lab deployment on the VPS. GitHub Actions uploads an
-# allowlisted bundle (both Compose files, deploy/, operational scripts) to a
-# staging directory and runs this script from there; operators run the
-# installed copy for a manual rollback. The script snapshots the live files,
-# installs the bundle, recreates the stack, verifies it, and records the
-# deployment manifest only after every check passes. A failed check restores
-# the snapshot.
-#
-# Usage:
-#   remote-deploy.sh full <commit-sha> <ghcr.io/dvinubius/saga-lab@sha256:digest>
-#   remote-deploy.sh rollback <snapshot-name>
-#
-# With GHCR_USER set, full reads a short-lived registry token from stdin and
-# uses it only for this pull. Otherwise it pulls with the host's own Docker
-# credentials, which suffices for a public package.
-
 set -euo pipefail
 
 bundle_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -126,6 +110,13 @@ pull_image() {
 	return $status
 }
 
+pull_stack() {
+	local source_dir=$1 stack_image=$2
+	SAGA_LAB_IMAGE=$stack_image docker compose --env-file "$live_dir/.env" --project-directory "$source_dir" \
+		--file "$source_dir/compose.yaml" --file "$source_dir/compose.production.yaml" pull --quiet --policy missing
+	check_headroom
+}
+
 snapshot_dir=
 take_snapshot() {
 	local entry
@@ -144,12 +135,16 @@ take_snapshot() {
 }
 
 prune_snapshots() {
-	local snapshots=() name i
+	local snapshots=() name remaining
 	while IFS= read -r name; do
 		snapshots+=("$name")
 	done < <(ls -1 "$state_dir/snapshots" | sort)
-	for ((i = 0; i < ${#snapshots[@]} - keep_snapshots; i++)); do
-		rm -rf "${state_dir:?}/snapshots/${snapshots[i]}"
+	remaining=${#snapshots[@]}
+	for name in "${snapshots[@]}"; do
+		((remaining > keep_snapshots)) || break
+		[[ $name != "${snapshot_dir##*/}" && $name != "$rollback_from" ]] || continue
+		rm -rf "${state_dir:?}/snapshots/$name"
+		remaining=$((remaining - 1))
 	done
 }
 
@@ -187,7 +182,6 @@ serves_trace_dashboard() {
 		grep -qF '"uid":"saga-lab-trace"'
 }
 
-# Every configuration file is bind-mounted, so recreate every container.
 recreate_and_verify() {
 	live_compose up --detach --no-build --wait --wait-timeout 300 --force-recreate
 	retry 'Loopback readiness' curl --fail --silent --max-time 5 http://127.0.0.1:8090/readyz
@@ -235,18 +229,22 @@ record_manifest() {
 	mv -f "$state_dir/manifest.tmp" "$state_dir/manifest"
 }
 
-# Preconditions and validation make no change to live files or containers.
 if [[ $mode == full ]]; then
 	command -v curl >/dev/null || die 'curl is required on the host.'
 	docker compose version >/dev/null
 	docker network inspect saga-lab-edge >/dev/null || die 'The hetzner-one-owned saga-lab-edge network is missing.'
 	check_headroom
 	log "Pulling $image."
-	pull_image
 	validate_bundle
+	pull_image
+	pull_stack "$bundle_dir" "$image"
+else
+	check_headroom
+	pull_stack "$state_dir/snapshots/$rollback_from" "$(sed -n 's/^SAGA_LAB_IMAGE=//p' "$state_dir/snapshots/$rollback_from/.env.image" | tail -n 1)"
 fi
 
 take_snapshot
+prune_snapshots
 log "Applying $mode deployment."
 set +e
 (

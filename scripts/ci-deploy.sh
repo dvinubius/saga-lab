@@ -1,18 +1,5 @@
 #!/usr/bin/env bash
 
-# GitHub Actions side of production deployment. It never builds on the VPS and
-# never gives the VPS Git access: it reads the VPS deployment manifest, chooses
-# a mode from every change since that verified deployment, and uploads an
-# allowlisted bundle taken from the exact target commit.
-#
-# Usage:
-#   ci-deploy.sh plan <target-sha> [full]     Print none or full.
-#   ci-deploy.sh deploy <target-sha> <image>  Deploy ghcr.io/dvinubius/saga-lab@sha256:<digest>.
-#
-# Both need DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY_FILE, and
-# DEPLOY_KNOWN_HOSTS_FILE (a verified host-key entry). deploy forwards
-# GHCR_USER/GHCR_PULL_TOKEN to the VPS for the pull when both are set.
-
 set -euo pipefail
 
 project_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -31,8 +18,6 @@ require_target() {
 	git cat-file -e "$1^{commit}" 2>/dev/null || die "Target commit is not available: $1"
 }
 
-# A run whose commit is no longer the head of main is stale; the newer run
-# deploys from the same unchanged baseline.
 require_main_head() {
 	local head
 	head=$(git ls-remote --exit-code origin refs/heads/main | cut -f1) || die 'Could not read the head of main.'
@@ -91,7 +76,6 @@ deploy() {
 		remote "rm -rf '$staging' && mkdir -p '$staging' && tar -x -C '$staging'"
 
 	command="bash '$staging/scripts/remote-deploy.sh' full $target $image; status=\$?; rm -rf '$staging'; exit \$status"
-	# The token goes on stdin, never in arguments.
 	if [[ -n ${GHCR_USER:-} && -n ${GHCR_PULL_TOKEN:-} ]]; then
 		[[ $GHCR_USER =~ ^[A-Za-z0-9-]+(\[bot\])?$ ]] || die 'GHCR_USER is not a GitHub login.'
 		remote "GHCR_USER='$GHCR_USER' $command" <<<"$GHCR_PULL_TOKEN"

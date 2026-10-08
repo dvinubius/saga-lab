@@ -92,8 +92,11 @@ command waits until they are ready. Any failure ends the command with an
 error and without the completion message; the state is then unreliable until
 `make reset` succeeds. Traces stay in Tempo.
 
-Only the demo reset, a visitor reset and visitor expiry discard demonstration
-state; startup and page reloads never do.
+The demo reset, visitor reset and visitor expiry discard demonstration state.
+Completed, rejected and refunded transfers also disappear seven days after
+request time; the hourly expiry sweep deletes their histories while preserving
+account balances. Pending transfers and demonstration-slot holders are protected.
+Startup and page reloads preserve accounts and transfers within retention.
 
 ## Test
 

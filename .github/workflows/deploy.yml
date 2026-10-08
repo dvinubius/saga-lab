@@ -1,7 +1,5 @@
 name: Deploy production
 
-# Pushes to main deploy every change since the last verified production
-# deployment. See docs/deployment-runbook.md.
 on:
   push:
     branches: [main]

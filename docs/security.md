@@ -102,15 +102,23 @@ Nothing grows without bound:
   accounts are reopened. A returning browser keeps its cookie and starts over
   with fresh 100 / 0 accounts. Both settings are required positive Go
   durations.
+- **Transfers and histories.** Completed, rejected and refunded transfers are
+  hidden seven days after their request time and deleted with their execution
+  histories by the hourly sweep. This applies even to active visitors and
+  preserves their account balances. Pending transfers and demonstration-slot
+  holders are kept until safe to remove.
 - **Bank inboxes.** Each bank deletes inbox entries received more than seven
   days ago, hourly. A redelivery older than that would no longer be
   recognised as a duplicate.
 - **Traces.** Tempo keeps blocks for 168 hours.
 - **Logs.** Every container logs with Docker's `json-file` driver at
   3 × 10 MB.
+- **HTTP.** Request reads and response writes have a 10-second timeout, so
+  a stalled client cannot hold the visitor lifecycle lock indefinitely.
 - **Containers.** Every container has a memory limit.
 
-There are no backups: the data is fictional and expires within a week.
+There are no backups: the data is fictional. Active visitors retain their
+accounts; terminal transfer histories have a seven-day lifetime.
 
 ## Secrets
 

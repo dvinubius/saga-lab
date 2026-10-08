@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
 
-# Choose the production deployment mode for every change between the last
-# verified deployment and a target commit. Prints none or full. Exits non-zero,
-# printing nothing on stdout, when the target cannot be verified or Git
-# inspection fails; callers must then make no production change.
-#
-# Usage: classify-deploy.sh <deployed-sha-or-empty> <target-sha>
-
 set -euo pipefail
 
 die() {
@@ -28,7 +21,6 @@ if [[ ! $deployed =~ ^[0-9a-f]{40}$ ]] ||
 	exit 0
 fi
 
-# --no-renames reports both sides of a rename.
 changed=$(git diff --name-only --no-renames "$deployed" "$target") || die 'git diff failed.'
 
 while IFS= read -r path; do

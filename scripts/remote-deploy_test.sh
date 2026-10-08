@@ -27,6 +27,7 @@ case " $* " in
 	;;
 *' info '*) printf '%s\n' "$REMOTE_TEST_DOCKER_ROOT" ;;
 *' network inspect '*) [[ -z ${REMOTE_TEST_NO_EDGE:-} ]] || exit 1 ;;
+*' pull '*) touch "$REMOTE_TEST_DOCKER_ROOT/pulled" ;;
 esac
 exit 0
 EOF
@@ -34,11 +35,13 @@ EOF
 cat >"$bin/df" <<'EOF'
 #!/usr/bin/env bash
 printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
-printf '/dev/sda1 40000000 20000000 %s 50%% /\n' "${REMOTE_TEST_FREE_KIB:-20000000}"
+free=${REMOTE_TEST_FREE_KIB:-20000000}
+if [[ -f $REMOTE_TEST_DOCKER_ROOT/pulled ]]; then
+	free=${REMOTE_TEST_AFTER_PULL_KIB:-$free}
+fi
+printf '/dev/sda1 40000000 20000000 %s 50%% /\n' "$free"
 EOF
 
-# A check fails only while the bad image is installed, so the restored
-# deployment can verify successfully.
 cat >"$bin/curl" <<'EOF'
 #!/usr/bin/env bash
 printf 'curl %s\n' "$*" >>"$REMOTE_TEST_LOG"
@@ -95,9 +98,8 @@ make_bundle() {
 	smoke_stub "$bundle/scripts/smoke.sh"
 }
 
-# A host with a verified deployment, or with first=1 a prepared empty one.
 make_live() {
-	rm -rf "$live" "$temporary_dir/date"
+	rm -rf "$live" "$temporary_dir/date" "$temporary_dir/docker-root/pulled"
 	mkdir -p "$live"
 	printf 'POSTGRES_PASSWORD=secret\n' >"$live/.env"
 	if [[ ${1:-} != first ]]; then
@@ -252,6 +254,19 @@ test_failed_precondition_changes_nothing() {
 	done
 }
 
+test_pull_preserves_disk_headroom() {
+	make_bundle
+	make_live
+	local output
+	if output=$(REMOTE_TEST_AFTER_PULL_KIB=14000000 deploy full "$commit" "$new_image" 2>&1); then
+		fail 'deployed after pulling images left less than 15 GB free'
+	fi
+	[[ $output == *'Insufficient Docker filesystem space'* ]] || fail "unexpected post-pull output: $output"
+	[[ $(snapshot_count) == 0 ]] || fail 'post-pull refusal took a snapshot'
+	refute_log ' up '
+	expect_previous_deployment 'post-pull refusal'
+}
+
 test_failed_check_restores_previous_deployment() {
 	local check output
 	for check in loopback public grafana smoke; do
@@ -317,6 +332,38 @@ test_keeps_five_snapshots() {
 	[[ $(snapshot_count) == 5 ]] || fail "kept $(snapshot_count) snapshots, not 5"
 }
 
+test_rollback_preserves_oldest_requested_snapshot() {
+	make_bundle
+	make_live
+	local i snapshot
+	for i in 1 2 3 4 5; do
+		deploy full "$commit" "$new_image" >/dev/null
+	done
+	snapshot=$(ls "$live/.deploy/snapshots" | head -n 1)
+	run "$live/scripts/remote-deploy.sh" rollback "$snapshot" >/dev/null
+	expect_previous_deployment 'rollback to oldest snapshot'
+	[[ $(snapshot_count) == 5 ]] || fail 'rollback did not retain five snapshots'
+	[[ -d $live/.deploy/snapshots/$snapshot ]] || fail 'rollback deleted its source snapshot'
+}
+
+test_failed_deployments_keep_five_snapshots() {
+	make_bundle
+	make_live
+	local i output
+	for i in 1 2 3 4 5 6; do
+		if output=$(REMOTE_TEST_BAD_IMAGE=$new_image REMOTE_TEST_FAIL=smoke deploy full "$commit" "$new_image" 2>&1); then
+			fail 'failed smoke deployment succeeded'
+		fi
+		[[ $output == *'previous deployment was restored and verified'* ]] || fail "unexpected failure: $output"
+	done
+	[[ $(snapshot_count) == 5 ]] || fail "failed deployments kept $(snapshot_count) snapshots, not 5"
+	expect_previous_deployment 'repeated failed deployments'
+	local snapshot
+	snapshot=$(ls "$live/.deploy/snapshots" | tail -n 1)
+	run "$live/scripts/remote-deploy.sh" rollback "$snapshot" >/dev/null
+	expect_previous_deployment 'rollback after failed deployments'
+}
+
 test_invalid_arguments_make_no_calls() {
 	make_bundle
 	make_live
@@ -340,11 +387,14 @@ test_first_deploy
 test_registry_token
 test_held_lock_refuses
 test_failed_precondition_changes_nothing
+test_pull_preserves_disk_headroom
 test_failed_check_restores_previous_deployment
 test_failed_restore_reports_rollback_failed
 test_failed_first_deploy_has_nothing_to_restore
 test_manual_rollback
 test_keeps_five_snapshots
+test_rollback_preserves_oldest_requested_snapshot
+test_failed_deployments_keep_five_snapshots
 test_invalid_arguments_make_no_calls
 test_unexpected_bundle_entry_is_rejected
 printf '%s\n' 'remote deploy script tests passed'

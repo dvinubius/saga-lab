@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
 
-# Run Docker Compose for the deployed Saga Lab project with its VPS-owned
-# secrets (.env) and the pinned published image (.env.image), so a reboot or a
-# manual `up` uses the deployed image.
-#
-# Usage: scripts/compose.sh <compose arguments...>
-
 set -euo pipefail
 
 cd "$(dirname -- "${BASH_SOURCE[0]}")/.."

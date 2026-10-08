@@ -1,7 +1,3 @@
-# Production overrides for compose.yaml on the shared VPS:
-#   docker compose --env-file .env --env-file .env.image \
-#     --file compose.yaml --file compose.production.yaml up --detach --no-build --wait
-# .env holds the secrets; .env.image pins SAGA_LAB_IMAGE to a published digest.
 name: saga-lab
 
 x-services-image: &services-image ${SAGA_LAB_IMAGE:?Set SAGA_LAB_IMAGE to a published image digest in .env.image.}

@@ -143,7 +143,16 @@ without backoff.
 
 Background loops in the Transfer Service: the outbox relay, the resume
 schedule (every 100 ms, issues `ResumeDelivery` once a transfer's resume time
-has passed) and the visitor expiry sweep.
+has passed) and the visitor expiry sweep, which also prunes terminal transfer
+histories seven days after request time. Pending transfers and the slot holder
+are protected.
+
+The deployment runs one Transfer Service instance. Visitor HTTP requests,
+expiry and bank-account closures share a process-local lifecycle lock held
+through request handling and bank calls. Expiry rechecks last-seen time under
+that lock; a returning request cannot have its transfer or reopened accounts
+deleted by an earlier sweep candidate. Multiple Transfer Service replicas
+would require shared lifecycle coordination.
 
 ## Bank state
 

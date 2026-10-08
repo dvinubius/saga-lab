@@ -18,6 +18,8 @@ import (
 
 func (s *Service) visitors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.visitorMu.Lock()
+		defer s.visitorMu.Unlock()
 		token := ""
 		if cookie, err := r.Cookie(visitor.CookieName); err == nil && validToken(cookie.Value) {
 			token = cookie.Value
@@ -143,6 +145,13 @@ func (s *Service) forgetVisitor(ctx context.Context, id string) error {
 }
 
 func (s *Service) closeAccounts(ctx context.Context, id string) error {
+	var closing bool
+	if err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM account_closures WHERE visitor_id = $1)`, id).Scan(&closing); err != nil {
+		return fmt.Errorf("read account closures: %w", err)
+	}
+	if !closing {
+		return nil
+	}
 	if err := s.bankA.closeAccount(ctx, id); err != nil {
 		return err
 	}

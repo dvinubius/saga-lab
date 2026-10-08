@@ -6,6 +6,10 @@ banks' HTTP interfaces are internal to the stack. [Scenarios](scenarios.md)
 explains the statuses, history entries and outcome summary these routes
 return.
 
+Completed, rejected and refunded transfers disappear from lists and direct
+lookup seven days after request time. Pending transfers and demonstration-slot
+holders remain available until safe to remove. Account balances are retained.
+
 ## Visitor cookie
 
 Every route except `/readyz` and `/static/` belongs to a visitor, identified

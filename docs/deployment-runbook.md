@@ -39,7 +39,7 @@ flowchart LR
   subgraph deploy["4 · Deploy: VPS changes"]
     direction TB
     d1["Confirm the commit is<br/>still the head of main"] --> d2["Upload the git archive<br/>bundle to .deploy/staging"]
-    d2 --> d3["Host lock; check Docker, curl,<br/>saga-lab-edge, 15 GB free;<br/>pull the digest; render Compose"]
+    d2 --> d3["Host lock; check Docker, curl,<br/>saga-lab-edge, 15 GB free;<br/>pull all images; recheck 15 GB;<br/>render Compose"]
     d3 --> d4["Snapshot both Compose files,<br/>deploy/, scripts/,<br/>.env.image, manifest"]
     d4 --> d5["Install the bundle, write .env.image,<br/>recreate the stack without building"]
     d5 --> d6["Check loopback and public /readyz,<br/>the Trace dashboard, smoke.sh"]
@@ -85,11 +85,14 @@ The remote script, under a host lock:
 - checks Docker with Compose, `curl`, the `saga-lab-edge` network and at least
   15 GB free on Docker's data root; pulls the exact digest with the run's
   short-lived `GITHUB_TOKEN` in a throwaway Docker config, deleted after the
-  pull; and renders the bundled Compose files with the live `.env`. None of
-  this changes the live files or containers.
+  pull; renders the bundled Compose files with the live `.env`; pulls all
+  missing dependency images; and checks the remaining 15 GB headroom again.
+  None of this changes the live files or containers.
 - snapshots the live `compose.yaml`, `compose.production.yaml`, `deploy/`,
   `scripts/`, `.env.image` and manifest into
-  `/opt/saga-lab/.deploy/snapshots/<time>-full` (five kept);
+  `/opt/saga-lab/.deploy/snapshots/<time>-full` (five kept after successful and
+  failed attempts; the active restore snapshot and manual rollback source are
+  protected while verification runs);
 - installs the bundle, writes `.env.image` atomically, and runs
   `up --detach --no-build --wait --force-recreate` (every configuration file
   is bind-mounted, so every container is recreated; volumes are kept);
@@ -187,7 +190,10 @@ Saga Lab needs at least 15 GB free on Docker's data root at every deployment:
 Hooklook's 12 GB deploy allowance plus 3 GB platform headroom, the same rule
 Hooklook's own check enforces. Before release the host's Docker build cache
 was pruned (`docker builder prune`), leaving about 26 GB free; Saga Lab adds
-roughly 0.8 GB of images and 0.5 GiB of memory. If the check refuses a
+roughly 0.8 GB of images and 0.5 GiB of memory. The script checks before
+and after all image pulls, before live changes; manual rollback does the same.
+Automatic recovery reuses the previous deployment without making a new
+headroom check a barrier to restoring it. If the check refuses a
 deployment, free space (old images, build cache) rather than lowering it.
 
 ## Release checklist
@@ -200,13 +206,26 @@ from a checkout with an authenticated `gh`; *VPS* commands run as root.
 
 Merge [hetzner-one#2](https://github.com/dvinubius/hetzner-one/pull/2) and
 let its `Deploy production` run finish (see the ordering note in
-[One-time setup](#one-time-setup)). Then, on the VPS:
+[One-time setup](#one-time-setup)).
+
+If its first deployment failed with `lookup saga-lab ... server misbehaving`,
+Saga Lab has no container on the edge network yet. An external request during
+Caddy verification logged a 502 and triggered its rollback. On the workstation,
+rerun the Caddy deployment:
+
+```bash
+gh workflow run deploy.yml --repo dvinubius/hetzner-one --ref main -f force_full=false
+```
+
+Avoid opening or probing the Saga URL during Caddy verification. Once that
+workflow passes, continue the release steps below. Before Saga Lab's first
+deployment, on the VPS:
 
 ```bash
 docker network inspect --format '{{.Name}} {{index .Labels "com.docker.compose.project"}}' saga-lab-edge
 # saga-lab-edge caddy
 curl -sS -o /dev/null -w '%{http_code}\n' https://saga.dinubarbu.com/
-# 502 (a certificate error would fail here instead)
+# 502 before Saga Lab is deployed; run only after Caddy verification finishes
 ```
 
 ### 2. Deployment account and key
