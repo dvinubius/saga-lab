@@ -9,7 +9,7 @@ Observability is as important to the portfolio demonstration as correctness. Sag
 The public experience has two complementary layers:
 
 - **Application UI:** a concise, understandable account of the particular Saga, including a curated timeline and invariant-oriented outcome summary.
-- **Engineering evidence:** distributed traces, structured logs, metrics, and broker state that support a deeper investigation of the very same operation.
+- **Engineering evidence:** distributed traces and broker state that support a deeper investigation of the very same operation.
 
 The goal is to make reliability mechanisms inspectable, not to build a monitoring platform or replicate Grafana within the application.
 
@@ -37,29 +37,22 @@ Observations about the broker must be honest: publisher confirmation indicates b
 Use the following stack:
 
 - **OpenTelemetry** for application instrumentation and context propagation.
-- **OpenTelemetry Collector or Grafana Alloy** to collect and route telemetry.
-- **Prometheus** for technical and reliability metrics.
-- **Loki** for structured logs.
+- **OpenTelemetry Collector** to receive and route traces.
 - **Tempo** for distributed traces.
-- **Grafana** for dashboards, exploration, and deep links.
+- **Prometheus** for RabbitMQ broker metrics.
+- **Grafana** for exploration, the broker dashboard, and deep links.
 
-Instrument the Go services (Transfer Service, Bank A, and Bank B) and use RabbitMQ's broker metrics to distinguish messaging states. The planned Docker Compose deployment is sufficient; no custom telemetry storage, tracing backend, log search engine, or dashboard framework is needed.
+Instrument the Go services (Transfer Service, Bank A, and Bank B) with traces, and use RabbitMQ's own metrics to show messaging states the application cannot honestly observe. The planned Docker Compose deployment is sufficient; no custom telemetry storage, tracing backend, or dashboard framework is needed.
 
 Conceptual flow:
 
 ```text
-Go services -- OpenTelemetry --> Collector / Grafana Alloy
-                                         |--> Tempo (traces)
-                                         |--> Loki (logs)
-                                         `--> Prometheus (metrics)
-
-Watermill/application and RabbitMQ metrics --> Prometheus
-Structured service logs --------------------> Loki
-
-Prometheus + Loki + Tempo ------------------> Grafana
+Go services -- OpenTelemetry --> Collector --> Tempo (traces)
+RabbitMQ per-object metrics -------------------> Prometheus
+Tempo + Prometheus ----------------------------> Grafana
 ```
 
-This is the **preferred stack**, not a requirement to use every available OpenTelemetry or Watermill abstraction. Alternative observability stacks are outside the V1 plan.
+Traces, the persisted execution history, and the outcome summary already explain each scenario; broker metrics add the broker's independent view of the delivery wait. **Log shipping (Loki) and application metrics are out of V1.** Alternative observability stacks are outside the V1 plan.
 
 ## 4. Distributed tracing and message identity
 
@@ -103,44 +96,19 @@ This example is illustrative, not a required total ordering: `FundsDebited` may 
 
 ## 5. Structured logs
 
-Use structured, queryable logs containing, when relevant: service, event name, transfer ID, logical message ID, message type, handler, trace/span IDs, processing outcome, and delivery attempt.
+Services write structured `slog` logs to stderr, read through `docker logs`. Where relevant, records carry service, transfer ID, logical message ID, handling attempt ID, and trace ID, so a log line leads to its trace. Logs are not shipped to a log store in V1.
 
-Events worth recording include:
-
-- Message received, redelivered, acknowledged/Nacked, or failed during handling.
-- Duplicate message suppressed; inbox and outbox records committed.
-- Transfer started, advanced, completed, or failed/refunded.
-- Compensation started or completed.
-- A deterministic fault injected and, for Bank B, dedicated scenario-4 consumption suspended/resumed.
-- Scenario-4 admission queued/started/released, distinct from broker delivery and Saga execution.
-- Required history evidence pending/ready, distinct from the business outcome.
-- Outbox forwarding and publication problems **when they occur naturally**; these are operational signals, not a new V1 fault-injection demonstration.
-
-A duplicate should generate an observable processing record even though it produces no second business mutation. Logs aid investigation; they are **not** the authoritative source from which the frontend reconstructs transfer history.
+Within a transfer, a log line would repeat what a span and its events already show, so the trace is the investigation path, not the logs. A canonical per-transfer log line is also out of V1: it would repeat the persisted outcome summary, and without a log store it could not be queried or aggregated. Logs are **not** the authoritative source from which the frontend reconstructs transfer history.
 
 ## 6. Metrics
 
-Separate operational measurements from business/reliability measurements.
+V1 collects **broker metrics only**. Prometheus scrapes RabbitMQ's built-in per-object metrics: messages **ready** and **unacknowledged** and consumer count per queue. This is the only evidence of the delivery wait that does not come from the application itself: Bank B unavailability's credit command ready in the dedicated queue while that queue has no consumer, as Bank B's normal queue keeps consuming.
 
-**Technical / infrastructure metrics** include HTTP request volume, errors and latency; Watermill message publish/consume rates; handler and publish duration; messages acknowledged and negatively acknowledged; handler failures; RabbitMQ messages **ready** and **unacknowledged**, consumer count, and queue depth; and, where useful, database pool usage and transaction duration.
+Sample often enough to capture a five-second wait: scrape every second, and lower RabbitMQ's statistics collection interval to one second so the wait is not lost between statistics updates. Do not rely on metrics to establish per-transfer history.
 
-**Business / reliability metrics** include:
+**Application metrics are out of V1.** The demonstration has no load target or service level, so technical health metrics (HTTP, handler, and database measurements) explain nothing about a scenario. Business and reliability counters would aggregate what each transfer's outcome summary already derives from committed state, including that duplicate business effects remain zero while redeliveries and suppressed duplicates occur.
 
-- Transfers started, completed, failed, and compensated.
-- Compensation started and completed.
-- Transfer completion duration, including tail latency (for example p95).
-- Message redeliveries and duplicate messages suppressed.
-- Pending outbox count and outbox publication failures as routine operational health signals.
-- Injected faults by bounded failure category.
-- Scenario-4 admission backlog and wait duration, separately from Saga execution duration and broker waiting.
-
-The key demonstration is that **redeliveries and duplicate suppression can increase while duplicate business effects remain zero**. This outcome must also be confirmed by actual application state, not inferred from a metric alone.
-
-### Metric cardinality
-
-Never use `transfer_id`, `message_id`, or `trace_id` as Prometheus label values. These are high-cardinality identifiers. Keep them in structured logs, traces, and durable application timeline records.
-
-Use bounded metric dimensions such as service, handler, message type, result, failure mode, and normal versus scenario-4 queue. Do not create visitor-specific metric labels. The UI reads transfer-specific evidence from application data; Grafana shows system-wide measurements and offers trace/log searches for a specific transfer.
+Queue names are bounded and safe as label values. Never use `transfer_id`, `message_id`, or `trace_id` as Prometheus label values.
 
 ## 7. Application timeline versus raw telemetry
 
@@ -157,38 +125,28 @@ Where observed, it distinguishes:
 5. Business operation locally committed.
 6. Consumer acknowledgement or Nack.
 
-The primary narrative may show fewer milestones and expose technical details on expansion. Do not claim an observation that was not actually recorded. The event's real timestamp is independent of the frontend's animation speed; a redelivery preserves its logical message identity. The same causation and transfer references should make navigation from a timeline event to a corresponding trace or log straightforward.
+The primary narrative may show fewer milestones and expose technical details on expansion. Do not claim an observation that was not actually recorded. The event's real timestamp is independent of the frontend's animation speed; a redelivery preserves its logical message identity. The same causation and transfer references should make navigation from a timeline event to the corresponding trace straightforward.
 
 Playback requires **both a terminal business outcome and the selected scenario’s required evidence persisted in the Transfer Service**. A duplicate-suppression observation can arrive after transfer completion; this is independent of telemetry collection or scraping. The UI reports evidence preparation separately, and missing evidence never changes the business result. Once recorded, the UI can slow short milestones to legible intervals while keeping real timestamps visible and allowing the five-second queue wait to appear meaningfully longer. Do not introduce simulated network latency or confuse a consumer pause with repeated failed broker deliveries.
 
 ## 8. Grafana dashboard and investigation plan
 
-Keep the public dashboard compact and organized around a few clear questions.
+### Broker dashboard
 
-### System overview
-
-Show transfer rate, completion/success rate, compensation rate, duplicate-suppression rate, p95 completion latency, and current outbox backlog. A service graph is optional.
-
-### Messaging health
-
-Show publish/consume rates, Ack versus Nack, redeliveries, handler failures and latency, ready/unacknowledged queue depth, consumer presence, and pending outbox messages. Separate the normal and scenario-4 queues so the latter shows zero consumers and ready messages during the five-second pause while the former continues operating. Choose sampling appropriate to capture this short interval; do not rely on a slow aggregate scrape to establish the per-transfer history. Admission backlog is a separate application measurement.
-
-### Correctness and fault injection
-
-Show injected failures over time, redeliveries, duplicate suppressions, and compensations. The goal is to connect an induced post-commit Nack to a second processing attempt **without** a second committed debit or refund. Do not add a special outbox-publication-failure experiment or dashboard story.
+One provisioned dashboard shows RabbitMQ queue state. Its first row puts Bank B's normal credit queue beside the dedicated Bank B unavailability queue, each with ready, unacknowledged, and consumer counts, so the latter shows zero consumers and a ready message during the delivery wait while the former continues operating. A second row shows ready and unacknowledged messages for every queue as context. Admission waiting is not broker state and does not appear here.
 
 ### Investigation
 
-Make it practical to move from a selected transfer to a relevant trace, then to a processing span and associated structured logs. Provide filtering by transfer ID in logs/traces where practical, and link to the right time range and dashboard section so visitors do not land in an unrelated overview.
+The transfer page links to its trace. Recorded wait spans label the admission wait and the delivery wait, and span events mark injected faults, suppressed duplicates, scenario credit rejections, and the dedicated consumer pausing again. A Bank B unavailability transfer also links to the broker dashboard on its own time window, so visitors do not land in an unrelated range.
 
 The application's own outcome summary should remain understandable without opening Grafana. Grafana is the evidence layer, not the only user interface.
 
 ## 9. Public deployment and milestones
 
-The public Grafana experience should be **effectively read-only**. The local stack lets anonymous visitors into Grafana as Editors so the transfer page's trace links open in Explore; the public release decides how visitors reach those traces while Grafana stays effectively read-only. Telemetry must not expose cookies, authorization headers, access tokens, secrets, raw visitor IPs, arbitrary personally identifying input, or database connection strings. Prefer generated/demo identities and fictional data. Keep dashboard provisioning, collector, Prometheus, Tempo, and Loki configuration in source control so deployments are reproducible.
+The public Grafana experience should be **effectively read-only**. The local stack lets anonymous visitors into Grafana as Editors so the transfer page's trace links open in Explore; the public release decides how visitors reach those traces while Grafana stays effectively read-only. Telemetry must not expose cookies, authorization headers, access tokens, secrets, raw visitor IPs, arbitrary personally identifying input, or database connection strings. Prefer generated/demo identities and fictional data. Keep dashboard provisioning, collector, Prometheus, and Tempo configuration in source control so deployments are reproducible.
 
-Introduce trace IDs, service metadata, HTTP/database spans, producer/consumer spans, and message-context propagation **early**, before adding complex failure handling. Add structured logs, reliability counters, and durable execution evidence with each scenario. After inbox/outbox and the five scenarios work, finish the RabbitMQ views, compact Grafana dashboards, and direct transfer-specific investigation links.
+Introduce trace IDs, service metadata, HTTP/database spans, producer/consumer spans, and message-context propagation **early**, before adding complex failure handling. Add durable execution evidence with each scenario. After inbox/outbox and the five scenarios work, label the waits in traces and add the RabbitMQ broker dashboard and direct transfer-specific investigation links.
 
 Automated checks should validate **the application's observability obligations**: stable logical message IDs on redelivery, distinguishable processing attempts, propagated trace context, and a timeline/outcome consistent with committed state. Cover evidence redelivery, delayed evidence after business completion, readiness predicates, and scenario-4 admission versus broker-wait observations. Do **not** introduce dedicated tests of Watermill's outbox-forwarder retry implementation. Tests involving real service crashes/restarts are deferred to V2; broker-outage testing and public outage injection are omitted from V1.
 
-**Acceptance criterion:** a visitor can see that the debit (or refund) command was delivered twice, discover why the second delivery produced no second business effect, follow the compensation path when it occurs, and inspect traces/logs/metrics that substantiate the explanation.
+**Acceptance criterion:** a visitor can see that the debit (or refund) command was delivered twice, discover why the second delivery produced no second business effect, follow the compensation path when it occurs, and inspect traces and broker metrics that substantiate the explanation.
