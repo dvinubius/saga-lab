@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://saga.dinubarbu.com/readyz"><img src="https://img.shields.io/website?url=https%3A%2F%2Fsaga.dinubarbu.com%2Freadyz&label=saga.dinubarbu.com&up_message=live&down_message=down" alt="saga.dinubarbu.com status"></a>
+  <a href="https://github.com/dvinubius/saga-lab/releases/tag/v1"><img src="https://img.shields.io/badge/release-v1-blue" alt="Release v1"></a>
   <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/dvinubius/saga-lab" alt="Go version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/dvinubius/saga-lab" alt="MIT license"></a>
 </p>
@@ -26,6 +26,10 @@
 </h3>
 
 # Saga Lab
+
+<p align="center">
+  <img src="docs/assets/screenshots/replay-transfer-1.png" alt="Replay Screenshot" width="1080">
+</p>
 
 A Transfer Service moves fictional credits from Bank A to Bank B. The two
 banks own their own databases, so no transaction can span a transfer. Instead

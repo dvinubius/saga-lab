@@ -4,8 +4,6 @@ Code is the source of truth for application behavior.
 
 Do not treat documentation as normative, unless it's `docs/adr/`, `GLOSSARY.md` or `.agents/design-system.md`.
 
-Read `docs/prep` when refining the project plan or milestone specs; those documents describe intended behavior and are normative.
-
 Ignore `.devnotes` and `docs/learning`
 
 ## Planning
@@ -39,7 +37,7 @@ When reviewing your implementation, I will eyeball the results, just give me a c
 
 ## Agent skills
 
-For issue-tracker configuration, read `docs/agents/issue-tracker.md`.
+Use GitHub Issues in dvinubius/saga-lab for specs and tickets.
 Use the standard triage labels defined by the skills; there are no repo-specific overrides.
 Use one root `GLOSSARY.md` and `docs/adr/` for domain documentation.
 Invoke the relevant skills for their workflows; these instructions only configure repository choices.

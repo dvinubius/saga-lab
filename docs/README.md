@@ -25,8 +25,6 @@ documents. Files directly under `docs/` describe the system as built.
 | UI changes (`pages.html`, `static/`) | [Design system](../.agents/design-system.md) |
 | Domain terms | [Glossary](../GLOSSARY.md) |
 | Why a durable technical decision was made | [Architecture decision records](adr/) |
-| Intended behavior, milestone scope, open requirements | [`docs/prep/`](prep/) |
-| Issue tracker conventions for agents | [Issue tracker](agents/issue-tracker.md) |
 
 ## Source-of-truth order
 
@@ -34,10 +32,6 @@ When documents disagree, investigate in this order:
 
 1. The code and its tests establish actual behavior.
 2. Documents directly under `docs/` explain that behavior.
-3. [`docs/prep/`](prep/) describes intended behavior: the requirements,
-   technical plan, observability plan, milestones and each milestone's agreed
-   scope. It is normative when refining the plan or a milestone, but may run
-   ahead of the code.
 
 The [glossary](../GLOSSARY.md), the [ADRs](adr/) and the
 [design system](../.agents/design-system.md) are normative too: follow their

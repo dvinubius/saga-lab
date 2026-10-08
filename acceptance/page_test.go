@@ -82,7 +82,7 @@ func TestHomePageIntroducesTheDemonstration(t *testing.T) {
 		t.Fatalf("home page has no introduction: %s", page)
 	}
 	text := html.UnescapeString(pageText(intro[1]))
-	for _, want := range []string{"orchestrated Saga", "Happy path", "Debit redelivery", "Credit rejection & refund", "Bank B unavailable", "Credit rejection & refund redelivery", "Trace →"} {
+	for _, want := range []string{"orchestrated Saga", "Bank A", "Bank B", "message-based distributed transaction", "Five scenarios", "replay its execution", "examine the trace", "Grafana"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("introduction %q does not mention %q", text, want)
 		}
