@@ -129,7 +129,14 @@ separation is hairlines and flat fills.
 
 **Frame.** A sticky top bar (product wordmark, theme switch) and a sticky
 footer (personal wordmark `[ Dinu Barbu ]`, credit, quiet link), each over a
-hairline on the page fill; the page scrolls between them.
+hairline on the page fill; the page scrolls between them. The credit,
+`↳ dvinubius` with the GitHub mark, links the source repository.
+
+**Introduction.** The home page opens, unframed, with its title and up to
+three paragraphs of lead prose (`.note.intro`, 16px, at most 600px wide):
+what the demonstration is, its scenarios by their labels, and that a
+transfer's **Trace →** opens its evidence. It names link labels as they
+appear, with their glyph.
 
 **Panel.** Every region of a page is a panel: `--panel-edge` frame,
 `--radius-surface`, `--surface-panel` fill, opening with a header strip that
