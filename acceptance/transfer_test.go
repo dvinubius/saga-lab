@@ -79,6 +79,7 @@ type transfer struct {
 	Amount          int64          `json:"amount"`
 	Scenario        string         `json:"scenario"`
 	Status          string         `json:"status"`
+	RequestedAt     time.Time      `json:"requested_at"`
 	RejectionReason string         `json:"rejection_reason"`
 	TraceID         string         `json:"trace_id"`
 	History         []historyEntry `json:"history"`
