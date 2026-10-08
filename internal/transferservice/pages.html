@@ -233,6 +233,7 @@
   {{with .Error}}<p class="error" id="amount-error">{{.}}</p>{{end}}
   {{with .ScenarioError}}<p class="error" id="scenario-error">{{.}}</p>{{end}}
   {{if .Overlap}}<p class="error" id="overlap-error">This transfer was not started: another transfer is still pending.</p>{{end}}
+  {{if .AdmissionLimited}}<p class="error" id="admission-limit-error">The Bank B unavailable demo is busy right now. Try again in a minute, or pick another scenario.</p>{{end}}
   {{with .PendingID}}<p class="note">A new transfer can start once the pending one has finished.</p>
   <p><a class="quiet-link" id="pending-transfer" href="/transfers/{{.}}">Follow pending transfer →</a></p>{{end}}
 </section>

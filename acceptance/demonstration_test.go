@@ -71,9 +71,10 @@ func newDemonstration(baseURL string) demonstration {
 }
 
 type response struct {
-	status   int
-	location string
-	body     []byte
+	status     int
+	location   string
+	retryAfter string
+	body       []byte
 }
 
 func (d *visitorClient) get(t *testing.T, path string) []byte {
@@ -116,7 +117,7 @@ func (d *visitorClient) do(method, path, contentType, body string) (response, er
 	if _, err := io.Copy(&buffer, r.Body); err != nil {
 		return response{}, fmt.Errorf("read %s %s: %w", method, path, err)
 	}
-	return response{status: r.StatusCode, location: r.Header.Get("Location"), body: buffer.Bytes()}, nil
+	return response{status: r.StatusCode, location: r.Header.Get("Location"), retryAfter: r.Header.Get("Retry-After"), body: buffer.Bytes()}, nil
 }
 
 func randomHex(t *testing.T) string {
