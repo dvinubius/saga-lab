@@ -287,7 +287,7 @@
     </div>
     {{with .TraceID}}<div>
       <dt>Trace ID</dt>
-      <dd class="linked"><code><data id="trace-id" value="{{.}}">{{.}}</data></code>{{with $.TraceURL}}<a class="quiet-link" id="trace-link" href="{{.}}" target="_blank">Grafana →</a>{{end}}</dd>
+      <dd class="linked"><code><data id="trace-id" value="{{.}}">{{.}}</data></code><span class="links">{{with $.TraceURL}}<a class="quiet-link" id="trace-link" href="{{.}}" target="_blank">Trace →</a>{{end}}{{with $.BrokerURL}}<a class="quiet-link" id="broker-link" href="{{.}}" target="_blank">Broker →</a>{{end}}</span></dd>
     </div>{{end}}
   </dl>
 </section>

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -333,10 +334,11 @@ type homePage struct {
 }
 
 type transferPage struct {
-	Transfer transfer
-	Lanes    []string
-	History  []historyRow
-	TraceURL string
+	Transfer  transfer
+	Lanes     []string
+	History   []historyRow
+	TraceURL  string
+	BrokerURL string
 }
 
 func (s *Service) getHome(w http.ResponseWriter, r *http.Request) {
@@ -420,13 +422,25 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := transferPage{Transfer: t, Lanes: lanes, History: playback(historyRows(t.History))}
+	from, to := evidenceWindow(t)
 	if t.TraceID != "" {
-		page.TraceURL = s.traceURL(t.TraceID)
+		page.TraceURL = s.traceURL(t.TraceID, from, to)
+	}
+	if t.Scenario == bankBUnavailable {
+		page.BrokerURL = s.grafanaURL + "/d/broker?" + url.Values{"orgId": {"1"}, "from": {from}, "to": {to}}.Encode()
 	}
 	s.render(w, http.StatusOK, "transfer", page)
 }
 
-func (s *Service) traceURL(traceID string) string {
+func evidenceWindow(t transfer) (from, to string) {
+	from = strconv.FormatInt(t.RequestedAt.Add(-30*time.Second).UnixMilli(), 10)
+	if t.Status.Pending() || len(t.History) == 0 {
+		return from, "now"
+	}
+	return from, strconv.FormatInt(t.History[len(t.History)-1].ObservedAt.Add(30*time.Second).UnixMilli(), 10)
+}
+
+func (s *Service) traceURL(traceID, from, to string) string {
 	panes, _ := json.Marshal(map[string]any{
 		"trace": map[string]any{
 			"datasource": "tempo",
@@ -436,7 +450,7 @@ func (s *Service) traceURL(traceID string) string {
 				"queryType":  "traceql",
 				"query":      traceID,
 			}},
-			"range": map[string]string{"from": "now-1h", "to": "now"},
+			"range": map[string]string{"from": from, "to": to},
 		},
 	})
 	query := url.Values{"schemaVersion": {"1"}, "orgId": {"1"}, "panes": {string(panes)}}
