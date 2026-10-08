@@ -3,6 +3,9 @@ name: Deploy production
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.png'
   workflow_dispatch:
     inputs:
       force_full:
