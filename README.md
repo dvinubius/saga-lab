@@ -3,8 +3,9 @@
 </p>
 
 <p align="center">
-  A live demonstration of orchestrated Sagas: transfers that stay consistent
-  across two independent banks, with the evidence to prove it.
+  A live demonstration of orchestrated Sagas.<br/>
+  Transfers that stay consistent across two independent banks, <br/>
+  with the evidence to <strong>prove</strong> it and visualisations to <strong>understand</strong> it.
 </p>
 
 <p align="center">
