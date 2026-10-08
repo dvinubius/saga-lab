@@ -11,15 +11,14 @@ import (
 )
 
 type issuedResume struct {
-	ID              string
-	TraceContext    propagation.MapCarrier
-	CreditRequested time.Time
+	ID                string
+	TraceContext      propagation.MapCarrier
+	CreditRequestedAt time.Time
 }
 
 func (s *Service) runResumeSchedule(ctx context.Context) error {
 	for {
-		var issued []issuedResume
-		var issuedAt time.Time
+		var waits []wait
 		err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 			rows, err := tx.Query(ctx, `UPDATE transfers t SET resume_issued = true WHERE resume_at <= clock_timestamp() AND NOT resume_issued
   RETURNING transfer_id, trace_context, (SELECT observed_at FROM transfer_history h WHERE h.transfer_id = t.transfer_id AND h.step = $1)`, creditRequested)
@@ -30,7 +29,7 @@ func (s *Service) runResumeSchedule(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			issuedAt = time.Now()
+			issuedAt := time.Now()
 			for _, transfer := range due {
 				resumeContext := otel.GetTextMapPropagator().Extract(context.Background(), transfer.TraceContext)
 				command, err := messaging.New(resumeContext, transfer.ID, messaging.ResumeDelivery{TransferID: transfer.ID}, "")
@@ -40,8 +39,8 @@ func (s *Service) runResumeSchedule(ctx context.Context) error {
 				if err := messaging.Enqueue(resumeContext, tx, messaging.ResumeDeliveryTopic, command); err != nil {
 					return err
 				}
+				waits = append(waits, wait{resumeContext, deliveryWaitSpan, transfer.ID, transfer.CreditRequestedAt, issuedAt})
 			}
-			issued = due
 			return nil
 		})
 		if ctx.Err() != nil {
@@ -50,8 +49,8 @@ func (s *Service) runResumeSchedule(ctx context.Context) error {
 		if err != nil {
 			s.logger.Error("schedule delivery resume", "error", err)
 		} else {
-			for _, transfer := range issued {
-				recordWait(otel.GetTextMapPropagator().Extract(context.Background(), transfer.TraceContext), deliveryWaitSpan, transfer.ID, transfer.CreditRequested, issuedAt)
+			for _, w := range waits {
+				w.record()
 			}
 		}
 		select {
