@@ -305,6 +305,11 @@ func (s *Service) postTransfer(w http.ResponseWriter, r *http.Request) {
 		}, s.logger)
 		return
 	}
+	if errors.Is(err, errAdmissionLimit) {
+		w.Header().Set("Retry-After", retryAfter)
+		web.WriteError(w, http.StatusServiceUnavailable, errAdmissionLimit.Error(), s.logger)
+		return
+	}
 	if err != nil {
 		s.logger.Error("submit transfer", "error", err)
 		web.WriteError(w, http.StatusInternalServerError, "transfer could not be started", s.logger)
@@ -329,18 +334,21 @@ func (s *Service) getTransfer(w http.ResponseWriter, r *http.Request) {
 }
 
 type homePage struct {
-	Balances      balances
-	Transfers     []transferSummary
-	PendingID     string
-	Amount        string
-	Scenario      scenario
-	Scenarios     []scenario
-	Error         string
-	ScenarioError string
-	Overlap       bool
-	TopUpRefused  bool
-	ResetRefused  bool
+	Balances         balances
+	Transfers        []transferSummary
+	PendingID        string
+	Amount           string
+	Scenario         scenario
+	Scenarios        []scenario
+	Error            string
+	ScenarioError    string
+	Overlap          bool
+	AdmissionLimited bool
+	TopUpRefused     bool
+	ResetRefused     bool
 }
+
+const retryAfter = "60"
 
 type transferPage struct {
 	Transfer transfer
@@ -396,6 +404,11 @@ func (s *Service) postTransferForm(w http.ResponseWriter, r *http.Request) {
 		s.renderHome(w, r, http.StatusConflict, homePage{PendingID: pending.PendingID, Amount: text, Scenario: chosen, Overlap: true})
 		return
 	}
+	if errors.Is(err, errAdmissionLimit) {
+		w.Header().Set("Retry-After", retryAfter)
+		s.renderHome(w, r, http.StatusServiceUnavailable, homePage{Amount: text, Scenario: chosen, AdmissionLimited: true})
+		return
+	}
 	if err != nil {
 		s.logger.Error("submit transfer", "error", err)
 		http.Error(w, "The transfer could not be started.", http.StatusInternalServerError)
@@ -443,20 +456,8 @@ func (s *Service) traceURL(t transfer) string {
 	}
 	from := strconv.FormatInt(t.RequestedAt.Add(-10*time.Second).UnixMilli(), 10)
 	to := strconv.FormatInt(end.Add(10*time.Second).UnixMilli(), 10)
-	panes, _ := json.Marshal(map[string]any{
-		"trace": map[string]any{
-			"datasource": "tempo",
-			"queries": []map[string]any{{
-				"refId":      "A",
-				"datasource": map[string]string{"type": "tempo", "uid": "tempo"},
-				"queryType":  "traceql",
-				"query":      t.TraceID,
-			}},
-			"range": map[string]string{"from": from, "to": to},
-		},
-	})
-	query := url.Values{"schemaVersion": {"1"}, "orgId": {"1"}, "panes": {string(panes)}}
-	return s.grafanaURL + "/explore?" + query.Encode()
+	query := url.Values{"var-traceId": {t.TraceID}, "from": {from}, "to": {to}}
+	return s.grafanaURL + "/d/saga-lab-trace?" + query.Encode()
 }
 
 func (s *Service) render(w http.ResponseWriter, status int, name string, data any) {

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +52,72 @@ func TestTransferTraceCoversAllServices(t *testing.T) {
 	redelivered := demo.submitTransfer(t, `{"amount": 25, "scenario": "debit_redelivery"}`)
 	completed = demo.awaitTransfer(t, redelivered.TransferID, "completed")
 	assertRedeliveryTrace(t, tempo, completed, "DebitFunds", completed.History[0].IssuedMessageID)
+
+	grafana := newVisitorClient("http://" + serviceAddress(t, demo.project, "grafana", "3000") + "/grafana")
+	assertTraceDashboard(t, grafana, completed)
+	assertGrafanaReadOnly(t, grafana)
+}
+
+const traceDashboard = "saga-lab-trace"
+
+func assertTraceDashboard(t *testing.T, grafana *visitorClient, tr transfer) {
+	t.Helper()
+	var dashboard struct {
+		Dashboard struct {
+			Templating struct{ List []struct{ Name, Type string } }
+			Panels     []struct {
+				Type       string
+				Datasource struct{ Type, UID string }
+				Targets    []struct{ QueryType, Query string }
+			}
+		}
+	}
+	if err := json.Unmarshal(grafana.get(t, "/api/dashboards/uid/"+traceDashboard), &dashboard); err != nil {
+		t.Fatalf("decode Trace dashboard: %v", err)
+	}
+	variables, panels := dashboard.Dashboard.Templating.List, dashboard.Dashboard.Panels
+	if len(variables) != 1 || variables[0].Name != "traceId" || variables[0].Type != "textbox" {
+		t.Errorf("Trace dashboard variables = %+v, want one textbox traceId", variables)
+	}
+	if len(panels) != 1 || panels[0].Type != "traces" || panels[0].Datasource.UID != "tempo" || len(panels[0].Targets) != 1 || panels[0].Targets[0].QueryType != "traceql" || panels[0].Targets[0].Query != "${traceId}" {
+		t.Errorf("Trace dashboard panels = %+v, want one Tempo traces panel querying ${traceId}", panels)
+	}
+
+	from := strconv.FormatInt(tr.RequestedAt.Add(-10*time.Second).UnixMilli(), 10)
+	to := strconv.FormatInt(tr.History[len(tr.History)-1].ObservedAt.Add(10*time.Second).UnixMilli(), 10)
+	query := `{"queries":[{"refId":"A","datasource":{"type":"tempo","uid":"tempo"},"queryType":"traceId","query":"` + tr.TraceID + `"}],"from":"` + from + `","to":"` + to + `"}`
+	r := grafana.post(t, "/api/ds/query", "application/json", query)
+	var result struct {
+		Results map[string]struct {
+			Frames []struct {
+				Data struct{ Values [][]any }
+			}
+		}
+	}
+	if err := json.Unmarshal(r.body, &result); r.status != http.StatusOK || err != nil {
+		t.Fatalf("query trace %s through Grafana: status %d, error %v, body %q", tr.TraceID, r.status, err, r.body)
+	}
+	frames := result.Results["A"].Frames
+	if len(frames) != 1 || len(frames[0].Data.Values) == 0 || len(frames[0].Data.Values[0]) < 12 {
+		t.Errorf("trace %s through Grafana = %s, want one frame of at least 12 spans", tr.TraceID, r.body)
+	}
+}
+
+func assertGrafanaReadOnly(t *testing.T, grafana *visitorClient) {
+	t.Helper()
+	for _, path := range []string{"/explore", "/drilldown"} {
+		if r := grafana.request(t, http.MethodGet, path, "", ""); r.status == http.StatusOK {
+			t.Errorf("GET %s: status %d, want refused", path, r.status)
+		}
+	}
+	for path, body := range map[string]string{
+		"/api/dashboards/db": `{"dashboard":{"uid":"` + traceDashboard + `","title":"Trace"},"overwrite":true}`,
+		"/api/snapshots":     `{"dashboard":{"title":"Trace"}}`,
+	} {
+		if r := grafana.post(t, path, "application/json", body); r.status != http.StatusUnauthorized && r.status != http.StatusForbidden {
+			t.Errorf("POST %s: status %d, body %q, want refused", path, r.status, r.body)
+		}
+	}
 }
 
 type span struct {

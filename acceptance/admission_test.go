@@ -2,9 +2,12 @@ package acceptance_test
 
 import (
 	"encoding/json"
+	"html"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestUnavailableTransfersFromTwoVisitorsRunInTurn(t *testing.T) {
@@ -134,4 +137,109 @@ func TestUncontendedUnavailableTransferStartsWithoutAdmission(t *testing.T) {
 		t.Fatalf("uncontended transfer admitted: %+v", completed)
 	}
 	demo.assertBalances(t, 75, 25)
+}
+
+func TestAdmissionLimitTurnsAwayFurtherUnavailableTransfers(t *testing.T) {
+	t.Parallel()
+	demo := startDemonstration(t)
+	release := demo.holdBankADebits(t)
+	holder := demo.submitTransfer(t, `{"amount":25,"scenario":"bank_b_unavailable"}`)
+	visitors := make([]*visitorClient, 7)
+	responses := make([]response, 7)
+	errs := make([]error, 7)
+	for i := range visitors {
+		visitors[i] = demo.visitor(t)
+	}
+	start := make(chan struct{})
+	var group sync.WaitGroup
+	for i := range visitors {
+		group.Go(func() {
+			<-start
+			responses[i], errs[i] = visitors[i].do(http.MethodPost, "/api/transfers", "application/json", `{"amount":25,"scenario":"bank_b_unavailable"}`)
+		})
+	}
+	close(start)
+	group.Wait()
+	var waiting []transfer
+	var waitingVisitors, refused []*visitorClient
+	for i, r := range responses {
+		switch {
+		case errs[i] != nil:
+			t.Fatal(errs[i])
+		case r.status == http.StatusAccepted:
+			var accepted transfer
+			if err := json.Unmarshal(r.body, &accepted); err != nil || accepted.Status != "awaiting_admission" {
+				t.Fatalf("accepted = %s, %v", r.body, err)
+			}
+			waiting = append(waiting, accepted)
+			waitingVisitors = append(waitingVisitors, visitors[i])
+		case r.status == http.StatusServiceUnavailable:
+			var problem struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(r.body, &problem); err != nil || !strings.Contains(problem.Error, "admission limit") || r.retryAfter != "60" {
+				t.Fatalf("refusal = %+v, %v", r, err)
+			}
+			refused = append(refused, visitors[i])
+		default:
+			t.Fatalf("submission %d: %+v", i, r)
+		}
+	}
+	if len(waiting) != 5 || len(refused) != 2 {
+		t.Fatalf("waiting %d, refused %d; want 5 and 2", len(waiting), len(refused))
+	}
+	turnedAway := refused[0]
+	if transfers := turnedAway.transfers(t); len(transfers) != 0 {
+		t.Fatalf("refused visitor has transfers %+v", transfers)
+	}
+	turnedAway.assertBalances(t, 100, 0)
+
+	page := turnedAway.post(t, "/transfers", "application/x-www-form-urlencoded", "amount=30&scenario=bank_b_unavailable")
+	if page.status != http.StatusServiceUnavailable || page.retryAfter != "60" {
+		t.Fatalf("page refusal = %d, Retry-After %q", page.status, page.retryAfter)
+	}
+	body := html.UnescapeString(string(page.body))
+	for _, want := range []string{
+		`id="admission-limit-error">The Bank B unavailable demo is busy right now. Try again in a minute, or pick another scenario.`,
+		`value="30"`,
+		`value="bank_b_unavailable" checked`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page refusal lacks %q", want)
+		}
+	}
+	if strings.Contains(body, `<fieldset class="scenarios" disabled`) {
+		t.Error("page refusal disables the scenarios")
+	}
+	if transfers := turnedAway.transfers(t); len(transfers) != 0 {
+		t.Fatalf("refused visitor has transfers %+v", transfers)
+	}
+
+	happy := turnedAway.submitTransfer(t, `{"amount":10}`)
+	release()
+	turnedAway.awaitReadiness(t, happy.TransferID, "completed")
+	turnedAway.assertBalances(t, 90, 10)
+	demo.awaitReadiness(t, holder.TransferID, "completed")
+	deadline := time.Now().Add(30 * time.Second)
+	for waitingCount(t, waitingVisitors, waiting) == 5 {
+		if time.Now().After(deadline) {
+			t.Fatal("no waiting transfer was admitted")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	again := turnedAway.submitTransfer(t, `{"amount":10,"scenario":"bank_b_unavailable"}`)
+	if again.Status != "awaiting_admission" {
+		t.Fatalf("accepted again = %+v", again)
+	}
+}
+
+func waitingCount(t *testing.T, visitors []*visitorClient, transfers []transfer) int {
+	t.Helper()
+	n := 0
+	for i, w := range transfers {
+		if visitors[i].transfer(t, w.TransferID).Status == "awaiting_admission" {
+			n++
+		}
+	}
+	return n
 }

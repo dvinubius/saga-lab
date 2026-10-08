@@ -65,15 +65,28 @@ services:
       - tempo-data:/var/tempo
 
   grafana:
-    image: grafana/grafana:13.2.1@sha256:f772d434e8fab0049deb2b1b30abd43342bcfca1537614aa8d36080232cf4283
+    image: grafana/grafana:13.0.6@sha256:035dfe16f7a3a109b54f2ac032232b07d069aa732156480555b2391fc0a32813
     environment:
+      GF_SERVER_ROOT_URL: ${SAGA_LAB_GRAFANA_URL-http://localhost:3000/grafana}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD-admin}
       GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Editor
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SNAPSHOTS_ENABLED: "false"
+      GF_PUBLIC_DASHBOARDS_ENABLED: "false"
     ports:
       - "127.0.0.1:${GRAFANA_PORT-3000}:3000"
     volumes:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/grafana/api/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 60s
+      start_interval: 250ms
     depends_on:
       - tempo
 
@@ -128,7 +141,7 @@ services:
       BANK_B_RESUME_WAIT: ${SAGA_LAB_BANK_B_RESUME_WAIT-5s}
       BANK_A_URL: http://bank-a:8080
       BANK_B_URL: http://bank-b:8080
-      GRAFANA_URL: ${SAGA_LAB_GRAFANA_URL-http://localhost:3000}
+      GRAFANA_URL: ${SAGA_LAB_GRAFANA_URL-http://localhost:3000/grafana}
       VISITOR_COOKIE_SECURE: ${SAGA_LAB_VISITOR_COOKIE_SECURE-false}
       VISITOR_EXPIRY: 168h
       VISITOR_EXPIRY_SWEEP: 1h

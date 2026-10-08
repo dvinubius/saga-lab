@@ -63,7 +63,7 @@ func TestConcurrentUnavailableSubmissionsStartOneAndQueueTheRest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const count = 8
+	const count = 6
 	responses := make([]*httptest.ResponseRecorder, count)
 	start := make(chan struct{})
 	var group sync.WaitGroup
@@ -302,13 +302,9 @@ func TestPendingTransferTraceLinkHasAFixedWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var panes map[string]struct{ Range struct{ To string } }
-	if err := json.Unmarshal([]byte(link.Query().Get("panes")), &panes); err != nil {
-		t.Fatalf("decode panes of %s: %v", link, err)
-	}
-	to, err := strconv.ParseInt(panes["trace"].Range.To, 10, 64)
+	to, err := strconv.ParseInt(link.Query().Get("to"), 10, 64)
 	if err != nil || time.UnixMilli(to).Before(submittedAt.Add(config.ResumeWait)) {
-		t.Fatalf("pending trace link %s ends at %q, want a fixed time after the scheduled resume", link, panes["trace"].Range.To)
+		t.Fatalf("pending trace link %s ends at %q, want a fixed time after the scheduled resume", link, link.Query().Get("to"))
 	}
 }
 
