@@ -1,10 +1,14 @@
 package acceptance_test
 
 import (
+	"encoding/json"
+	"html"
 	"net/http"
+	"net/url"
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -67,6 +71,83 @@ func TestRefreshingTheTransferPageNeverResubmits(t *testing.T) {
 		t.Errorf("transfer changed on refresh:\nbefore %+v\nafter  %+v", before, after)
 	}
 	demo.assertBalances(t, 75, 25)
+}
+
+func TestTransferPagesLinkToTheirEvidence(t *testing.T) {
+	t.Parallel()
+	demo := startObservedDemonstration(t)
+
+	visitors := map[string]*visitorClient{}
+	accepted := map[string]transfer{}
+	for _, scenario := range []string{"happy_path", "debit_redelivery", "credit_rejection", "bank_b_unavailable", "refund_redelivery"} {
+		visitors[scenario] = demo.visitor(t)
+		accepted[scenario] = visitors[scenario].submitTransfer(t, `{"amount":25,"scenario":"`+scenario+`"}`)
+	}
+	for scenario, v := range visitors {
+		id := accepted[scenario].TransferID
+		v.awaitReplay(t, "/transfers/"+id)
+		page, current := v.settledPage(t, id)
+		from := strconv.FormatInt(current.RequestedAt.Add(-30*time.Second).UnixMilli(), 10)
+		to := strconv.FormatInt(current.History[len(current.History)-1].ObservedAt.Add(30*time.Second).UnixMilli(), 10)
+
+		trace := pageLink(t, page, "Trace →")
+		if trace == nil {
+			t.Errorf("%s page has no trace link", scenario)
+		} else {
+			var panes map[string]struct {
+				Queries []struct{ Query string }
+				Range   struct{ From, To string }
+			}
+			if err := json.Unmarshal([]byte(trace.Query().Get("panes")), &panes); err != nil {
+				t.Errorf("%s trace link %s: decode panes: %v", scenario, trace, err)
+			}
+			pane := panes["trace"]
+			if trace.Path != "/explore" || len(pane.Queries) != 1 || pane.Queries[0].Query != current.TraceID || current.TraceID == "" || pane.Range.From != from || pane.Range.To != to {
+				t.Errorf("%s trace link = %s, want Explore on trace %q from %s to %s", scenario, trace, current.TraceID, from, to)
+			}
+		}
+
+		broker := pageLink(t, page, "Broker →")
+		if scenario != "bank_b_unavailable" {
+			if broker != nil {
+				t.Errorf("%s page links to the broker: %s", scenario, broker)
+			}
+			continue
+		}
+		if broker == nil || broker.Path != "/d/broker" || broker.Query().Get("from") != from || broker.Query().Get("to") != to {
+			t.Errorf("%s broker link = %v, want the Broker dashboard from %s to %s", scenario, broker, from, to)
+		}
+	}
+}
+
+func (d *visitorClient) settledPage(t *testing.T, id string) ([]byte, transfer) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		before := d.transfer(t, id)
+		page := d.get(t, "/transfers/"+id)
+		after := d.transfer(t, id)
+		if len(before.History) == len(after.History) {
+			return page, after
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("transfer %s history kept changing", id)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func pageLink(t *testing.T, page []byte, text string) *url.URL {
+	t.Helper()
+	match := regexp.MustCompile(`<a [^>]*href="([^"]*)"[^>]*>` + regexp.QuoteMeta(text) + `</a>`).FindSubmatch(page)
+	if match == nil {
+		return nil
+	}
+	link, err := url.Parse(html.UnescapeString(string(match[1])))
+	if err != nil {
+		t.Fatalf("parse link %q: %v", match[1], err)
+	}
+	return link
 }
 
 func (d *visitorClient) awaitPage(t *testing.T, path, status string) []byte {
