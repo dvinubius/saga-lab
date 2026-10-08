@@ -62,7 +62,11 @@ func assertDeliveryWait(t *testing.T, spans []exportedSpan, tr transfer) {
 		t.Fatalf("delivery wait spans = %+v, want one", waits)
 	}
 	wait := waits[0]
-	assertNear(t, "delivery wait start", wait.Start, entry(t, tr.History, "credit_requested").ObservedAt)
+	confirmed := observations(tr.History, "CreditConfirmed")
+	if len(confirmed) != 1 {
+		t.Fatalf("credit confirmations = %+v, want one", confirmed)
+	}
+	assertNear(t, "delivery wait start", wait.Start, confirmed[0].ObservedAt)
 	resumed := observations(tr.History, "DeliveryResumed")
 	if len(resumed) != 1 {
 		t.Fatalf("resumed = %+v, want one", resumed)
