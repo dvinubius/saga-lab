@@ -124,13 +124,13 @@ Playback requires **both a terminal business outcome and the selected scenarioâ€
 
 ## 8. Grafana investigation plan
 
-There are no dashboards. The transfer page links to its trace in Grafana's Explore, on the transfer's own time window, so visitors do not land in an unrelated range. Recorded wait spans label the admission wait and the delivery wait, and span events mark injected faults, suppressed duplicates, scenario credit rejections, and the dedicated consumer pausing again.
+The only dashboard is a provisioned Trace dashboard showing one trace selected by a URL variable. The transfer page links to its trace there, on the transfer's own time window, so visitors do not land in an unrelated range. Recorded wait spans label the admission wait and the delivery wait, and span events mark injected faults, suppressed duplicates, scenario credit rejections, and the dedicated consumer pausing again.
 
 The application's own outcome summary should remain understandable without opening Grafana. Grafana is the evidence layer, not the only user interface.
 
 ## 9. Public deployment and milestones
 
-The public Grafana experience should be **effectively read-only**. The local stack lets anonymous visitors into Grafana as Editors so the transfer page's trace links open in Explore; the public release decides how visitors reach those traces while Grafana stays effectively read-only. Telemetry must not expose cookies, authorization headers, access tokens, secrets, raw visitor IPs, arbitrary personally identifying input, or database connection strings. Prefer generated/demo identities and fictional data. Keep Grafana provisioning, collector, and Tempo configuration in source control so deployments are reproducible.
+The public Grafana experience should be **effectively read-only**. Anonymous visitors are Grafana Viewers, locally and in public, with login, snapshots and public dashboards disabled; Viewers cannot open Explore, so the transfer page's trace link opens the Trace dashboard instead. Tempo keeps traces for seven days. Telemetry must not expose cookies, authorization headers, access tokens, secrets, raw visitor IPs, arbitrary personally identifying input, or database connection strings. Prefer generated/demo identities and fictional data. Keep Grafana provisioning, collector, and Tempo configuration in source control so deployments are reproducible.
 
 Introduce trace IDs, service metadata, HTTP/database spans, producer/consumer spans, and message-context propagation **early**, before adding complex failure handling. Add durable execution evidence with each scenario. After inbox/outbox and the five scenarios work, label the waits in traces and add direct transfer-specific trace links.
 

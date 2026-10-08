@@ -26,6 +26,9 @@ _Avoid_: Deposit
 A visitor's request to start over: the browser becomes a new visitor with fresh accounts, and the old visitor's accounts, transfers and execution histories are deleted. It is refused while one of the visitor's transfers is pending or holds the demonstration slot. Observability data is left to expire.
 _Avoid_: Demo reset (the operator's wipe of every visitor)
 
+**Visitor expiry**:
+The deletion of a visitor unseen for seven days, with the same effect as a visitor reset: a returning browser starts over with fresh accounts. A visitor whose transfer is pending or holds the demonstration slot does not expire.
+
 **Transfer**:
 An attempt to move a chosen amount of credits from a visitor’s Bank A account to that visitor’s Bank B account, coordinated through independent local operations. It exists from submission and begins with its debit, which may first wait for admission.
 
@@ -72,6 +75,10 @@ The exclusive right, shared by all visitors, to run a Bank B unavailability tran
 
 **Admission wait**:
 A submitted transfer's wait for the demonstration slot, before the transfer begins.
+
+**Admission limit**:
+The most transfers that may await admission at once: five, not counting the one holding the demonstration slot. A Bank B unavailability submission beyond it is refused and creates no transfer.
+_Avoid_: Queue limit
 
 **Delivery wait**:
 In Bank B unavailability, the few seconds during which the transfer's credit command waits in the broker with no consumer for it. Distinct from the admission wait, which precedes the transfer.
