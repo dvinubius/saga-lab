@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/dvinubius/saga-lab/internal/visitor"
 	"github.com/dvinubius/saga-lab/internal/web"
+	"github.com/jackc/pgx/v5"
 )
 
 func (s *Service) visitors(next http.Handler) http.Handler {
@@ -20,14 +22,10 @@ func (s *Service) visitors(next http.Handler) http.Handler {
 			id = cookie.Value
 		}
 		if id == "" {
-			var random [32]byte
-			if _, err := rand.Read(random[:]); err != nil {
-				s.logger.Error("generate visitor", "error", err)
-				http.Error(w, "The page could not be served.", http.StatusInternalServerError)
+			var err error
+			if id, err = s.newVisitor(w); err != nil {
 				return
 			}
-			id = hex.EncodeToString(random[:])
-			http.SetCookie(w, &http.Cookie{Name: visitor.CookieName, Value: id, HttpOnly: true, SameSite: http.SameSiteLaxMode, Path: "/", MaxAge: 365 * 24 * 60 * 60, Expires: time.Now().AddDate(1, 0, 0)})
 		}
 		if err := s.openVisitor(r.Context(), id); err != nil {
 			s.logger.Error("open visitor accounts", "error", err)
@@ -40,6 +38,18 @@ func (s *Service) visitors(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(visitor.WithID(r.Context(), id)))
 	})
+}
+
+func (s *Service) newVisitor(w http.ResponseWriter) (string, error) {
+	var random [32]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		s.logger.Error("generate visitor", "error", err)
+		http.Error(w, "The page could not be served.", http.StatusInternalServerError)
+		return "", err
+	}
+	id := hex.EncodeToString(random[:])
+	http.SetCookie(w, &http.Cookie{Name: visitor.CookieName, Value: id, HttpOnly: true, SameSite: http.SameSiteLaxMode, Path: "/", MaxAge: 365 * 24 * 60 * 60, Expires: time.Now().AddDate(1, 0, 0)})
+	return id, nil
 }
 
 func (s *Service) openVisitor(ctx context.Context, id string) error {
@@ -60,4 +70,55 @@ func (s *Service) openVisitor(ctx context.Context, id string) error {
 		return fmt.Errorf("record visitor: %w", err)
 	}
 	return nil
+}
+
+var errTransferInProgress = errors.New("a transfer is still in progress")
+
+func (s *Service) postResetForm(w http.ResponseWriter, r *http.Request) {
+	old := visitor.ID(r.Context())
+	err := s.forgetVisitor(r.Context(), old)
+	if errors.Is(err, errTransferInProgress) {
+		s.renderHome(w, r, http.StatusConflict, homePage{ResetRefused: true})
+		return
+	}
+	if err != nil {
+		s.logger.Error("forget visitor", "error", err)
+	}
+	if _, err := s.newVisitor(w); err != nil {
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func (s *Service) forgetVisitor(ctx context.Context, id string) error {
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		holder, err := lockSlot(ctx, tx)
+		if err != nil {
+			return err
+		}
+		var busy bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM transfers WHERE visitor_id = $1 AND (status = ANY($2) OR transfer_id = $3))`, id, pendingStatuses, holder).Scan(&busy); err != nil {
+			return err
+		}
+		if busy {
+			return errTransferInProgress
+		}
+		for _, statement := range []string{
+			`DELETE FROM transfer_history WHERE transfer_id IN (SELECT transfer_id FROM transfers WHERE visitor_id = $1)`,
+			`DELETE FROM transfers WHERE visitor_id = $1`,
+			`DELETE FROM visitors WHERE visitor_id = $1`,
+		} {
+			if _, err := tx.Exec(ctx, statement, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if err := s.bankA.closeAccount(ctx, id); err != nil {
+		return err
+	}
+	return s.bankB.closeAccount(ctx, id)
 }

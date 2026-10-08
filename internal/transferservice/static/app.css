@@ -235,6 +235,8 @@ a.btn-secondary:hover{color:var(--text-body);}
 .account+.account{border-top:1px solid var(--hairline);}
 .account .top-up{grid-column:1/-1;font-family:var(--font-sans);flex-direction:column;gap:8px;margin-top:8px;}
 .account .top-up .btn{height:28px;padding:0 10px;font-size:12px;}
+.credits{display:flex;flex-direction:column;gap:12px;}
+.credits .btn{width:100%;justify-content:center;}
 .figure{
   font-size:20px;
   font-weight:500;

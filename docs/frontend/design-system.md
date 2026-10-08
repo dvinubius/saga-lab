@@ -169,7 +169,8 @@ underlined.
   `--accent-on-hover`. A form's one call to action: 14px, spans the form,
   taller than `--row-height`.
 - Secondary — body text in a `--control-edge` outline, going to body on hover.
-  Inside a row it is compact: 28px tall, 12px.
+  Inside a row it is compact: 28px tall, 12px. An action on a whole panel
+  sits below it, spanning its width.
 - Tonal — `--control-fill`, no edge, going to `--control-fill-hover`.
 - Tonal outlined — `--control-fill` inside a `--control-edge` outline, going
   to `--control-fill-hover` and a body outline; playback controls.
@@ -217,6 +218,10 @@ is rendered as text, never markup.
 
 **Focus.** `:focus-visible` is a 2px body-text outline — never the accent. A
 field shows focus by turning its border and a 1px inset outline muted.
+
+**Submitting.** A form whose answer is the page it sits on (top-up, reset
+state) posts in the background and updates that page in place; its button is
+disabled until the answer arrives.
 
 **Disabled.** Keeps its shape, drops to `--disabled-opacity`, `cursor:
 not-allowed`, and keeps its edge on hover.
