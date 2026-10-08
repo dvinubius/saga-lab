@@ -270,6 +270,24 @@ func TestHolderResubmissionAndCompletionReleaseWithoutDeadlock(t *testing.T) {
 	}
 }
 
+func TestUntracedUnavailableTransferPageStillLinksToTheBroker(t *testing.T) {
+	db := pgtest.NewDatabase(t)
+	config := bankConfig(t)
+	config.GrafanaURL = "http://grafana.test"
+	s, err := transferservice.Open(context.Background(), db, config, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	submitted := submitUnavailable(t, s, "visitor")
+	page := admissionRequest(s, "visitor", http.MethodGet, "/transfers/"+submitted.ID, "").Body.String()
+	if !strings.Contains(page, `id="broker-link" href="http://grafana.test/d/broker?`) {
+		t.Fatalf("untraced page has no broker link:\n%s", page)
+	}
+	if strings.Contains(page, `id="trace-link"`) {
+		t.Fatalf("untraced page links to a trace:\n%s", page)
+	}
+}
+
 func TestAdmissionWaitIsTracedOnlyOnceTheAdmissionCommits(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	previous := otel.GetTracerProvider()

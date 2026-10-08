@@ -427,14 +427,14 @@ func (s *Service) getTransferPage(w http.ResponseWriter, r *http.Request) {
 		page.TraceURL = s.traceURL(t.TraceID, from, to)
 	}
 	if t.Scenario == bankBUnavailable {
-		page.BrokerURL = s.grafanaURL + "/d/broker?" + url.Values{"orgId": {"1"}, "from": {from}, "to": {to}}.Encode()
+		page.BrokerURL = s.brokerURL(from, to)
 	}
 	s.render(w, http.StatusOK, "transfer", page)
 }
 
 func evidenceWindow(t transfer) (from, to string) {
 	from = strconv.FormatInt(t.RequestedAt.Add(-30*time.Second).UnixMilli(), 10)
-	if t.Status.Pending() || len(t.History) == 0 {
+	if t.Status.Pending() {
 		return from, "now"
 	}
 	return from, strconv.FormatInt(t.History[len(t.History)-1].ObservedAt.Add(30*time.Second).UnixMilli(), 10)
@@ -453,8 +453,16 @@ func (s *Service) traceURL(traceID, from, to string) string {
 			"range": map[string]string{"from": from, "to": to},
 		},
 	})
-	query := url.Values{"schemaVersion": {"1"}, "orgId": {"1"}, "panes": {string(panes)}}
-	return s.grafanaURL + "/explore?" + query.Encode()
+	return s.grafanaLink("/explore", url.Values{"schemaVersion": {"1"}, "panes": {string(panes)}})
+}
+
+func (s *Service) brokerURL(from, to string) string {
+	return s.grafanaLink("/d/broker", url.Values{"from": {from}, "to": {to}})
+}
+
+func (s *Service) grafanaLink(path string, query url.Values) string {
+	query.Set("orgId", "1")
+	return s.grafanaURL + path + "?" + query.Encode()
 }
 
 func (s *Service) render(w http.ResponseWriter, status int, name string, data any) {
