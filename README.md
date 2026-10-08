@@ -28,7 +28,7 @@
 # Saga Lab
 
 <p align="center">
-  <img src="docs/assets/screenshots/whole-light.png" alt="Replay Screenshot" width="1080">
+  <img src="docs/assets/screenshots/whole-dark.png" alt="Replay Screenshot" width="1080">
 </p>
 
 A Transfer Service moves fictional credits from Bank A to Bank B. The two
