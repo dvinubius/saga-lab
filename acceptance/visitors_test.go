@@ -1,9 +1,48 @@
 package acceptance_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
+	"regexp"
+	"strings"
 	"testing"
 )
+
+func TestMalformedVisitorCookieStartsANewVisitor(t *testing.T) {
+	t.Parallel()
+	demo := startDemonstration(t)
+	for name, token := range map[string]string{
+		"short":   "0123456789abcdef",
+		"long":    strings.Repeat("ab", 33),
+		"not hex": strings.Repeat("zz", 32),
+	} {
+		t.Run(name, func(t *testing.T) {
+			v := newVisitorClient(demo.baseURL)
+			v.setToken(token)
+			v.assertBalances(t, 100, 0)
+			if got := v.token(t); got == token || !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(got) {
+				t.Fatalf("visitor cookie %q, want a new 64-hex token", got)
+			}
+		})
+	}
+}
+
+func TestVisitorAccountsAreKeyedByTheTokensHash(t *testing.T) {
+	t.Parallel()
+	demo := startDemonstration(t)
+	demo.assertBalances(t, 100, 0)
+	token := demo.token(t)
+	hash := sha256.Sum256([]byte(token))
+	for _, database := range []string{demo.bankA.settings.DatabaseURL, demo.bankB.settings.DatabaseURL} {
+		if n := count(t, database, `SELECT count(*) FROM accounts WHERE visitor_id = $1`, hex.EncodeToString(hash[:])); n != 1 {
+			t.Errorf("accounts under the token's hash = %d, want 1", n)
+		}
+		if n := count(t, database, `SELECT count(*) FROM accounts WHERE visitor_id = $1`, token); n != 0 {
+			t.Errorf("accounts under the token itself = %d, want 0", n)
+		}
+	}
+}
 
 func TestVisitorsHaveTheirOwnAccountsAndTransfers(t *testing.T) {
 	t.Parallel()
