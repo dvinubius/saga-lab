@@ -36,7 +36,6 @@ services:
       - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT-15672}:15672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
-      - ./deploy/rabbitmq/statistics.conf:/etc/rabbitmq/conf.d/20-statistics.conf:ro
     healthcheck:
       # rabbitmq-diagnostics runs as root and can create a root-owned .erlang.cookie before the broker does, which then cannot start.
       test: ["CMD", "nc", "-z", "127.0.0.1", "5672"]
@@ -65,17 +64,6 @@ services:
       - ./deploy/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
       - tempo-data:/var/tempo
 
-  prometheus:
-    image: prom/prometheus:v3.13.3@sha256:6976aa8a60fec930796ce5772b8d12da7a318a5daa8d40d69c5c7819a05eeed7
-    command: ["--config.file=/etc/prometheus/prometheus.yaml", "--storage.tsdb.path=/prometheus"]
-    ports:
-      - "127.0.0.1:${PROMETHEUS_PORT-9090}:9090"
-    volumes:
-      - ./deploy/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
-      - prometheus-data:/prometheus
-    depends_on:
-      - rabbitmq
-
   grafana:
     image: grafana/grafana:13.2.1@sha256:f772d434e8fab0049deb2b1b30abd43342bcfca1537614aa8d36080232cf4283
     environment:
@@ -86,10 +74,8 @@ services:
       - "127.0.0.1:${GRAFANA_PORT-3000}:3000"
     volumes:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./deploy/grafana/dashboards:/etc/grafana/dashboards:ro
     depends_on:
       - tempo
-      - prometheus
 
   bank-a:
     image: ${SAGA_LAB_SERVICES_IMAGE:-saga-lab-services}
@@ -161,4 +147,3 @@ volumes:
   postgres-data:
   rabbitmq-data:
   tempo-data:
-  prometheus-data:
