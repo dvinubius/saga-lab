@@ -1,8 +1,7 @@
 # Design system
 
-Saga Lab's UI is built in the **Dinu Barbu** brand system
-(`/Users/dinu/work/DinuBarbu/design-system`, also the `dinu-barbu-design`
-skill). This file is the system for this app and wins over upstream. A UI
+Saga Lab's UI is built in the **Dinu Barbu** brand system (the
+`dinu-barbu-design` skill). This file is the system for this app and wins over upstream. A UI
 change that departs from it updates the rule here in the same change — the
 system grows; it does not collect exceptions.
 
